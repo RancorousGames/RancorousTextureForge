@@ -1,0 +1,5 @@
+{
+  "name": "TextureForge",
+  "description": "Desktop-class texture management app for game development. Supports atlas packing, resizing, hue/brightness shifting, and external Windows scripts.",
+  "requestFramePermissions": []
+}

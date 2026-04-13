@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { TextureTile, GridSettings, GridMode } from '../types';
-import { SlidersHorizontal, Package, Download, TerminalSquare, Grid3X3, Plus, Box } from 'lucide-react';
+import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus } from 'lucide-react';
 
 interface ToolboxProps {
-  selectedTile: TextureTile | undefined;
-  updateTile: (id: string, updates: Partial<TextureTile>) => void;
+  selectedTile: TextureTile | null;
+  updateTile: (updates: Partial<TextureTile>) => void;
   onPack: () => void;
   onPackElements: () => void;
   onNewAtlas: (size: number) => void;
@@ -22,15 +22,20 @@ export function Toolbox({
   updateTile, 
   onPack, 
   onPackElements,
-  onNewAtlas,
+  onNewAtlas, 
   onFixGrid,
-  onExport, 
+  onExport,
   onRunScript,
   gridSettings,
   onGridSettingsChange,
   atlasSwapMode,
   setAtlasSwapMode
 }: ToolboxProps) {
+  const [localClearColor, setLocalClearColor] = useState(gridSettings.clearColor);
+
+  useEffect(() => {
+    setLocalClearColor(gridSettings.clearColor);
+  }, [gridSettings.clearColor]);
   const [showNewAtlas, setShowNewAtlas] = React.useState(false);
   return (
     <div className="w-64 h-full bg-zinc-900 border-r border-zinc-800 flex flex-col">
@@ -223,12 +228,28 @@ export function Toolbox({
           <div className="flex items-center gap-2">
             <input
               type="color"
-              value={gridSettings.clearColor}
-              onChange={(e) => onGridSettingsChange({ ...gridSettings, clearColor: e.target.value })}
+              value={localClearColor}
+              onChange={(e) => setLocalClearColor(e.target.value)}
+              onBlur={() => onGridSettingsChange({ ...gridSettings, clearColor: localClearColor })}
               className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0"
             />
-            <span className="text-xs font-mono text-zinc-400 uppercase">{gridSettings.clearColor}</span>
+            <span className="text-xs font-mono text-zinc-400 uppercase">{localClearColor}</span>
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[10px] text-zinc-500 flex justify-between">
+            <span>Tolerance</span>
+            <span className="font-mono">{gridSettings.clearTolerance}</span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={gridSettings.clearTolerance ?? 10}
+            onChange={(e) => onGridSettingsChange({ ...gridSettings, clearTolerance: Number(e.target.value) })}
+            className="w-full accent-blue-500"
+          />
         </div>
       </div>
 
@@ -243,7 +264,7 @@ export function Toolbox({
           </button>
           {showNewAtlas && (
             <div className="absolute bottom-full left-0 w-full bg-zinc-900 border border-zinc-800 rounded shadow-xl p-2 mb-2 z-50 grid grid-cols-2 gap-2">
-              {[512, 1024, 2048, 4096].map(size => (
+              {[0, 1024, 2048, 4096].map(size => (
                 <button
                   key={size}
                   onClick={() => {
@@ -252,7 +273,7 @@ export function Toolbox({
                   }}
                   className="bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono py-1 rounded border border-zinc-700"
                 >
-                  {size}x{size}
+                  {size === 0 ? 'Custom...' : `${size}x${size}`}
                 </button>
               ))}
             </div>

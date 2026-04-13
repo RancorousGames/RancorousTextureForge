@@ -26,6 +26,7 @@ export interface GridSettings {
   cellY?: number;
   padding: number;
   clearColor: string;
+  clearTolerance: number;
   packingAlgo?: string;
 }
 
@@ -67,10 +68,10 @@ export interface AppState {
   packerMapping: ChannelMapping;
   pbrSet: PBRSet;
   layeringLayers: Layer[];
-  selectedCells: string[]; // "x,y" format
   atlasSwapMode: boolean;
-  selectedTileId: string | null;
   canvasSize: number;
+  canvasWidth?: number;
+  canvasHeight?: number;
   adjustSettings: AdjustSettings;
 }
 

@@ -9,9 +9,10 @@ interface SourceAtlasProps {
   onGridSettingsChange: (settings: GridSettings) => void;
   availableTiles: TextureTile[];
   onSourceCellClick: (x: number, y: number, w: number, h: number, scx: number, scy: number, sourceTile: TextureTile) => void;
+  onSourceCellRightClick?: (x: number, y: number, w: number, h: number, scx: number, scy: number, sourceTile: TextureTile) => void;
 }
 
-export function SourceAtlas({ onAddTile, gridSettings, onGridSettingsChange, availableTiles, onSourceCellClick }: SourceAtlasProps) {
+export function SourceAtlas({ onAddTile, gridSettings, onGridSettingsChange, availableTiles, onSourceCellClick, onSourceCellRightClick }: SourceAtlasProps) {
   const [sourceTile, setSourceTile] = useState<TextureTile | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -47,6 +48,13 @@ export function SourceAtlas({ onAddTile, gridSettings, onGridSettingsChange, ava
   const handleCellClick = (x: number, y: number, width: number, height: number, cx: number, cy: number) => {
     if (!sourceTile) return;
     onSourceCellClick(x, y, width, height, cx, cy, sourceTile);
+  };
+
+  const handleCellRightClick = (x: number, y: number, width: number, height: number, cx: number, cy: number) => {
+    if (!sourceTile) return;
+    if (onSourceCellRightClick) {
+      onSourceCellRightClick(x, y, width, height, cx, cy, sourceTile);
+    }
   };
 
   return (
@@ -146,12 +154,13 @@ export function SourceAtlas({ onAddTile, gridSettings, onGridSettingsChange, ava
         {sourceTile ? (
           <AtlasCanvas
             tiles={[sourceTile]}
-            selectedTileId={null}
             onSelectTile={() => {}}
             gridSettings={gridSettings}
             onCellClick={handleCellClick}
+            onCellRightClick={handleCellRightClick}
             onDrop={handleDrop}
-            canvasSize={Math.max(sourceTile.width, sourceTile.height, 2048)}
+            canvasWidth={sourceTile.width}
+            canvasHeight={sourceTile.height}
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 p-8 text-center">

@@ -8,7 +8,7 @@ import { ChannelPackerMode } from './components/ChannelPackerMode';
 import { LayeringMode } from './components/LayeringMode';
 import { AdjustMode } from './components/AdjustMode';
 import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon } from 'lucide-react';
-import { cn, hexToRgb } from './lib/utils';
+import { cn, hexToRgb, detectSettingsFromImage, rgbToHex } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
 import potpack from 'potpack';
 
@@ -163,100 +163,87 @@ export default function App() {
     }
   };
 
-  const performAutoSlice = async (sourceTile: TextureTile, width: number, height: number) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
+  const performGridSlice = async (sourceTile: TextureTile, width: number, height: number) => {
     const img = new Image();
     await new Promise((resolve) => {
       img.onload = resolve;
       img.src = sourceTile.url;
     });
 
-    ctx.fillStyle = state.gridSettings.clearColor;
-    ctx.fillRect(0, 0, width, height);
-    ctx.drawImage(img, 0, 0, sourceTile.width, sourceTile.height);
-
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-    const visited = new Uint8Array(width * height);
-    const islands: { x1: number, y1: number, x2: number, y2: number }[] = [];
-
-    const clearColor = hexToRgb(state.gridSettings.clearColor);
-    const tolerance = state.gridSettings.clearTolerance;
-
-    const isColorClose = (r: number, g: number, b: number, target: {r: number, g: number, b: number}) => {
-      return Math.abs(r - target.r) <= tolerance && Math.abs(g - target.g) <= tolerance && Math.abs(b - target.b) <= tolerance;
-    };
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const idx = (y * width + x);
-        if (visited[idx]) continue;
-        const pIdx = idx * 4;
-        const isClear = isColorClose(data[pIdx], data[pIdx+1], data[pIdx+2], clearColor) || data[pIdx+3] < 5;
-
-        if (!isClear) {
-          let x1 = x, y1 = y, x2 = x, y2 = y;
-          const queue: [number, number][] = [[x, y]];
-          visited[idx] = 1;
-          let head = 0;
-          while (head < queue.length) {
-            const [cx, cy] = queue[head++];
-            x1 = Math.min(x1, cx); y1 = Math.min(y1, cy);
-            x2 = Math.max(x2, cx); y2 = Math.max(y2, cy);
-            const neighbors: [number, number][] = [[cx+1, cy], [cx-1, cy], [cx, cy+1], [cx, cy-1]];
-            for (const [nx, ny] of neighbors) {
-              if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                const nIdx = ny * width + nx;
-                if (!visited[nIdx]) {
-                  const npIdx = nIdx * 4;
-                  const nIsClear = isColorClose(data[npIdx], data[npIdx+1], data[npIdx+2], clearColor) || data[npIdx+3] < 5;
-                  if (!nIsClear) {
-                    visited[nIdx] = 1;
-                    queue.push([nx, ny]);
-                  }
-                }
-              }
-            }
-          }
-          if (x2 - x1 > 2 && y2 - y1 > 2) islands.push({ x1, y1, x2, y2 });
-        }
-      }
+    let cellW = 0, cellH = 0, padding = 0;
+    if (state.gridSettings.mode === 'perfect') {
+      cellW = width / state.gridSettings.gridX;
+      cellH = height / (state.gridSettings.keepSquare ? state.gridSettings.gridX : state.gridSettings.gridY);
+    } else {
+      padding = state.gridSettings.padding || 0;
+      cellW = state.gridSettings.cellSize;
+      cellH = state.gridSettings.cellY || state.gridSettings.cellSize;
     }
+
+    const stepX = cellW + padding * 2;
+    const stepY = cellH + padding * 2;
+    const cols = Math.floor(width / stepX);
+    const rows = Math.floor(height / stepY);
 
     const newTiles: TextureTile[] = [];
-    for (const island of islands) {
-      const iw = island.x2 - island.x1 + 1;
-      const ih = island.y2 - island.y1 + 1;
-      const islandCanvas = document.createElement('canvas');
-      islandCanvas.width = iw;
-      islandCanvas.height = ih;
-      const islandCtx = islandCanvas.getContext('2d');
-      if (islandCtx) {
-        islandCtx.putImageData(ctx.getImageData(island.x1, island.y1, iw, ih), 0, 0);
-        newTiles.push({
-          id: Math.random().toString(36).substring(2, 9),
-          url: islandCanvas.toDataURL(),
-          sourceUrl: islandCanvas.toDataURL(),
-          name: `Slice_${island.x1}_${island.y1}`,
-          width: iw, height: ih,
-          x: island.x1, y: island.y1,
-          hue: 0, brightness: 100, scale: 1,
-          isCrop: true,
-        });
-      }
-    }
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = cellW;
+    sliceCanvas.height = cellH;
+    const sliceCtx = sliceCanvas.getContext('2d', { willReadFrequently: true });
+    if (!sliceCtx) return;
 
-    if (newTiles.length === 0) {
-      newTiles.push({
-        ...sourceTile,
-        id: Math.random().toString(36).substring(2, 9),
-        x: 0, y: 0,
-      });
+    // Sample top-left pixel for chroma-key
+    const checkCanvas = document.createElement('canvas');
+    checkCanvas.width = 1; checkCanvas.height = 1;
+    const checkCtx = checkCanvas.getContext('2d');
+    if (!checkCtx) return;
+    checkCtx.drawImage(img, 0, 0, 1, 1, 0, 0, 1, 1);
+    const keyData = checkCtx.getImageData(0, 0, 1, 1).data;
+    const keyColor = { r: keyData[0], g: keyData[1], b: keyData[2], a: keyData[3] };
+    const permClear = hexToRgb(state.gridSettings.clearColor);
+    const tolerance = state.gridSettings.clearTolerance;
+
+    const isMatch = (r: number, g: number, b: number, a: number) => {
+      if (a < 5 && keyColor.a < 5) return true;
+      return Math.abs(r - keyColor.r) <= tolerance && 
+             Math.abs(g - keyColor.g) <= tolerance && 
+             Math.abs(b - keyColor.b) <= tolerance;
+    };
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        sliceCtx.clearRect(0, 0, cellW, cellH);
+        sliceCtx.drawImage(img, c * stepX + padding, r * stepY + padding, cellW, cellH, 0, 0, cellW, cellH);
+        
+        const sliceData = sliceCtx.getImageData(0, 0, cellW, cellH);
+        const pixels = sliceData.data;
+        let hasContent = false;
+
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (isMatch(pixels[i], pixels[i+1], pixels[i+2], pixels[i+3])) {
+            pixels[i] = permClear.r;
+            pixels[i+1] = permClear.g;
+            pixels[i+2] = permClear.b;
+            pixels[i+3] = 255;
+          } else {
+            hasContent = true;
+          }
+        }
+
+        if (hasContent) {
+          sliceCtx.putImageData(sliceData, 0, 0);
+          newTiles.push({
+            id: Math.random().toString(36).substring(2, 9),
+            url: sliceCanvas.toDataURL(),
+            sourceUrl: sliceCanvas.toDataURL(),
+            name: `Slice_${c}_${r}`,
+            width: cellW, height: cellH,
+            x: c * stepX + padding, y: r * stepY + padding,
+            hue: 0, brightness: 100, scale: 1,
+            isCrop: true,
+          });
+        }
+      }
     }
 
     set(prev => ({ ...prev, mainTiles: newTiles }));
@@ -275,7 +262,7 @@ export default function App() {
       }));
       setSelectedTileId(null);
       setSelectedCells([]);
-      setTimeout(() => performAutoSlice(tile, w, h), 50);
+      setTimeout(() => performGridSlice(tile, w, h), 50);
     } else if (mode === 'adjust') {
       if (state.secondaryTiles.some(t => t.id === tile.id)) {
         const existingModified = state.modifiedTiles.find(t => t.name === tile.name && t.file === tile.file);
@@ -504,29 +491,7 @@ export default function App() {
     set((prev) => ({ ...prev, mainTiles: [...filteredMainTiles, ...newTiles] }));
   };
 
-  const packAtlas = () => {
-    let currentX = 0, currentY = 0, rowHeight = 0;
-    const padding = 2;
-    const maxWidth = canvasWidth;
-    const sorted = [...state.mainTiles].sort((a, b) => (b.height * b.scale) - (a.height * a.scale));
-    const packed = sorted.map((tile) => {
-      const scaledWidth = tile.width * tile.scale;
-      const scaledHeight = tile.height * tile.scale;
-      if (currentX + scaledWidth > maxWidth) {
-        currentX = 0; currentY += rowHeight + padding; rowHeight = 0;
-      }
-      const updatedTile = { ...tile, x: currentX, y: currentY };
-      rowHeight = Math.max(rowHeight, scaledHeight);
-      currentX += scaledWidth + padding;
-      return updatedTile;
-    });
-    set((prev) => ({ ...prev, mainTiles: packed }));
-  };
-
-  const fixGrid = async () => {
-    if (state.mainTiles.length === 0) return;
-    console.log('%c--- Fix Grid Start ---', 'color: #3b82f6; font-weight: bold; font-size: 14px;');
-    
+  const handleAutoDetectMainGrid = async () => {
     const canvas = document.createElement('canvas');
     canvas.width = canvasWidth; canvas.height = canvasHeight;
     const ctx = canvas.getContext('2d');
@@ -548,108 +513,112 @@ export default function App() {
 
     const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
     const data = imageData.data;
-    const visited = new Uint8Array(canvasWidth * canvasHeight);
-    const islands: { x1: number, y1: number, x2: number, y2: number }[] = [];
-    const clearColor = hexToRgb(state.gridSettings.clearColor);
-    const tolerance = state.gridSettings.clearTolerance;
+    const detectedClearColor = rgbToHex(data[0], data[1], data[2]);
 
-    const isColorClose = (r: number, g: number, b: number, target: {r: number, g: number, b: number}) => {
-      return Math.abs(r - target.r) <= tolerance && Math.abs(g - target.g) <= tolerance && Math.abs(b - target.b) <= tolerance;
-    };
+    const { cellSize, padding } = detectSettingsFromImage(
+      imageData, 
+      detectedClearColor, 
+      state.gridSettings.clearTolerance ?? 10
+    );
 
-    for (let y = 0; y < canvasHeight; y++) {
-      for (let x = 0; x < canvasWidth; x++) {
-        const idx = (y * canvasWidth + x);
-        if (visited[idx]) continue;
-        const pIdx = idx * 4;
-        const isClear = isColorClose(data[pIdx], data[pIdx+1], data[pIdx+2], clearColor) || data[pIdx+3] < 5;
-        if (!isClear) {
-          let x1 = x, y1 = y, x2 = x, y2 = y;
-          const queue: [number, number][] = [[x, y]];
-          visited[idx] = 1;
-          let head = 0;
-          while (head < queue.length) {
-            const [cx, cy] = queue[head++];
-            x1 = Math.min(x1, cx); y1 = Math.min(y1, cy);
-            x2 = Math.max(x2, cx); y2 = Math.max(y2, cy);
-            const neighbors: [number, number][] = [[cx+1, cy], [cx-1, cy], [cx, cy+1], [cx, cy-1]];
-            for (const [nx, ny] of neighbors) {
-              if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
-                const nIdx = ny * canvasWidth + nx;
-                if (!visited[nIdx]) {
-                  const npIdx = nIdx * 4;
-                  const nIsClear = isColorClose(data[npIdx], data[npIdx+1], data[npIdx+2], clearColor) || data[npIdx+3] < 5;
-                  if (!nIsClear) { visited[nIdx] = 1; queue.push([nx, ny]); }
-                }
-              }
-            }
-          }
-          islands.push({ x1, y1, x2, y2 });
-        }
+    set(prev => ({
+      ...prev,
+      gridSettings: {
+        ...prev.gridSettings,
+        clearColor: detectedClearColor,
+        cellSize,
+        cellY: cellSize,
+        padding,
+        keepSquare: true
       }
-    }
+    }));
+  };
 
-    let cellW = 0, cellH = 0;
-    const padding = state.gridSettings.padding || 0;
+  const handleAutoDetectSourceGrid = async (sourceTile: TextureTile) => {
+    const img = new Image();
+    await new Promise((resolve) => { img.onload = resolve; img.src = sourceTile.url; });
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, img.width, img.height);
+    const data = imageData.data;
+    const detectedClearColor = rgbToHex(data[0], data[1], data[2]);
+
+    const { cellSize, padding } = detectSettingsFromImage(
+      imageData, 
+      detectedClearColor, 
+      state.sourceGridSettings.clearTolerance ?? 10
+    );
+
+    set(prev => ({
+      ...prev,
+      sourceGridSettings: {
+        ...prev.sourceGridSettings,
+        clearColor: detectedClearColor,
+        cellSize,
+        cellY: cellSize,
+        padding,
+        keepSquare: true
+      }
+    }));
+  };
+
+  const packAtlas = () => {
+    let currentX = 0, currentY = 0, rowHeight = 0;
+    const padding = 2;
+    const maxWidth = canvasWidth;
+    const sorted = [...state.mainTiles].sort((a, b) => (b.height * b.scale) - (a.height * a.scale));
+    const packed = sorted.map((tile) => {
+      const scaledWidth = tile.width * tile.scale;
+      const scaledHeight = tile.height * tile.scale;
+      if (currentX + scaledWidth > maxWidth) {
+        currentX = 0; currentY += rowHeight + padding; rowHeight = 0;
+      }
+      const updatedTile = { ...tile, x: currentX, y: currentY };
+      rowHeight = Math.max(rowHeight, scaledHeight);
+      currentX += scaledWidth + padding;
+      return updatedTile;
+    });
+    set((prev) => ({ ...prev, mainTiles: packed }));
+  };
+
+  const fixGrid = () => {
+    if (state.mainTiles.length === 0) return;
+    
+    let cellW = 0, cellH = 0, padding = 0;
     if (state.gridSettings.mode === 'perfect') {
       cellW = canvasWidth / state.gridSettings.gridX;
       cellH = canvasHeight / (state.gridSettings.keepSquare ? state.gridSettings.gridX : state.gridSettings.gridY);
-    } else if (state.gridSettings.mode === 'fixed') {
-      cellW = state.gridSettings.cellSize + padding * 2;
-      cellH = (state.gridSettings.cellY || state.gridSettings.cellSize) + padding * 2;
+    } else {
+      padding = state.gridSettings.padding || 0;
+      cellW = state.gridSettings.cellSize;
+      cellH = state.gridSettings.cellY || state.gridSettings.cellSize;
     }
 
-    console.log(`[Grid] Cell Size: ${cellW.toFixed(1)}x${cellH.toFixed(1)}, Padding: ${padding}`);
-    console.log(`[Islands] Detected ${islands.length} raw islands.`);
+    const stepX = cellW + padding * 2;
+    const stepY = cellH + padding * 2;
 
-    const cellMap = new Map<string, {x1: number, y1: number, x2: number, y2: number}[]>();
-    for (const island of islands) {
-      if (island.x2 - island.x1 <= 2 || island.y2 - island.y1 <= 2) continue;
-      const midX = (island.x1 + island.x2) / 2;
-      const midY = (island.y1 + island.y2) / 2;
-      const col = Math.floor(midX / cellW);
-      const row = Math.floor(midY / cellH);
-      const key = `${col},${row}`;
-      if (!cellMap.has(key)) cellMap.set(key, []);
-      cellMap.get(key)!.push(island);
-    }
-
-    const newTiles: TextureTile[] = [];
-    cellMap.forEach((cellIslands, key) => {
-      const [col, row] = key.split(',').map(Number);
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const i of cellIslands) {
-        minX = Math.min(minX, i.x1); minY = Math.min(minY, i.y1);
-        maxX = Math.max(maxX, i.x2); maxY = Math.max(maxY, i.y2);
-      }
+    const fixedTiles = state.mainTiles.map(tile => {
+      const cx = Math.round((tile.x - padding) / stepX);
+      const cy = Math.round((tile.y - padding) / stepY);
       
-      const iw = maxX - minX + 1;
-      const ih = maxY - minY + 1;
-      const targetCenterX = (col + 0.5) * cellW;
-      const targetCenterY = (row + 0.5) * cellH;
-      const finalX = targetCenterX - iw / 2;
-      const finalY = targetCenterY - ih / 2;
-
-      console.log(`[Match] Cell (${col}, ${row}): BBox ${iw}x${ih} at [${minX}, ${minY}] -> Centered at [${finalX.toFixed(1)}, ${finalY.toFixed(1)}]`);
-
-      const islandCanvas = document.createElement('canvas');
-      islandCanvas.width = iw; islandCanvas.height = ih;
-      const islandCtx = islandCanvas.getContext('2d');
-      if (islandCtx) {
-        islandCtx.putImageData(ctx.getImageData(minX, minY, iw, ih), 0, 0);
-        newTiles.push({
-          id: Math.random().toString(36).substring(2, 9),
-          url: islandCanvas.toDataURL(),
-          sourceUrl: islandCanvas.toDataURL(),
-          name: `Island_${col}_${row}`,
-          width: iw, height: ih, x: finalX, y: finalY,
-          hue: 0, brightness: 100, scale: 1, isCrop: true,
-        });
-      }
+      console.log(`[Fix Grid] Snapping ${tile.name} from [${tile.x.toFixed(1)}, ${tile.y.toFixed(1)}] to cell (${cx}, ${cy})`);
+      
+      return {
+        ...tile,
+        x: cx * stepX + padding,
+        y: cy * stepY + padding,
+        width: cellW,
+        height: cellH
+      };
     });
 
-    console.log(`%c--- Fix Grid Complete: ${newTiles.length} tiles generated ---`, 'color: #10b981; font-weight: bold;');
-    set(prev => ({ ...prev, mainTiles: newTiles }));
+    set(prev => ({ ...prev, mainTiles: fixedTiles }));
   };
 
   const packElements = async () => {
@@ -892,6 +861,7 @@ export default function App() {
               onPackElements={packElements}
               onNewAtlas={createNewAtlas}
               onFixGrid={fixGrid}
+              onAutoDetect={handleAutoDetectMainGrid}
               onExport={exportAtlas}
               onRunScript={() => {}}
               gridSettings={state.gridSettings}
@@ -962,9 +932,13 @@ export default function App() {
                   onAddTile={(tile) => handleMainAtlasDrop(tile, 0, 0)}
                   gridSettings={state.sourceGridSettings}
                   onGridSettingsChange={(gs) => set(prev => ({ ...prev, sourceGridSettings: gs }))}
+                  onAutoDetectGrid={(sourceTile) => {}} 
                   availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]}
                   onSourceCellClick={handleSourceCellClick}
                   onSourceCellRightClick={handleSourceCellRightClick}
+                  mainGridSettings={state.gridSettings}
+                  canvasWidth={canvasWidth}
+                  canvasHeight={canvasHeight}
                 />
               )}
             </div>

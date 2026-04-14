@@ -12,6 +12,7 @@ import { cn, hexToRgb, detectSettingsFromImage, rgbToHex } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
 import { GridGeometry } from './lib/GridGeometry';
 import { useAtlas } from './hooks/useAtlas';
+import { AddTilesCommand, RemoveTilesCommand, SetMainTilesCommand, MoveTileCommand } from './lib/Commands';
 import potpack from 'potpack';
 
 const initialPackerMapping: ChannelMapping = {
@@ -92,7 +93,7 @@ export default function App() {
     const saved = localStorage.getItem('forge_mode');
     return (saved as AppMode) || 'atlas';
   });
-  const { state, set, undo, redo, canUndo, canRedo } = useHistory<AppState>(getInitialState());
+  const { state, set, executeCommand, undo, redo, canUndo, canRedo } = useHistory<AppState>(getInitialState());
   
   // Save settings on change
   useEffect(() => {
@@ -120,11 +121,8 @@ export default function App() {
   const mainAtlas = useAtlas(state.gridSettings, canvasWidth, canvasHeight, {
     tiles: state.mainTiles,
     setTiles: (newTiles) => {
-      if (typeof newTiles === 'function') {
-        set(prev => ({ ...prev, mainTiles: newTiles(prev.mainTiles) }));
-      } else {
-        set(prev => ({ ...prev, mainTiles: newTiles }));
-      }
+      const nextTiles = typeof newTiles === 'function' ? newTiles(state.mainTiles) : newTiles;
+      executeCommand(new SetMainTilesCommand(state.mainTiles, nextTiles));
     }
   });
 
@@ -384,7 +382,18 @@ export default function App() {
         }
       }
 
-      mainAtlas.addTile(tile, finalX, finalY, false);
+      const newTile: TextureTile = { 
+        ...tile, 
+        id: Math.random().toString(36).substring(2, 9),
+        x: finalX, y: finalY,
+        width: mainAtlas.geo.cellW,
+        height: mainAtlas.geo.cellH,
+        isCrop: true
+      };
+      
+      const { cx, cy } = mainAtlas.geo.getCellAtPos(finalX, finalY);
+      const replacedTiles = state.mainTiles.filter(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
+      executeCommand(new AddTilesCommand([newTile], replacedTiles));
     }
   };
 
@@ -417,7 +426,7 @@ export default function App() {
       });
 
       const newTiles: TextureTile[] = [];
-      let filteredMainTiles = [...state.mainTiles];
+      const replacedTiles: TextureTile[] = [];
 
       for (const key of selectedCells) {
         const [dcx, dcy] = key.split(',').map(Number);
@@ -430,7 +439,7 @@ export default function App() {
           const croppedUrl = createCrop(sourceCX, sourceCY);
           const { x: destX, y: destY } = targetGeo.getPosFromCell(dcx, dcy);
           
-          filteredMainTiles = filteredMainTiles.filter(t => !targetGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy));
+          replacedTiles.push(...state.mainTiles.filter(t => targetGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)));
 
           newTiles.push({
             id: Math.random().toString(36).substring(2, 9),
@@ -441,7 +450,7 @@ export default function App() {
           });
         }
       }
-      set((prev) => ({ ...prev, mainTiles: [...filteredMainTiles, ...newTiles] }));
+      executeCommand(new AddTilesCommand(newTiles, replacedTiles));
     } else {
       const croppedUrl = createCrop(scx, scy);
       handleMainAtlasDrop({
@@ -474,13 +483,13 @@ export default function App() {
     const croppedUrl = canvas.toDataURL();
 
     const newTiles: TextureTile[] = [];
-    let filteredMainTiles = [...state.mainTiles];
+    const replacedTiles: TextureTile[] = [];
 
     for (const key of selectedCells) {
       const [dcx, dcy] = key.split(',').map(Number);
       const { x: destX, y: destY } = targetGeo.getPosFromCell(dcx, dcy);
       
-      filteredMainTiles = filteredMainTiles.filter(t => !targetGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy));
+      replacedTiles.push(...state.mainTiles.filter(t => targetGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)));
 
       newTiles.push({
         id: Math.random().toString(36).substring(2, 9),
@@ -490,7 +499,7 @@ export default function App() {
         hue: 0, brightness: 100, scale: 1, isCrop: true
       });
     }
-    set((prev) => ({ ...prev, mainTiles: [...filteredMainTiles, ...newTiles] }));
+    executeCommand(new AddTilesCommand(newTiles, replacedTiles));
   };
 
   const handleAutoDetectMainGrid = async () => {

@@ -74,6 +74,7 @@ export interface AppState {
   canvasHeight?: number;
   adjustSettings: AdjustSettings;
   lastSourceTileId: string | null;
+  clearedCells: string[];
 }
 
 

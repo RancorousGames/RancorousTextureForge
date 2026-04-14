@@ -20,8 +20,11 @@ interface AtlasCanvasProps {
   onSelectedCellsChange?: (cells: string[]) => void;
   customSelection?: { x: number, y: number, w: number, h: number } | null;
   onCustomSelectionChange?: (rect: { x: number, y: number, w: number, h: number } | null, screenPos?: { x: number, y: number }) => void;
+  onMaterialize?: (cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number }) => void;
   atlasSwapMode?: boolean;
   tooltip?: string;
+  sourceTile?: TextureTile | null;
+  clearedCells?: string[];
 }
 
 export function AtlasCanvas({
@@ -40,8 +43,11 @@ export function AtlasCanvas({
   onSelectedCellsChange,
   customSelection,
   onCustomSelectionChange,
+  onMaterialize,
   atlasSwapMode = false,
   tooltip,
+  sourceTile,
+  clearedCells = [],
 }: AtlasCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -129,6 +135,9 @@ export function AtlasCanvas({
     setInteractionState(prev => ({ ...prev, ...result.state }));
 
     // Execute callbacks
+    if (result.onMaterialize && onMaterialize) {
+      onMaterialize(result.onMaterialize.cx, result.onMaterialize.cy, result.onMaterialize.reason, result.onMaterialize.draggingPos);
+    }
     if (result.onTilesChange && onTilesChange) onTilesChange(result.onTilesChange);
     if (result.onSelectedCellsChange && onSelectedCellsChange) onSelectedCellsChange(result.onSelectedCellsChange);
     if (result.onCellClick && onCellClick) {
@@ -184,6 +193,32 @@ export function AtlasCanvas({
     <div className={cn("flex-1 h-full bg-zinc-950 relative overflow-hidden checkerboard", className)} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setInteractionState(prev => ({ ...prev, hoveredCell: null }))} onContextMenu={e => e.preventDefault()} onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
       <div ref={containerRef} className="relative origin-top-left shadow-2xl transition-transform duration-75 ease-out" style={{ width: canvasWidth, height: canvasHeight, transform: `scale(${zoom})` }}>
         <div className="absolute inset-0 pointer-events-none z-0" style={{ backgroundColor: gridSettings.clearColor }} />
+        
+        {/* Background Source Image with Holes */}
+        {sourceTile && (
+          <div className="absolute inset-0 pointer-events-none z-[1]">
+            <svg width={canvasWidth} height={canvasHeight} className="absolute inset-0 w-full h-full">
+              <defs>
+                <mask id={`mask-${sourceTile.id}`} x="0" y="0" width={canvasWidth} height={canvasHeight}>
+                  <rect x="0" y="0" width={canvasWidth} height={canvasHeight} fill="white" />
+                  {clearedCells.map(key => {
+                    const [cx, cy] = key.split(',').map(Number);
+                    const { x, y } = geo.getPosFromCell(cx, cy);
+                    return <rect key={key} x={x} y={y} width={geo.cellW} height={geo.cellH} fill="black" />;
+                  })}
+                </mask>
+              </defs>
+              <image 
+                href={sourceTile.sourceUrl || sourceTile.url} 
+                width={canvasWidth} 
+                height={canvasHeight} 
+                mask={`url(#mask-${sourceTile.id})`}
+                preserveAspectRatio="none"
+              />
+            </svg>
+          </div>
+        )}
+
         {renderGrid()}
         {tiles.map(tile => (
           <div key={tile.id} className="absolute select-none pointer-events-none" style={{ left: interactionState.draggingId === tile.id && interactionState.draggingPos ? interactionState.draggingPos.x : tile.x, top: interactionState.draggingId === tile.id && interactionState.draggingPos ? interactionState.draggingPos.y : tile.y, width: tile.width * tile.scale, height: tile.height * tile.scale, filter: `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`, zIndex: interactionState.draggingId === tile.id ? 50 : 5, opacity: interactionState.draggingId === tile.id ? 0.8 : 1 }}>

@@ -71,6 +71,7 @@ const getInitialState = (): AppState => {
       targetH: 'source',
     },
     lastSourceTileId: null,
+    clearedCells: [],
   };
 
   try {
@@ -97,37 +98,12 @@ export default function App() {
   });
   const { state, set, executeCommand, undo, redo, canUndo, canRedo } = useHistory<AppState>(getInitialState());
   
-  // Save settings on change and auto-fix grid
-  useEffect(() => {
-    const config = {
-      gridSettings: state.gridSettings,
-      sourceGridSettings: state.sourceGridSettings,
-      adjustSettings: state.adjustSettings,
-    };
-    localStorage.setItem(FORGE_CONFIG_KEY, JSON.stringify(config));
-    
-    // Re-slice if we have a source, otherwise auto-snap
-    if (state.lastSourceTileId) {
-      const source = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
-      if (source) {
-        performGridSlice(source, canvasWidth, canvasHeight);
-      } else {
-        fixGrid();
-      }
-    } else if (state.mainTiles.length > 0) {
-      fixGrid();
-    }
-  }, [state.gridSettings.cellSize, state.gridSettings.padding, state.gridSettings.mode, state.gridSettings.gridX, state.gridSettings.gridY, state.gridSettings.keepSquare]);
-
-  useEffect(() => {
-    localStorage.setItem('forge_mode', mode);
-  }, [mode]);
-  
   // Transient UI state - not in history
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
   const [selectedCells, setSelectedCells] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const reSliceTimerRef = useRef<any>(null);
   
   const canvasWidth = state.canvasWidth || state.canvasSize;
   const canvasHeight = state.canvasHeight || state.canvasSize;
@@ -139,6 +115,115 @@ export default function App() {
       executeCommand(new SetMainTilesCommand(state.mainTiles, nextTiles));
     }
   });
+
+  const performGridSlice = useCallback(async (sourceTile: TextureTile, width: number, height: number, skipHistory = false) => {
+    const imgUrl = sourceTile.sourceUrl || sourceTile.url;
+    console.log(`[Forge] Reslicing from ${imgUrl}`);
+    const img = new Image();
+    await new Promise((resolve) => {
+      img.onload = resolve;
+      img.src = imgUrl;
+    });
+
+    const gs = state.gridSettings;
+    let cellW = 0, cellH = 0, padding = 0;
+    if (gs.mode === 'perfect') {
+      cellW = width / gs.gridX;
+      cellH = height / (gs.keepSquare ? gs.gridX : gs.gridY);
+    } else {
+      padding = gs.padding || 0;
+      cellW = gs.cellSize;
+      cellH = gs.cellY || gs.cellSize;
+    }
+
+    const stepX = cellW + padding * 2;
+    const stepY = cellH + padding * 2;
+    const cols = Math.floor(width / stepX);
+    const rows = Math.floor(height / stepY);
+
+    const newTiles: TextureTile[] = [];
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = cellW;
+    sliceCanvas.height = cellH;
+    const sliceCtx = sliceCanvas.getContext('2d', { willReadFrequently: true });
+    if (!sliceCtx) return;
+
+    const checkCanvas = document.createElement('canvas');
+    checkCanvas.width = 1; checkCanvas.height = 1;
+    const checkCtx = checkCanvas.getContext('2d');
+    if (!checkCtx) return;
+    checkCtx.drawImage(img, 0, 0, 1, 1, 0, 0, 1, 1);
+    const keyData = checkCtx.getImageData(0, 0, 1, 1).data;
+    const keyColor = { r: keyData[0], g: keyData[1], b: keyData[2], a: keyData[3] };
+    const permClear = hexToRgb(gs.clearColor);
+    const tolerance = gs.clearTolerance;
+
+    const isMatch = (r: number, g: number, b: number, a: number) => {
+      if (a < 5 && keyColor.a < 5) return true;
+      return Math.abs(r - keyColor.r) <= tolerance && Math.abs(g - keyColor.g) <= tolerance && Math.abs(b - keyColor.b) <= tolerance;
+    };
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        sliceCtx.clearRect(0, 0, cellW, cellH);
+        sliceCtx.drawImage(img, c * stepX + padding, r * stepY + padding, cellW, cellH, 0, 0, cellW, cellH);
+        
+        const sliceData = sliceCtx.getImageData(0, 0, cellW, cellH);
+        const pixels = sliceData.data;
+        let hasContent = false;
+
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (isMatch(pixels[i], pixels[i+1], pixels[i+2], pixels[i+3])) {
+            pixels[i] = permClear.r; pixels[i+1] = permClear.g; pixels[i+2] = permClear.b; pixels[i+3] = 255;
+          } else {
+            hasContent = true;
+          }
+        }
+
+        if (hasContent) {
+          sliceCtx.putImageData(sliceData, 0, 0);
+          const newTile: TextureTile = {
+            id: Math.random().toString(36).substring(2, 9),
+            url: sliceCanvas.toDataURL(),
+            sourceUrl: imgUrl,
+            name: `Slice_${c}_${r}`,
+            width: cellW, height: cellH,
+            x: c * stepX + padding, y: r * stepY + padding,
+            hue: 0, brightness: 100, scale: 1,
+            isCrop: true,
+          };
+          tileRegistry.register(newTile);
+          newTiles.push(newTile);
+        }
+      }
+    }
+
+    if (newTiles.length > 0) {
+      tileRegistry.registerMany(newTiles);
+      if (skipHistory) {
+        set(prev => ({ ...prev, mainTiles: newTiles, clearedCells: [] }));
+      } else {
+        executeCommand([
+          new SetMainTilesCommand(state.mainTiles, newTiles),
+          { execute: (s: any) => ({ ...s, lastSourceTileId: sourceTile.id, clearedCells: [] }), undo: (s: any) => ({ ...s, lastSourceTileId: state.lastSourceTileId, clearedCells: state.clearedCells }) } as any
+        ]);
+      }
+    }
+  }, [state.gridSettings.cellSize, state.gridSettings.padding, state.gridSettings.mode, state.gridSettings.gridX, state.gridSettings.gridY, state.gridSettings.keepSquare, state.gridSettings.clearColor, state.gridSettings.clearTolerance, state.lastSourceTileId, state.mainTiles, executeCommand, set]);
+
+  // Save settings on change
+  useEffect(() => {
+    const config = {
+      gridSettings: state.gridSettings,
+      sourceGridSettings: state.sourceGridSettings,
+      adjustSettings: state.adjustSettings,
+    };
+    localStorage.setItem(FORGE_CONFIG_KEY, JSON.stringify(config));
+  }, [state.gridSettings, state.sourceGridSettings, state.adjustSettings]);
+
+  useEffect(() => {
+    localStorage.setItem('forge_mode', mode);
+  }, [mode]);
 
   const addFilesToLibrary = async (files: File[]) => {
     const newTiles: TextureTile[] = [];
@@ -229,99 +314,6 @@ export default function App() {
     }
   };
 
-  const performGridSlice = async (sourceTile: TextureTile, width: number, height: number) => {
-    const img = new Image();
-    await new Promise((resolve) => {
-      img.onload = resolve;
-      img.src = sourceTile.url;
-    });
-
-    let cellW = 0, cellH = 0, padding = 0;
-    if (state.gridSettings.mode === 'perfect') {
-      cellW = width / state.gridSettings.gridX;
-      cellH = height / (state.gridSettings.keepSquare ? state.gridSettings.gridX : state.gridSettings.gridY);
-    } else {
-      padding = state.gridSettings.padding || 0;
-      cellW = state.gridSettings.cellSize;
-      cellH = state.gridSettings.cellY || state.gridSettings.cellSize;
-    }
-
-    const stepX = cellW + padding * 2;
-    const stepY = cellH + padding * 2;
-    const cols = Math.floor(width / stepX);
-    const rows = Math.floor(height / stepY);
-
-    const newTiles: TextureTile[] = [];
-    const sliceCanvas = document.createElement('canvas');
-    sliceCanvas.width = cellW;
-    sliceCanvas.height = cellH;
-    const sliceCtx = sliceCanvas.getContext('2d', { willReadFrequently: true });
-    if (!sliceCtx) return;
-
-    // Sample top-left pixel for chroma-key
-    const checkCanvas = document.createElement('canvas');
-    checkCanvas.width = 1; checkCanvas.height = 1;
-    const checkCtx = checkCanvas.getContext('2d');
-    if (!checkCtx) return;
-    checkCtx.drawImage(img, 0, 0, 1, 1, 0, 0, 1, 1);
-    const keyData = checkCtx.getImageData(0, 0, 1, 1).data;
-    const keyColor = { r: keyData[0], g: keyData[1], b: keyData[2], a: keyData[3] };
-    const permClear = hexToRgb(state.gridSettings.clearColor);
-    const tolerance = state.gridSettings.clearTolerance;
-
-    const isMatch = (r: number, g: number, b: number, a: number) => {
-      if (a < 5 && keyColor.a < 5) return true;
-      return Math.abs(r - keyColor.r) <= tolerance && 
-             Math.abs(g - keyColor.g) <= tolerance && 
-             Math.abs(b - keyColor.b) <= tolerance;
-    };
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        sliceCtx.clearRect(0, 0, cellW, cellH);
-        sliceCtx.drawImage(img, c * stepX + padding, r * stepY + padding, cellW, cellH, 0, 0, cellW, cellH);
-        
-        const sliceData = sliceCtx.getImageData(0, 0, cellW, cellH);
-        const pixels = sliceData.data;
-        let hasContent = false;
-
-        for (let i = 0; i < pixels.length; i += 4) {
-          if (isMatch(pixels[i], pixels[i+1], pixels[i+2], pixels[i+3])) {
-            pixels[i] = permClear.r;
-            pixels[i+1] = permClear.g;
-            pixels[i+2] = permClear.b;
-            pixels[i+3] = 255;
-          } else {
-            hasContent = true;
-          }
-        }
-
-        if (hasContent) {
-          sliceCtx.putImageData(sliceData, 0, 0);
-          const newTile: TextureTile = {
-            id: Math.random().toString(36).substring(2, 9),
-            url: sliceCanvas.toDataURL(),
-            sourceUrl: sliceCanvas.toDataURL(),
-            name: `Slice_${c}_${r}`,
-            width: cellW, height: cellH,
-            x: c * stepX + padding, y: r * stepY + padding,
-            hue: 0, brightness: 100, scale: 1,
-            isCrop: true,
-          };
-          tileRegistry.register(newTile);
-          newTiles.push(newTile);
-        }
-      }
-    }
-
-    if (newTiles.length > 0) {
-      tileRegistry.registerMany(newTiles);
-      executeCommand([
-        new SetMainTilesCommand(state.mainTiles, newTiles),
-        { execute: (s: any) => ({ ...s, lastSourceTileId: state.lastSourceTileId }), undo: (s: any) => ({ ...s, lastSourceTileId: state.lastSourceTileId }) } as any
-      ]);
-    }
-  };
 
   const handleAssetClick = async (tile: TextureTile) => {
     if (mode === 'atlas') {
@@ -333,11 +325,12 @@ export default function App() {
         canvasHeight: h, 
         canvasSize: Math.max(w, h),
         mainTiles: [],
-        lastSourceTileId: tile.id
+        lastSourceTileId: tile.id,
+        clearedCells: []
       }));
       setSelectedTileId(null);
       setSelectedCells([]);
-      setTimeout(() => performGridSlice(tile, w, h), 50);
+      setTimeout(() => performGridSlice(tile, w, h, false), 50);
     } else if (mode === 'adjust') {
       if (state.secondaryTiles.some(t => t.id === tile.id)) {
         const existingModified = state.modifiedTiles.find(t => t.name === tile.name && t.file === tile.file);
@@ -499,11 +492,60 @@ export default function App() {
     }
   };
 
+  const handleMaterialize = async (cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number }) => {
+    const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
+    if (!sourceTile) return;
+
+    const sourceGeo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
+    const cellPos = sourceGeo.getPosFromCell(cx, cy);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = sourceGeo.cellW;
+    canvas.height = sourceGeo.cellH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const img = new Image();
+    await new Promise((resolve) => { img.onload = resolve; img.src = sourceTile.sourceUrl || sourceTile.url; });
+    ctx.drawImage(img, cellPos.x, cellPos.y, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
+    const croppedUrl = canvas.toDataURL();
+
+    const newTile: TextureTile = {
+      id: Math.random().toString(36).substring(2, 9),
+      url: croppedUrl,
+      sourceUrl: sourceTile.sourceUrl || sourceTile.url,
+      name: `JIT_${cx}_${cy}`,
+      width: sourceGeo.cellW, height: sourceGeo.cellH,
+      x: draggingPos ? draggingPos.x : cellPos.x,
+      y: draggingPos ? draggingPos.y : cellPos.y,
+      hue: 0, brightness: 100, scale: 1,
+      isCrop: true
+    };
+
+    tileRegistry.register(newTile);
+    const key = `${cx},${cy}`;
+
+    if (reason === 'clear') {
+      executeCommand({
+        execute: (s: any) => ({ ...s, clearedCells: [...s.clearedCells, key] }),
+        undo: (s: any) => ({ ...s, clearedCells: s.clearedCells.filter((k: string) => k !== key) })
+      } as any);
+    } else {
+      executeCommand([
+        new AddTilesCommand([newTile], []),
+        { 
+          execute: (s: any) => ({ ...s, clearedCells: [...s.clearedCells, key] }), 
+          undo: (s: any) => ({ ...s, clearedCells: s.clearedCells.filter((k: string) => k !== key) }) 
+        } as any
+      ]);
+    }
+  };
+
   const handleSourceCellRightClick = async (x: number, y: number, w: number, h: number, scx: number, scy: number, sourceTile: TextureTile) => {
     if (selectedCells.length === 0) return;
     
     const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceTile.width, sourceTile.height);
-    const targetGeo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
+    const targetGeo = mainAtlas.geo;
 
     const canvas = document.createElement('canvas');
     canvas.width = targetGeo.cellW;
@@ -915,6 +957,9 @@ export default function App() {
                   canvasWidth={canvasWidth}
                   canvasHeight={canvasHeight}
                   tooltip="L-Click: Select | R-Drag: Move | R-Click: Clear | Ctrl+Z/Y: Undo/Redo"
+                  sourceTile={[...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId)}
+                  clearedCells={state.clearedCells}
+                  onMaterialize={handleMaterialize}
                 />
               ) : (
                 <div 

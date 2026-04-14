@@ -15,6 +15,9 @@ interface MainAtlasProps {
   canvasHeight?: number;
   className?: string;
   tooltip?: string;
+  sourceTile?: TextureTile | null;
+  clearedCells?: string[];
+  onMaterialize?: (cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number }) => void;
 }
 
 export function MainAtlas({
@@ -30,7 +33,10 @@ export function MainAtlas({
   canvasWidth,
   canvasHeight,
   className,
-  tooltip
+  tooltip,
+  sourceTile,
+  clearedCells,
+  onMaterialize
 }: MainAtlasProps) {
   return (
     <AtlasCanvas
@@ -47,6 +53,9 @@ export function MainAtlas({
       canvasHeight={canvasHeight}
       className="border-r border-zinc-800"
       tooltip={tooltip}
+      sourceTile={sourceTile}
+      clearedCells={clearedCells}
+      onMaterialize={onMaterialize}
     />
   );
 }

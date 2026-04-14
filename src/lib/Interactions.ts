@@ -18,6 +18,7 @@ export interface InteractionResult {
   onCellClick?: { x: number, y: number, w: number, h: number, cx: number, cy: number };
   onCellRightClick?: { x: number, y: number, w: number, h: number, cx: number, cy: number };
   onRemoveTile?: TextureTile;
+  onMaterialize?: { cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number } };
 }
 
 export abstract class InteractionStrategy {
@@ -45,6 +46,12 @@ export class DefaultInteractionStrategy extends InteractionStrategy {
       const tile = tiles.find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
       if (tile) {
         return { draggingId: tile.id, dragOffset: { x: pos.x - tile.x, y: pos.y - tile.y, originalX: tile.x, originalY: tile.y } };
+      } else {
+        const cellPos = this.geo.getPosFromCell(cx, cy);
+        return { 
+          draggingId: `virtual-${cx}-${cy}`, 
+          dragOffset: { x: pos.x - cellPos.x, y: pos.y - cellPos.y, originalX: cellPos.x, originalY: cellPos.y } 
+        };
       }
     }
     return {};

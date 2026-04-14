@@ -73,6 +73,7 @@ export interface AppState {
   canvasWidth?: number;
   canvasHeight?: number;
   adjustSettings: AdjustSettings;
+  lastSourceTileId: string | null;
 }
 
 

@@ -70,6 +70,7 @@ const getInitialState = (): AppState => {
       targetW: 'source',
       targetH: 'source',
     },
+    lastSourceTileId: null,
   };
 
   try {
@@ -105,8 +106,15 @@ export default function App() {
     };
     localStorage.setItem(FORGE_CONFIG_KEY, JSON.stringify(config));
     
-    // Auto-snap existing tiles if cellSize or padding changed
-    if (state.mainTiles.length > 0) {
+    // Re-slice if we have a source, otherwise auto-snap
+    if (state.lastSourceTileId) {
+      const source = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
+      if (source) {
+        performGridSlice(source, canvasWidth, canvasHeight);
+      } else {
+        fixGrid();
+      }
+    } else if (state.mainTiles.length > 0) {
       fixGrid();
     }
   }, [state.gridSettings.cellSize, state.gridSettings.padding, state.gridSettings.mode, state.gridSettings.gridX, state.gridSettings.gridY, state.gridSettings.keepSquare]);
@@ -306,7 +314,13 @@ export default function App() {
       }
     }
 
-    executeCommand(new SetMainTilesCommand(state.mainTiles, newTiles));
+    if (newTiles.length > 0) {
+      tileRegistry.registerMany(newTiles);
+      executeCommand([
+        new SetMainTilesCommand(state.mainTiles, newTiles),
+        { execute: (s: any) => ({ ...s, lastSourceTileId: state.lastSourceTileId }), undo: (s: any) => ({ ...s, lastSourceTileId: state.lastSourceTileId }) } as any
+      ]);
+    }
   };
 
   const handleAssetClick = async (tile: TextureTile) => {
@@ -318,7 +332,8 @@ export default function App() {
         canvasWidth: w, 
         canvasHeight: h, 
         canvasSize: Math.max(w, h),
-        mainTiles: []
+        mainTiles: [],
+        lastSourceTileId: tile.id
       }));
       setSelectedTileId(null);
       setSelectedCells([]);
@@ -406,7 +421,10 @@ export default function App() {
       tileRegistry.register(newTile);
       const { cx, cy } = mainAtlas.geo.getCellAtPos(finalX, finalY);
       const replacedTiles = state.mainTiles.filter(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
-      executeCommand(new AddTilesCommand([newTile], replacedTiles));
+      executeCommand([
+        new AddTilesCommand([newTile], replacedTiles),
+        { execute: (s: any) => ({ ...s, lastSourceTileId: null }), undo: (s: any) => ({ ...s, lastSourceTileId: state.lastSourceTileId }) } as any
+      ]);
     }
   };
 
@@ -465,7 +483,10 @@ export default function App() {
           newTiles.push(newTile);
         }
       }
-      executeCommand(new AddTilesCommand(newTiles, replacedTiles));
+      executeCommand([
+        new AddTilesCommand(newTiles, replacedTiles),
+        { execute: (s: any) => ({ ...s, lastSourceTileId: null }), undo: (s: any) => ({ ...s, lastSourceTileId: state.lastSourceTileId }) } as any
+      ]);
     } else {
       const croppedUrl = createCrop(scx, scy);
       handleMainAtlasDrop({
@@ -516,7 +537,10 @@ export default function App() {
       tileRegistry.register(newTile);
       newTiles.push(newTile);
     }
-    executeCommand(new AddTilesCommand(newTiles, replacedTiles));
+    executeCommand([
+      new AddTilesCommand(newTiles, replacedTiles),
+      { execute: (s: any) => ({ ...s, lastSourceTileId: null }), undo: (s: any) => ({ ...s, lastSourceTileId: state.lastSourceTileId }) } as any
+    ]);
   };
 
   const handleAutoDetectMainGrid = async () => {

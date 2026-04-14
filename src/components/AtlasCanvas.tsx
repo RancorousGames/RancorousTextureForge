@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { TextureTile, GridSettings } from '../types';
 import { cn, hexToRgb } from '../lib/utils';
 import { GridGeometry } from '../lib/GridGeometry';
+import { InteractionState, DefaultInteractionStrategy } from '../lib/Interactions';
 
 interface AtlasCanvasProps {
   tiles: TextureTile[];
@@ -49,20 +50,18 @@ export function AtlasCanvas({
     new GridGeometry(gridSettings, canvasWidth, canvasHeight),
     [gridSettings, canvasWidth, canvasHeight]
   );
-  
-  // Interaction State
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [draggingPos, setDraggingPos] = useState<{ x: number, y: number } | null>(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0, originalX: 0, originalY: 0 });
-  const [dragStartMouse, setDragStartMouse] = useState<{ x: number, y: number } | null>(null);
-  const [dragStartCanvas, setDragStartCanvas] = useState<{ x: number, y: number } | null>(null);
-  
-  const [isSelecting, setIsSelecting] = useState(false);
-  const [selectionStart, setSelectionStart] = useState<{ x: number, y: number } | null>(null);
-  const [emptyCells, setEmptyCells] = useState<Set<string>>(new Set());
-  const [hoveredCell, setHoveredCell] = useState<{ cx: number, cy: number } | null>(null);
 
-  const MOVE_THRESHOLD = 5; 
+  const strategy = useMemo(() => new DefaultInteractionStrategy(geo), [geo]);
+
+  // Unified Interaction State
+  const [interactionState, setInteractionState] = useState<InteractionState>({
+    isSelecting: false,
+    selectionStart: null,
+    draggingId: null,
+    draggingPos: null,
+    dragOffset: { x: 0, y: 0, originalX: 0, originalY: 0 },
+    hoveredCell: null
+  });
 
   const getPointerPos = (e: React.PointerEvent | React.MouseEvent | PointerEvent) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -70,10 +69,6 @@ export function AtlasCanvas({
     const x = (e.clientX - rect.left) / zoom;
     const y = (e.clientY - rect.top) / zoom;
     return { x, y };
-  };
-
-  const getTileAtCell = (cx: number, cy: number) => {
-    return tiles.find(t => geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
   };
 
   // Zoom Handler
@@ -97,35 +92,11 @@ export function AtlasCanvas({
 
   // Pointer Handlers
   const handlePointerDown = (e: React.PointerEvent) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    const pos = getPointerPos(e);
+    if (!pos) return;
 
-    const x = (e.clientX - rect.left) / zoom;
-    const y = (e.clientY - rect.top) / zoom;
-    const { cx, cy } = geo.getCellAtPos(x, y);
-
-    console.log(`[Forge] PointerDown: Button ${e.button} at cell (${cx},${cy})`);
-
-    setDragStartMouse({ x: e.clientX, y: e.clientY });
-    setDragStartCanvas({ x, y });
-
-    if (e.button === 0) { // Left Click: Selection
-      setIsSelecting(true);
-      setSelectionStart({ x: cx, y: cy });
-      if (onCustomSelectionChange) onCustomSelectionChange(null);
-    } 
-    else if (e.button === 2) { // Right Click: Movement or Clear
-      e.preventDefault();
-      setIsSelecting(false); 
-      const tile = getTileAtCell(cx, cy);
-      if (tile) {
-        console.log(`[Forge] Matched tile: ${tile.name}`);
-        setDraggingId(tile.id);
-        setDragOffset({ x: x - tile.x, y: y - tile.y, originalX: tile.x, originalY: tile.y });
-      } else {
-        console.log(`[Forge] No tile found at cell (${cx},${cy})`);
-      }
-    }
+    const updates = strategy.onPointerDown(e, pos, tiles);
+    setInteractionState(prev => ({ ...prev, ...updates }));
     
     if (e.target instanceof HTMLElement) {
       try { e.target.setPointerCapture(e.pointerId); } catch(err) {}
@@ -136,114 +107,40 @@ export function AtlasCanvas({
     const pos = getPointerPos(e);
     if (!pos) return;
     
-    const { cx, cy } = geo.getCellAtPos(pos.x, pos.y);
-
-    setHoveredCell({ cx, cy });
-
-    if (!dragStartCanvas) return;
-
-    const dist = dragStartMouse ? Math.sqrt(Math.pow(e.clientX - dragStartMouse.x, 2) + Math.pow(e.clientY - dragStartMouse.y, 2)) : 0;
-
-    if (isSelecting) {
-      if (onCustomSelectionChange) {
-        const rx = Math.round(Math.min(dragStartCanvas.x, pos.x));
-        const ry = Math.round(Math.min(dragStartCanvas.y, pos.y));
-        const rw = Math.round(Math.abs(pos.x - dragStartCanvas.x));
-        const rh = Math.round(Math.abs(pos.y - dragStartCanvas.y));
-        if (dist > MOVE_THRESHOLD) onCustomSelectionChange({ x: rx, y: ry, w: rw, h: rh });
-      } else if (selectionStart && onSelectedCellsChange) {
-        if (dist > MOVE_THRESHOLD) {
-          const minX = Math.min(selectionStart.x, cx);
-          const maxX = Math.max(selectionStart.x, cx);
-          const minY = Math.min(selectionStart.y, cy);
-          const maxY = Math.max(selectionStart.y, cy);
-          const newSelection = [];
-          for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) newSelection.push(`${x},${y}`);
-          onSelectedCellsChange(newSelection);
-        }
-      }
-    }
-
-    if (draggingId && dist > MOVE_THRESHOLD) {
-      let nx = pos.x - dragOffset.x;
-      let ny = pos.y - dragOffset.y;
-      if (gridSettings.mode !== 'packing') {
-        const snapped = geo.snap(nx + geo.cellW / 2, ny + geo.cellH / 2);
-        nx = snapped.x;
-        ny = snapped.y;
-      }
-      setDraggingPos({ x: nx, y: ny });
-    }
+    const updates = strategy.onPointerMove(e, pos, interactionState, tiles);
+    setInteractionState(prev => ({ ...prev, ...updates }));
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
     const pos = getPointerPos(e);
-    const dist = dragStartMouse ? Math.sqrt(Math.pow(e.clientX - dragStartMouse.x, 2) + Math.pow(e.clientY - dragStartMouse.y, 2)) : 0;
+    if (!pos) return;
 
-    if (e.button === 0) { // Left Button Up
-      if (isSelecting && onCustomSelectionChange && dist > MOVE_THRESHOLD) {
-        onCustomSelectionChange(customSelection, { x: e.clientX, y: e.clientY });
-      }
-      else if (dist <= MOVE_THRESHOLD && pos) {
-        const { cx, cy } = geo.getCellAtPos(pos.x, pos.y);
-        const cellPos = geo.getPosFromCell(cx, cy);
-        if (onCellClick) onCellClick(cellPos.x, cellPos.y, geo.cellW, geo.cellH, cx, cy);
-        else if (onSelectedCellsChange) {
-          const key = `${cx},${cy}`;
-          onSelectedCellsChange(selectedCells.includes(key) ? selectedCells.filter(k => k !== key) : [...selectedCells, key]);
-        }
-      }
-      setIsSelecting(false);
-      setSelectionStart(null);
+    const result = strategy.onPointerUp(e, pos, interactionState, tiles, {
+      selectedCells,
+      onSelectedCellsChange,
+      onCellClick,
+      onCellRightClick,
+      onTilesChange,
+      onRemoveTile,
+      onCustomSelectionChange,
+      atlasSwapMode
+    });
+
+    setInteractionState(prev => ({ ...prev, ...result.state }));
+
+    // Execute callbacks
+    if (result.onTilesChange && onTilesChange) onTilesChange(result.onTilesChange);
+    if (result.onSelectedCellsChange && onSelectedCellsChange) onSelectedCellsChange(result.onSelectedCellsChange);
+    if (result.onCellClick && onCellClick) {
+      const c = result.onCellClick;
+      onCellClick(c.x, c.y, c.w, c.h, c.cx, c.cy);
     }
-    else if (e.button === 2) { // Right Button Up
-      if (dist <= MOVE_THRESHOLD && pos) {
-        const { cx, cy } = geo.getCellAtPos(pos.x, pos.y);
-        const cellPos = geo.getPosFromCell(cx, cy);
-        
-        if (onCellRightClick) {
-          onCellRightClick(cellPos.x, cellPos.y, geo.cellW, geo.cellH, cx, cy);
-        } else if (onTilesChange) {
-          const newTiles = tiles.filter(t => !geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
-          if (newTiles.length !== tiles.length) onTilesChange(newTiles);
-        } else if (onRemoveTile) {
-          const tile = getTileAtCell(cx, cy);
-          if (tile) onRemoveTile(tile);
-        }
-      } 
-      else if (draggingId && draggingPos && onTilesChange) {
-        const nx = draggingPos.x;
-        const ny = draggingPos.y;
-        const { cx: targetCX, cy: targetCY } = geo.getCellAtPos(nx + geo.cellW / 2, ny + geo.cellH / 2);
-
-        // Logical Overwrite: Purge any tile that occupies this slot
-        let newTiles = tiles.filter(t => {
-          if (t.id === draggingId) return true;
-          return !geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, targetCX, targetCY);
-        });
-
-        if (atlasSwapMode) {
-          const destTile = getTileAtCell(targetCX, targetCY);
-          if (destTile) {
-            newTiles = newTiles.map(t => {
-              if (t.id === draggingId) return { ...t, x: nx, y: ny };
-              if (t.id === destTile.id) return { ...t, x: dragOffset.originalX, y: dragOffset.originalY };
-              return t;
-            });
-          } else {
-            newTiles = newTiles.map(t => t.id === draggingId ? { ...t, x: nx, y: ny } : t);
-          }
-        } else {
-          newTiles = newTiles.map(t => t.id === draggingId ? { ...t, x: nx, y: ny } : t);
-        }
-        onTilesChange(newTiles);
-      }
-      setDraggingId(null);
-      setDraggingPos(null);
+    if (result.onCellRightClick && onCellRightClick) {
+      const c = result.onCellRightClick;
+      onCellRightClick(c.x, c.y, c.w, c.h, c.cx, c.cy);
     }
+    if (result.onRemoveTile && onRemoveTile) onRemoveTile(result.onRemoveTile);
 
-    setDragStartMouse(null);
-    setDragStartCanvas(null);
     if (e.target instanceof HTMLElement) {
       try { e.target.releasePointerCapture(e.pointerId); } catch(err) {}
     }
@@ -259,6 +156,7 @@ export function AtlasCanvas({
   const renderGrid = () => {
     if (gridSettings.mode === 'packing') return null;
     const { cellW, cellH, stepX, stepY, cols, rows } = geo;
+    const { hoveredCell, isSelecting, draggingId } = interactionState;
     const lines = [];
     for (let i = 0; i <= cols; i++) lines.push(<div key={`v-${i}`} className="absolute top-0 bottom-0 border-r border-white/5" style={{ left: i * stepX }} />);
     for (let i = 0; i <= rows; i++) lines.push(<div key={`h-${i}`} className="absolute left-0 right-0 border-b border-white/5" style={{ top: i * stepY }} />);
@@ -274,11 +172,6 @@ export function AtlasCanvas({
       );
     }
 
-    emptyCells.forEach(key => {
-      const [cx, cy] = key.split(',').map(Number);
-      const { x, y } = geo.getPosFromCell(cx, cy);
-      lines.push(<div key={`empty-${key}`} className="absolute border border-dashed border-white/10 pointer-events-none" style={{ left: x, top: y, width: cellW, height: cellH }} />);
-    });
     selectedCells.forEach(key => {
       const [cx, cy] = key.split(',').map(Number);
       const { x, y } = geo.getPosFromCell(cx, cy);
@@ -288,12 +181,12 @@ export function AtlasCanvas({
   };
 
   return (
-    <div className={cn("flex-1 h-full bg-zinc-950 relative overflow-hidden checkerboard", className)} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setHoveredCell(null)} onContextMenu={e => e.preventDefault()} onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
+    <div className={cn("flex-1 h-full bg-zinc-950 relative overflow-hidden checkerboard", className)} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setInteractionState(prev => ({ ...prev, hoveredCell: null }))} onContextMenu={e => e.preventDefault()} onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
       <div ref={containerRef} className="relative origin-top-left shadow-2xl transition-transform duration-75 ease-out" style={{ width: canvasWidth, height: canvasHeight, transform: `scale(${zoom})` }}>
         <div className="absolute inset-0 pointer-events-none z-0" style={{ backgroundColor: gridSettings.clearColor }} />
         {renderGrid()}
         {tiles.map(tile => (
-          <div key={tile.id} className="absolute select-none pointer-events-none" style={{ left: draggingId === tile.id && draggingPos ? draggingPos.x : tile.x, top: draggingId === tile.id && draggingPos ? draggingPos.y : tile.y, width: tile.width * tile.scale, height: tile.height * tile.scale, filter: `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`, zIndex: draggingId === tile.id ? 50 : 5, opacity: draggingId === tile.id ? 0.8 : 1 }}>
+          <div key={tile.id} className="absolute select-none pointer-events-none" style={{ left: interactionState.draggingId === tile.id && interactionState.draggingPos ? interactionState.draggingPos.x : tile.x, top: interactionState.draggingId === tile.id && interactionState.draggingPos ? interactionState.draggingPos.y : tile.y, width: tile.width * tile.scale, height: tile.height * tile.scale, filter: `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`, zIndex: interactionState.draggingId === tile.id ? 50 : 5, opacity: interactionState.draggingId === tile.id ? 0.8 : 1 }}>
             <img src={tile.url} alt={tile.name} className="w-full h-full object-fill" draggable={false} />
           </div>
         ))}

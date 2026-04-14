@@ -25,49 +25,86 @@ const initialPBRSet: PBRSet = {
   orm: { tile: null, active: true },
 };
 
-const initialState: AppState = {
-  mainTiles: [],
-  secondaryTiles: [],
-  modifiedTiles: [],
-  gridSettings: {
-    mode: 'fixed',
-    gridX: 8,
-    gridY: 8,
-    keepSquare: true,
-    cellSize: 128,
-    cellY: 128,
-    padding: 0,
-    clearColor: '#000000',
-    clearTolerance: 10,
-    packingAlgo: 'potpack',
-  },
-  sourceGridSettings: {
-    mode: 'fixed',
-    gridX: 8,
-    gridY: 8,
-    keepSquare: true,
-    cellSize: 128,
-    cellY: 128,
-    padding: 0,
-    clearColor: '#000000',
-    clearTolerance: 10,
-  },
-  packerMapping: initialPackerMapping,
-  pbrSet: initialPBRSet,
-  layeringLayers: [],
-  atlasSwapMode: false,
-  canvasSize: 0,
-  canvasWidth: 0,
-  canvasHeight: 0,
-  adjustSettings: {
-    targetW: 'source',
-    targetH: 'source',
-  },
+const FORGE_CONFIG_KEY = 'forge_config_v1';
+
+const getInitialState = (): AppState => {
+  const baseState: AppState = {
+    mainTiles: [],
+    secondaryTiles: [],
+    modifiedTiles: [],
+    gridSettings: {
+      mode: 'fixed',
+      gridX: 8,
+      gridY: 8,
+      keepSquare: true,
+      cellSize: 128,
+      cellY: 128,
+      padding: 0,
+      clearColor: '#000000',
+      clearTolerance: 10,
+      packingAlgo: 'potpack',
+    },
+    sourceGridSettings: {
+      mode: 'fixed',
+      gridX: 8,
+      gridY: 8,
+      keepSquare: true,
+      cellSize: 128,
+      cellY: 128,
+      padding: 0,
+      clearColor: '#000000',
+      clearTolerance: 10,
+    },
+    packerMapping: initialPackerMapping,
+    pbrSet: initialPBRSet,
+    layeringLayers: [],
+    atlasSwapMode: false,
+    canvasSize: 0,
+    canvasWidth: 0,
+    canvasHeight: 0,
+    adjustSettings: {
+      targetW: 'source',
+      targetH: 'source',
+    },
+  };
+
+  try {
+    const saved = localStorage.getItem(FORGE_CONFIG_KEY);
+    if (saved) {
+      const config = JSON.parse(saved);
+      return {
+        ...baseState,
+        gridSettings: { ...baseState.gridSettings, ...config.gridSettings },
+        sourceGridSettings: { ...baseState.sourceGridSettings, ...config.sourceGridSettings },
+        adjustSettings: { ...baseState.adjustSettings, ...config.adjustSettings },
+      };
+    }
+  } catch (e) {
+    console.error('Failed to load forge config', e);
+  }
+  return baseState;
 };
 
 export default function App() {
-  const [mode, setMode] = useState<AppMode>('atlas');
-  const { state, set, undo, redo, canUndo, canRedo } = useHistory<AppState>(initialState);
+  const [mode, setMode] = useState<AppMode>(() => {
+    const saved = localStorage.getItem('forge_mode');
+    return (saved as AppMode) || 'atlas';
+  });
+  const { state, set, undo, redo, canUndo, canRedo } = useHistory<AppState>(getInitialState());
+  
+  // Save settings on change
+  useEffect(() => {
+    const config = {
+      gridSettings: state.gridSettings,
+      sourceGridSettings: state.sourceGridSettings,
+      adjustSettings: state.adjustSettings,
+    };
+    localStorage.setItem(FORGE_CONFIG_KEY, JSON.stringify(config));
+  }, [state.gridSettings, state.sourceGridSettings, state.adjustSettings]);
+
+  useEffect(() => {
+    localStorage.setItem('forge_mode', mode);
+  }, [mode]);
   
   // Transient UI state - not in history
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);

@@ -11,6 +11,7 @@ import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, 
 import { cn, hexToRgb, detectSettingsFromImage, rgbToHex } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
 import { GridGeometry } from './lib/GridGeometry';
+import { useAtlas } from './hooks/useAtlas';
 import potpack from 'potpack';
 
 const initialPackerMapping: ChannelMapping = {
@@ -115,6 +116,17 @@ export default function App() {
   
   const canvasWidth = state.canvasWidth || state.canvasSize;
   const canvasHeight = state.canvasHeight || state.canvasSize;
+
+  const mainAtlas = useAtlas(state.gridSettings, canvasWidth, canvasHeight, {
+    tiles: state.mainTiles,
+    setTiles: (newTiles) => {
+      if (typeof newTiles === 'function') {
+        set(prev => ({ ...prev, mainTiles: newTiles(prev.mainTiles) }));
+      } else {
+        set(prev => ({ ...prev, mainTiles: newTiles }));
+      }
+    }
+  });
 
   const addFilesToLibrary = async (files: File[]) => {
     const newTiles: TextureTile[] = [];
@@ -348,22 +360,21 @@ export default function App() {
         return;
       }
 
-      const geo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
       let finalX = x;
       let finalY = y;
 
       if (state.gridSettings.mode !== 'packing') {
-        const snapped = geo.snap(x, y);
+        const snapped = mainAtlas.geo.snap(x, y);
         finalX = snapped.x;
         finalY = snapped.y;
 
         if (x === 0 && y === 0) {
           let found = false;
-          for (let r = 0; r < geo.rows; r++) {
-            for (let c = 0; c < geo.cols; c++) {
-              const isOccupied = state.mainTiles.some(t => geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r));
+          for (let r = 0; r < mainAtlas.geo.rows; r++) {
+            for (let c = 0; c < mainAtlas.geo.cols; c++) {
+              const isOccupied = state.mainTiles.some(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r));
               if (!isOccupied) {
-                const pos = geo.getPosFromCell(c, r);
+                const pos = mainAtlas.geo.getPosFromCell(c, r);
                 finalX = pos.x; finalY = pos.y;
                 found = true; break;
               }
@@ -373,26 +384,13 @@ export default function App() {
         }
       }
 
-      const newTile = { 
-        ...tile, 
-        id: Math.random().toString(36).substring(2, 9),
-        x: finalX, y: finalY,
-        width: geo.cellW,
-        height: geo.cellH,
-        isCrop: true
-      };
-      
-      const { cx, cy } = geo.getCellAtPos(finalX, finalY);
-      set(prev => ({ 
-        ...prev, 
-        mainTiles: [...prev.mainTiles.filter(t => !geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy)), newTile] 
-      }));
+      mainAtlas.addTile(tile, finalX, finalY, false);
     }
   };
 
   const handleSourceCellClick = async (x: number, y: number, w: number, h: number, scx: number, scy: number, sourceTile: TextureTile) => {
     const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceTile.width, sourceTile.height);
-    const targetGeo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
+    const targetGeo = mainAtlas.geo;
 
     const canvas = document.createElement('canvas');
     canvas.width = targetGeo.cellW;
@@ -447,11 +445,11 @@ export default function App() {
     } else {
       const croppedUrl = createCrop(scx, scy);
       handleMainAtlasDrop({
-        id: Math.random().toString(36).substring(2, 9),
+        ...sourceTile,
         url: croppedUrl,
-        name: `${sourceTile.name}_crop_${scx}_${scy}`,
-        width: targetGeo.cellW, height: targetGeo.cellH, x: 0, y: 0,
-        hue: 0, brightness: 100, scale: 1,
+        id: Math.random().toString(36).substring(2, 9),
+        width: targetGeo.cellW,
+        height: targetGeo.cellH
       }, 0, 0);
     }
   };
@@ -593,7 +591,7 @@ export default function App() {
 
   const fixGrid = () => {
     if (state.mainTiles.length === 0) return;
-    const geo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
+    const geo = mainAtlas.geo;
 
     const fixedTiles = state.mainTiles.map(tile => {
       const centerX = tile.x + (tile.width * tile.scale) / 2;
@@ -746,8 +744,7 @@ export default function App() {
   // Helper to get tile in cell
   const getTileAtCell = (key: string) => {
     const [cx, cy] = key.split(',').map(Number);
-    const geo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
-    return state.mainTiles.find(t => geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
+    return state.mainTiles.find(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
   };
 
   // Derived Selection

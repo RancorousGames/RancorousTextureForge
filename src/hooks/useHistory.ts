@@ -37,5 +37,5 @@ export function useHistory<T>(initialState: T) {
     setState(next);
   }, [future, state]);
 
-  return { state, set, undo, redo, canUndo: past.length > 0, canRedo: future.length > 0 };
+  return { state, set, setState, undo, redo, canUndo: past.length > 0, canRedo: future.length > 0 };
 }

@@ -96,7 +96,7 @@ export default function App() {
   });
   const { state, set, executeCommand, undo, redo, canUndo, canRedo } = useHistory<AppState>(getInitialState());
   
-  // Save settings on change
+  // Save settings on change and auto-fix grid
   useEffect(() => {
     const config = {
       gridSettings: state.gridSettings,
@@ -104,7 +104,12 @@ export default function App() {
       adjustSettings: state.adjustSettings,
     };
     localStorage.setItem(FORGE_CONFIG_KEY, JSON.stringify(config));
-  }, [state.gridSettings, state.sourceGridSettings, state.adjustSettings]);
+    
+    // Auto-snap existing tiles if cellSize or padding changed
+    if (state.mainTiles.length > 0) {
+      fixGrid();
+    }
+  }, [state.gridSettings.cellSize, state.gridSettings.padding, state.gridSettings.mode, state.gridSettings.gridX, state.gridSettings.gridY, state.gridSettings.keepSquare]);
 
   useEffect(() => {
     localStorage.setItem('forge_mode', mode);

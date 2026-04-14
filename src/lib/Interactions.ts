@@ -108,7 +108,7 @@ export class DefaultInteractionStrategy extends InteractionStrategy {
       else if (state.draggingId && state.draggingPos && props.onTilesChange) {
         const nx = state.draggingPos.x;
         const ny = state.draggingPos.y;
-        const { cx: targetCX, cy: targetCY } = this.geo.getCellAtPos(nx + this.geo.cellW / 2, ny + geo.cellH / 2);
+        const { cx: targetCX, cy: targetCY } = this.geo.getCellAtPos(nx + this.geo.cellW / 2, ny + this.geo.cellH / 2);
 
         let newTiles = tiles.filter(t => t.id === state.draggingId || !this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, targetCX, targetCY));
 

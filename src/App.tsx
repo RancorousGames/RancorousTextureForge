@@ -399,7 +399,7 @@ export default function App() {
       });
 
       const newTiles: TextureTile[] = [];
-      const filteredMainTiles = [...state.mainTiles];
+      let filteredMainTiles = [...state.mainTiles];
 
       for (const key of selectedCells) {
         const [dcx, dcy] = key.split(',').map(Number);
@@ -412,8 +412,15 @@ export default function App() {
           const croppedUrl = createCrop(sourceCX, sourceCY);
           const destX = dcx * targetStepX + targetPadding;
           const destY = dcy * targetStepY + targetPadding;
-          const existingIdx = filteredMainTiles.findIndex(t => Math.round(t.x) === Math.round(destX) && Math.round(t.y) === Math.round(destY));
-          if (existingIdx !== -1) filteredMainTiles.splice(existingIdx, 1);
+          
+          // Clear all tiles whose centers fall in this target cell
+          filteredMainTiles = filteredMainTiles.filter(t => {
+            const centerX = t.x + (t.width * t.scale) / 2;
+            const centerY = t.y + (t.height * t.scale) / 2;
+            const tcx = Math.floor((centerX - targetPadding) / targetStepX);
+            const tcy = Math.floor((centerY - targetPadding) / targetStepY);
+            return !(tcx === dcx && tcy === dcy);
+          });
 
           newTiles.push({
             id: Math.random().toString(36).substring(2, 9),
@@ -471,14 +478,21 @@ export default function App() {
     const croppedUrl = canvas.toDataURL();
 
     const newTiles: TextureTile[] = [];
-    const filteredMainTiles = [...state.mainTiles];
+    let filteredMainTiles = [...state.mainTiles];
 
     for (const key of selectedCells) {
       const [dcx, dcy] = key.split(',').map(Number);
       const destX = dcx * targetStepX + targetPadding;
       const destY = dcy * targetStepY + targetPadding;
-      const existingIdx = filteredMainTiles.findIndex(t => Math.round(t.x) === Math.round(destX) && Math.round(t.y) === Math.round(destY));
-      if (existingIdx !== -1) filteredMainTiles.splice(existingIdx, 1);
+      
+      // Clear all tiles whose centers fall in this target cell
+      filteredMainTiles = filteredMainTiles.filter(t => {
+        const centerX = t.x + (t.width * t.scale) / 2;
+        const centerY = t.y + (t.height * t.scale) / 2;
+        const tcx = Math.floor((centerX - targetPadding) / targetStepX);
+        const tcy = Math.floor((centerY - targetPadding) / targetStepY);
+        return !(tcx === dcx && tcy === dcy);
+      });
 
       newTiles.push({
         id: Math.random().toString(36).substring(2, 9),
@@ -604,8 +618,10 @@ export default function App() {
     const stepY = cellH + padding * 2;
 
     const fixedTiles = state.mainTiles.map(tile => {
-      const cx = Math.round((tile.x - padding) / stepX);
-      const cy = Math.round((tile.y - padding) / stepY);
+      const centerX = tile.x + (tile.width * tile.scale) / 2;
+      const centerY = tile.y + (tile.height * tile.scale) / 2;
+      const cx = Math.floor((centerX - padding) / stepX);
+      const cy = Math.floor((centerY - padding) / stepY);
       
       console.log(`[Fix Grid] Snapping ${tile.name} from [${tile.x.toFixed(1)}, ${tile.y.toFixed(1)}] to cell (${cx}, ${cy})`);
       
@@ -763,9 +779,15 @@ export default function App() {
     }
     const stepX = cellW + padding * 2;
     const stepY = cellH + padding * 2;
-    const tx = cx * stepX + padding;
-    const ty = cy * stepY + padding;
-    return state.mainTiles.find(t => Math.round(t.x) === Math.round(tx) && Math.round(t.y) === Math.round(ty));
+    
+    // Find tile whose center is in this cell
+    return state.mainTiles.find(t => {
+      const centerX = t.x + (t.width * t.scale) / 2;
+      const centerY = t.y + (t.height * t.scale) / 2;
+      const tcx = Math.floor((centerX - padding) / stepX);
+      const tcy = Math.floor((centerY - padding) / stepY);
+      return tcx === cx && tcy === cy;
+    });
   };
 
   // Derived Selection
@@ -885,6 +907,7 @@ export default function App() {
                   atlasSwapMode={state.atlasSwapMode}
                   canvasWidth={canvasWidth}
                   canvasHeight={canvasHeight}
+                  tooltip="L-Click: Select | R-Drag: Move | R-Click: Clear | Ctrl+Z/Y: Undo/Redo"
                 />
               ) : (
                 <div 
@@ -932,7 +955,7 @@ export default function App() {
                   onAddTile={(tile) => handleMainAtlasDrop(tile, 0, 0)}
                   gridSettings={state.sourceGridSettings}
                   onGridSettingsChange={(gs) => set(prev => ({ ...prev, sourceGridSettings: gs }))}
-                  onAutoDetectGrid={(sourceTile) => {}} 
+                  onAutoDetectGrid={handleAutoDetectSourceGrid} 
                   availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]}
                   onSourceCellClick={handleSourceCellClick}
                   onSourceCellRightClick={handleSourceCellRightClick}

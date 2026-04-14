@@ -14,6 +14,7 @@ interface MainAtlasProps {
   canvasWidth?: number;
   canvasHeight?: number;
   className?: string;
+  tooltip?: string;
 }
 
 export function MainAtlas({
@@ -28,7 +29,8 @@ export function MainAtlas({
   canvasSize,
   canvasWidth,
   canvasHeight,
-  className
+  className,
+  tooltip
 }: MainAtlasProps) {
   return (
     <AtlasCanvas
@@ -44,6 +46,7 @@ export function MainAtlas({
       canvasWidth={canvasWidth}
       canvasHeight={canvasHeight}
       className="border-r border-zinc-800"
+      tooltip={tooltip}
     />
   );
 }

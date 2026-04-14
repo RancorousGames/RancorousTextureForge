@@ -106,7 +106,7 @@ export function detectSettingsFromImage(
     const b = sortedByX[i+1];
     // If overlap significantly in Y, might be in same row
     const yOverlap = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1);
-    if (yOverlap > 0) {
+    if (yOverlap > (cellSize * 0.5)) {
       const gap = b.x1 - a.x2 - 1;
       if (gap >= 0 && gap < cellSize) hGaps.push(gap);
     }
@@ -115,23 +115,26 @@ export function detectSettingsFromImage(
   const getMedian = (arr: number[]) => {
     if (arr.length === 0) return 0;
     const s = [...arr].sort((a, b) => a - b);
-    return s[Math.floor(s.length / 2)];
+    return s[Math.floor(s.length * 0.75)]; // Use 75th percentile to be more aggressive with gap detection
   };
 
   const detectedHGap = getMedian(hGaps);
   const detectedVGap = getMedian(vGaps);
   
-  // Padding is half the gap (since it's added on both sides)
-  const padding = Math.floor(Math.min(detectedHGap, detectedVGap) / 2);
+  // If we detected a gap, it means our initial cellSize (maxW/maxH) 
+  // might have been correct OR it might have been the full step.
+  // Actually, islands are detected by content, so they are the cell content.
+  // Gaps are truly between content.
+  const padding = Math.floor(Math.max(detectedHGap, detectedVGap) / 2);
 
-  // Snapping logic: Prefer Power of 2 if within 10%
+  // Snapping logic: Prefer Power of 2 if within 15%
   let finalCellSize = cellSize;
-  const p2s = [64, 128, 256, 512, 1024, 2048];
+  const p2s = [32, 64, 128, 256, 512, 1024, 2048];
   const nearestP2 = p2s.reduce((prev, curr) => 
     Math.abs(curr - cellSize) < Math.abs(prev - cellSize) ? curr : prev
   );
 
-  if (Math.abs(nearestP2 - cellSize) / nearestP2 < 0.1) {
+  if (Math.abs(nearestP2 - cellSize) / nearestP2 < 0.15) {
     finalCellSize = nearestP2;
   } else {
     finalCellSize = Math.round(cellSize / 4) * 4;

@@ -268,6 +268,15 @@ export function SourceAtlas({
               }}
               className="w-8 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
             />
+            {sourceTile && (
+              <button
+                onClick={() => onAutoDetectGrid(sourceTile)}
+                className="p-1 hover:bg-zinc-800 rounded transition-colors text-zinc-500 hover:text-blue-400"
+                title="Auto-detect grid settings"
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -293,6 +302,7 @@ export function SourceAtlas({
             canvasHeight={sourceTile.height}
             customSelection={customSelection}
             onCustomSelectionChange={handleCustomSelection}
+            tooltip="L-Click: Transfer | R-Click: Fill | Drag: Free Crop"
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 p-8 text-center">

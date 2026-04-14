@@ -19,6 +19,7 @@ interface AtlasCanvasProps {
   customSelection?: { x: number, y: number, w: number, h: number } | null;
   onCustomSelectionChange?: (rect: { x: number, y: number, w: number, h: number } | null, screenPos?: { x: number, y: number }) => void;
   atlasSwapMode?: boolean;
+  tooltip?: string;
 }
 
 export function AtlasCanvas({
@@ -38,6 +39,7 @@ export function AtlasCanvas({
   customSelection,
   onCustomSelectionChange,
   atlasSwapMode = false,
+  tooltip,
 }: AtlasCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -52,6 +54,7 @@ export function AtlasCanvas({
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<{ x: number, y: number } | null>(null);
   const [emptyCells, setEmptyCells] = useState<Set<string>>(new Set());
+  const [hoveredCell, setHoveredCell] = useState<{ cx: number, cy: number } | null>(null);
 
   const MOVE_THRESHOLD = 5; 
 
@@ -79,14 +82,34 @@ export function AtlasCanvas({
 
   const getTileAtCell = (cx: number, cy: number) => {
     const { stepX, stepY, p } = getCellSize();
-    // Find tile that logically occupies this cell index
-    const match = tiles.find(t => {
-      const tileCX = Math.round((t.x - p) / stepX);
-      const tileCY = Math.round((t.y - p) / stepY);
+    // Find tile whose center is in this cell
+    return tiles.find(t => {
+      const centerX = t.x + (t.width * t.scale) / 2;
+      const centerY = t.y + (t.height * t.scale) / 2;
+      const tileCX = Math.floor((centerX - p) / stepX);
+      const tileCY = Math.floor((centerY - p) / stepY);
       return tileCX === cx && tileCY === cy;
     });
-    return match;
   };
+
+  // Zoom Handler
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        const delta = -e.deltaY;
+        const factor = delta > 0 ? 1.1 : 0.9;
+        setZoom(prev => Math.min(Math.max(0.1, prev * factor), 10));
+      }
+    };
+    const el = containerRef.current;
+    if (el) {
+      el.addEventListener('wheel', handleWheel, { passive: false });
+    }
+    return () => {
+      if (el) el.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
 
   // Pointer Handlers
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -129,11 +152,15 @@ export function AtlasCanvas({
 
   const handlePointerMove = (e: React.PointerEvent) => {
     const pos = getPointerPos(e);
-    if (!pos || !dragStartCanvas) return;
+    if (!pos) return;
     
     const { stepX, stepY, p } = getCellSize();
     const cx = Math.floor(pos.x / stepX);
     const cy = Math.floor(pos.y / stepY);
+
+    setHoveredCell({ cx, cy });
+
+    if (!dragStartCanvas) return;
 
     const dist = dragStartMouse ? Math.sqrt(Math.pow(e.clientX - dragStartMouse.x, 2) + Math.pow(e.clientY - dragStartMouse.y, 2)) : 0;
 
@@ -191,24 +218,40 @@ export function AtlasCanvas({
     }
     else if (e.button === 2) { // Right Button Up
       if (dist <= MOVE_THRESHOLD && pos) {
-        const { stepX, stepY } = getCellSize();
+        const { stepX, stepY, w, h, p } = getCellSize();
         const cx = Math.floor(pos.x / stepX);
         const cy = Math.floor(pos.y / stepY);
-        const tile = getTileAtCell(cx, cy);
-        if (tile && onRemoveTile) onRemoveTile(tile);
+        
+        if (onCellRightClick) {
+          onCellRightClick(cx * stepX, cy * stepY, w, h, cx, cy);
+        } else if (onTilesChange) {
+          const newTiles = tiles.filter(t => {
+            const centerX = t.x + (t.width * t.scale) / 2;
+            const centerY = t.y + (t.height * t.scale) / 2;
+            const tcx = Math.floor((centerX - p) / stepX);
+            const tcy = Math.floor((centerY - p) / stepY);
+            return !(tcx === cx && tcy === cy);
+          });
+          if (newTiles.length !== tiles.length) onTilesChange(newTiles);
+        } else if (onRemoveTile) {
+          const tile = getTileAtCell(cx, cy);
+          if (tile) onRemoveTile(tile);
+        }
       } 
       else if (draggingId && draggingPos && onTilesChange) {
         const nx = draggingPos.x;
         const ny = draggingPos.y;
         const { stepX, stepY, p } = getCellSize();
-        const targetCX = Math.round((nx - p) / stepX);
-        const targetCY = Math.round((ny - p) / stepY);
+        const targetCX = Math.floor((nx - p + stepX / 2) / stepX);
+        const targetCY = Math.floor((ny - p + stepY / 2) / stepY);
 
         // Logical Overwrite: Purge any tile that occupies this slot
         let newTiles = tiles.filter(t => {
           if (t.id === draggingId) return true;
-          const tcx = Math.round((t.x - p) / stepX);
-          const tcy = Math.round((t.y - p) / stepY);
+          const centerX = t.x + (t.width * t.scale) / 2;
+          const centerY = t.y + (t.height * t.scale) / 2;
+          const tcx = Math.floor((centerX - p) / stepX);
+          const tcy = Math.floor((centerY - p) / stepY);
           return !(tcx === targetCX && tcy === targetCY);
         });
 
@@ -254,6 +297,17 @@ export function AtlasCanvas({
     const lines = [];
     for (let i = 0; i <= cols; i++) lines.push(<div key={`v-${i}`} className="absolute top-0 bottom-0 border-r border-white/5" style={{ left: i * stepX }} />);
     for (let i = 0; i <= rows; i++) lines.push(<div key={`h-${i}`} className="absolute left-0 right-0 border-b border-white/5" style={{ top: i * stepY }} />);
+    
+    if (hoveredCell && !isSelecting && !draggingId) {
+      lines.push(
+        <div 
+          key="hover" 
+          className="absolute bg-white/5 border border-white/20 pointer-events-none z-10" 
+          style={{ left: hoveredCell.cx * stepX + p, top: hoveredCell.cy * stepY + p, width: w, height: h }} 
+        />
+      );
+    }
+
     emptyCells.forEach(key => {
       const [cx, cy] = key.split(',').map(Number);
       lines.push(<div key={`empty-${key}`} className="absolute border border-dashed border-white/10 pointer-events-none" style={{ left: cx * stepX + p, top: cy * stepY + p, width: w, height: h }} />);
@@ -266,7 +320,7 @@ export function AtlasCanvas({
   };
 
   return (
-    <div className={cn("flex-1 h-full bg-zinc-950 relative overflow-hidden checkerboard", className)} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onContextMenu={e => e.preventDefault()} onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
+    <div className={cn("flex-1 h-full bg-zinc-950 relative overflow-hidden checkerboard", className)} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setHoveredCell(null)} onContextMenu={e => e.preventDefault()} onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
       <div ref={containerRef} className="relative origin-top-left shadow-2xl transition-transform duration-75 ease-out" style={{ width: canvasWidth, height: canvasHeight, transform: `scale(${zoom})` }}>
         <div className="absolute inset-0 pointer-events-none z-0" style={{ backgroundColor: gridSettings.clearColor }} />
         {renderGrid()}
@@ -284,7 +338,7 @@ export function AtlasCanvas({
         )}
       </div>
       <div className="absolute bottom-4 left-4 bg-black/60 px-2 py-1 rounded text-[10px] text-zinc-400 font-mono z-50">
-        Zoom: {Math.round(zoom * 100)}% (Ctrl+Scroll) | L-Click: Select | R-Drag: Move | R-Click: Clear
+        {tooltip || `Zoom: ${Math.round(zoom * 100)}% (Ctrl+Scroll) | L-Click: Select | R-Drag: Move | R-Click: Clear`}
       </div>
     </div>
   );

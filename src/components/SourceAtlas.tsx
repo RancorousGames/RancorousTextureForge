@@ -91,22 +91,36 @@ export function SourceAtlas({
     let sx = customSelection.x, sy = customSelection.y, sw = customSelection.w, sh = customSelection.h;
     const permClearRGB = hexToRgb(mainGridSettings.clearColor);
 
-    // Initial Crop Canvas to analyze the selection
-    const cropCanvas = document.createElement('canvas');
-    cropCanvas.width = sw; cropCanvas.height = sh;
-    const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
-    if (!cropCtx) return;
+    // Temp canvas to sample the original selection
+    const analyzeCanvas = document.createElement('canvas');
+    analyzeCanvas.width = sw; analyzeCanvas.height = sh;
+    const analyzeCtx = analyzeCanvas.getContext('2d', { willReadFrequently: true });
+    if (!analyzeCtx) return;
     
-    cropCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-    const cropData = cropCtx.getImageData(0, 0, sw, sh);
-    const pixels = cropData.data;
+    analyzeCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    const originalData = analyzeCtx.getImageData(0, 0, sw, sh).data;
 
-    // Use top-left pixel as the local clear key
-    const tempClear = { r: pixels[0], g: pixels[1], b: pixels[2], a: pixels[3] };
+    // Chroma-Key Sampling with fallback to (0,0)
+    let tempClear = { r: originalData[0], g: originalData[1], b: originalData[2], a: originalData[3] };
+    
+    if (sx < 0 || sy < 0) {
+      const sampler = document.createElement('canvas');
+      sampler.width = 1; sampler.height = 1;
+      const sCtx = sampler.getContext('2d');
+      if (sCtx) {
+        sCtx.drawImage(img, 0, 0, 1, 1, 0, 0, 1, 1);
+        const sData = sCtx.getImageData(0, 0, 1, 1).data;
+        tempClear = { r: sData[0], g: sData[1], b: sData[2], a: sData[3] };
+        console.log(`[Forge] Sample coord out of bounds. Falling back to (0,0) key.`);
+      }
+    }
+
     const tolerance = gridSettings.clearTolerance;
+    console.log(`[Forge] Chroma-Key Sampled: rgba(${tempClear.r},${tempClear.g},${tempClear.b},${tempClear.a}) with tolerance ${tolerance}`);
 
     const isMatch = (r: number, g: number, b: number, a: number) => {
-      if (a < 5 && tempClear.a < 5) return true;
+      if (a < 10) return true; 
+      if (tempClear.a < 10) return a < 10; 
       return Math.abs(r - tempClear.r) <= tolerance && 
              Math.abs(g - tempClear.g) <= tolerance && 
              Math.abs(b - tempClear.b) <= tolerance;
@@ -117,7 +131,7 @@ export function SourceAtlas({
       for (let y = 0; y < sh; y++) {
         for (let x = 0; x < sw; x++) {
           const i = (y * sw + x) * 4;
-          if (!isMatch(pixels[i], pixels[i+1], pixels[i+2], pixels[i+3])) {
+          if (!isMatch(originalData[i], originalData[i+1], originalData[i+2], originalData[i+3])) {
             minX = Math.min(minX, x); minY = Math.min(minY, y);
             maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
             found = true;
@@ -125,30 +139,39 @@ export function SourceAtlas({
         }
       }
       if (found) {
-        // Adjust the crop coordinates to the detected island
+        console.log(`[Forge] Island detected! Shrinking box from ${sw}x${sh} to ${maxX-minX+1}x${maxY-minY+1}`);
         sx += minX; sy += minY;
         sw = maxX - minX + 1; sh = maxY - minY + 1;
-        
-        // Re-draw the tightened crop
-        cropCanvas.width = sw; cropCanvas.height = sh;
-        cropCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
       }
     }
 
-    // Process Pixels: Replace Temp Clear Color with Permanent Clear Color
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = sw; cropCanvas.height = sh;
+    const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
+    if (!cropCtx) return;
+
+    cropCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
     const finalCropData = cropCtx.getImageData(0, 0, sw, sh);
     const finalPixels = finalCropData.data;
+    let replacedCount = 0;
+    const mismatchSamples: string[] = [];
+
     for (let i = 0; i < finalPixels.length; i += 4) {
-      if (isMatch(finalPixels[i], finalPixels[i+1], finalPixels[i+2], finalPixels[i+3])) {
+      const r = finalPixels[i], g = finalPixels[i+1], b = finalPixels[i+2], a = finalPixels[i+3];
+      if (isMatch(r, g, b, a)) {
         finalPixels[i] = permClearRGB.r;
         finalPixels[i+1] = permClearRGB.g;
         finalPixels[i+2] = permClearRGB.b;
-        finalPixels[i+3] = 255; // Set to opaque project clear color
+        finalPixels[i+3] = 255; 
+        replacedCount++;
+      } else if (mismatchSamples.length < 5 && Math.random() < 0.01) {
+        const dist = Math.max(Math.abs(r-tempClear.r), Math.abs(g-tempClear.g), Math.abs(b-tempClear.b));
+        mismatchSamples.push(`rgba(${r},${g},${b},${a}) dist:${dist}`);
       }
     }
+    console.log(`[Forge] Summary: Replaced ${replacedCount} of ${sw * sh} pixels. Mismatches: ${mismatchSamples.join(' | ')}`);
     cropCtx.putImageData(finalCropData, 0, 0);
 
-    // Target Cell Dimensions for Resampling
     let targetW = 0, targetH = 0;
     if (mainGridSettings.mode === 'perfect') {
       targetW = targetCanvasW / mainGridSettings.gridX;
@@ -158,12 +181,11 @@ export function SourceAtlas({
       targetH = mainGridSettings.cellY || mainGridSettings.cellSize;
     }
 
-    // Final Resampled Canvas
     const finalCanvas = document.createElement('canvas');
     finalCanvas.width = targetW; finalCanvas.height = targetH;
     const finalCtx = finalCanvas.getContext('2d');
     if (finalCtx) {
-      finalCtx.imageSmoothingEnabled = false; // Keep pixel art sharp
+      finalCtx.imageSmoothingEnabled = false; 
       finalCtx.drawImage(cropCanvas, 0, 0, sw, sh, 0, 0, targetW, targetH);
       
       onAddTile({
@@ -229,6 +251,20 @@ export function SourceAtlas({
               onChange={(e) => {
                 const val = e.target.value === '' ? 0 : Number(e.target.value);
                 onGridSettingsChange({ ...gridSettings, padding: val });
+              }}
+              className="w-8 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
+            />
+            <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1">Tol</span>
+            <input
+              type="number"
+              value={gridSettings.clearTolerance}
+              onBlur={(e) => {
+                const val = Math.max(0, Number(e.target.value));
+                onGridSettingsChange({ ...gridSettings, clearTolerance: val });
+              }}
+              onChange={(e) => {
+                const val = e.target.value === '' ? 0 : Number(e.target.value);
+                onGridSettingsChange({ ...gridSettings, clearTolerance: val });
               }}
               className="w-8 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
             />

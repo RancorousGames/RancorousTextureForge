@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TextureTile, GridSettings, GridMode } from '../types';
-import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus } from 'lucide-react';
+import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus, Box } from 'lucide-react';
 
 interface ToolboxProps {
   selectedTile: TextureTile | null;
@@ -9,6 +9,7 @@ interface ToolboxProps {
   onPackElements: () => void;
   onNewAtlas: (size: number) => void;
   onFixGrid: () => void;
+  onAutoDetect: () => void;
   onExport: () => void;
   onRunScript: () => void;
   gridSettings: GridSettings;
@@ -24,6 +25,7 @@ export function Toolbox({
   onPackElements,
   onNewAtlas, 
   onFixGrid,
+  onAutoDetect,
   onExport,
   onRunScript,
   gridSettings,
@@ -40,9 +42,18 @@ export function Toolbox({
   return (
     <div className="w-64 h-full bg-zinc-900 border-r border-zinc-800 flex flex-col">
       {/* Grid Settings */}
-      <div className="p-4 border-b border-zinc-800 bg-zinc-950 flex items-center gap-2">
-        <Grid3X3 className="w-4 h-4 text-zinc-400" />
-        <h2 className="text-sm font-semibold text-zinc-200">Grid Settings</h2>
+      <div className="p-4 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Grid3X3 className="w-4 h-4 text-zinc-400" />
+          <h2 className="text-sm font-semibold text-zinc-200">Grid Settings</h2>
+        </div>
+        <button
+          onClick={onAutoDetect}
+          className="p-1.5 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-blue-400 transition-colors border border-zinc-800"
+          title="Auto Detect Grid Settings"
+        >
+          <Wand2 className="w-3.5 h-3.5" />
+        </button>
       </div>
       
       <div className="p-4 space-y-4 border-b border-zinc-800 overflow-y-auto flex-1">

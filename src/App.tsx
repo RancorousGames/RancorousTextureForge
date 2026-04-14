@@ -12,6 +12,7 @@ import { cn, hexToRgb, detectSettingsFromImage, rgbToHex } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
 import { GridGeometry } from './lib/GridGeometry';
 import { useAtlas } from './hooks/useAtlas';
+import { tileRegistry } from './lib/TileRegistry';
 import { AddTilesCommand, RemoveTilesCommand, SetMainTilesCommand, MoveTileCommand } from './lib/Commands';
 import potpack from 'potpack';
 
@@ -136,7 +137,7 @@ export default function App() {
         const url = URL.createObjectURL(file);
         const img = new Image();
         img.onload = () => {
-          resolve({
+          const t: TextureTile = {
             id: Math.random().toString(36).substring(2, 9),
             file,
             url,
@@ -149,7 +150,9 @@ export default function App() {
             hue: 0,
             brightness: 100,
             scale: 1,
-          });
+          };
+          tileRegistry.register(t);
+          resolve(t);
         };
         img.src = url;
       });
@@ -185,7 +188,7 @@ export default function App() {
             const url = URL.createObjectURL(file);
             const img = new Image();
             img.onload = () => {
-              resolve({
+              const t: TextureTile = {
                 id: Math.random().toString(36).substring(2, 9),
                 file,
                 url,
@@ -197,7 +200,9 @@ export default function App() {
                 hue: 0,
                 brightness: 100,
                 scale: 1,
-              });
+              };
+              tileRegistry.register(t);
+              resolve(t);
             };
             img.src = url;
           });
@@ -280,7 +285,7 @@ export default function App() {
 
         if (hasContent) {
           sliceCtx.putImageData(sliceData, 0, 0);
-          newTiles.push({
+          const newTile: TextureTile = {
             id: Math.random().toString(36).substring(2, 9),
             url: sliceCanvas.toDataURL(),
             sourceUrl: sliceCanvas.toDataURL(),
@@ -289,12 +294,14 @@ export default function App() {
             x: c * stepX + padding, y: r * stepY + padding,
             hue: 0, brightness: 100, scale: 1,
             isCrop: true,
-          });
+          };
+          tileRegistry.register(newTile);
+          newTiles.push(newTile);
         }
       }
     }
 
-    set(prev => ({ ...prev, mainTiles: newTiles }));
+    executeCommand(new SetMainTilesCommand(state.mainTiles, newTiles));
   };
 
   const handleAssetClick = async (tile: TextureTile) => {
@@ -391,6 +398,7 @@ export default function App() {
         isCrop: true
       };
       
+      tileRegistry.register(newTile);
       const { cx, cy } = mainAtlas.geo.getCellAtPos(finalX, finalY);
       const replacedTiles = state.mainTiles.filter(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
       executeCommand(new AddTilesCommand([newTile], replacedTiles));
@@ -441,13 +449,15 @@ export default function App() {
           
           replacedTiles.push(...state.mainTiles.filter(t => targetGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)));
 
-          newTiles.push({
+          const newTile: TextureTile = {
             id: Math.random().toString(36).substring(2, 9),
             url: croppedUrl,
             name: `${sourceTile.name}_crop_${sourceCX}_${sourceCY}`,
             width: targetGeo.cellW, height: targetGeo.cellH, x: destX, y: destY,
             hue: 0, brightness: 100, scale: 1,
-          });
+          };
+          tileRegistry.register(newTile);
+          newTiles.push(newTile);
         }
       }
       executeCommand(new AddTilesCommand(newTiles, replacedTiles));
@@ -491,13 +501,15 @@ export default function App() {
       
       replacedTiles.push(...state.mainTiles.filter(t => targetGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)));
 
-      newTiles.push({
+      const newTile: TextureTile = {
         id: Math.random().toString(36).substring(2, 9),
         url: croppedUrl,
         name: `${sourceTile.name}_fill_${scx}_${scy}`,
         width: targetGeo.cellW, height: targetGeo.cellH, x: destX, y: destY,
         hue: 0, brightness: 100, scale: 1, isCrop: true
-      });
+      };
+      tileRegistry.register(newTile);
+      newTiles.push(newTile);
     }
     executeCommand(new AddTilesCommand(newTiles, replacedTiles));
   };

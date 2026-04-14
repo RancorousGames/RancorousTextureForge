@@ -10,6 +10,7 @@ import { AdjustMode } from './components/AdjustMode';
 import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon } from 'lucide-react';
 import { cn, hexToRgb, detectSettingsFromImage, rgbToHex } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
+import { GridGeometry } from './lib/GridGeometry';
 import potpack from 'potpack';
 
 const initialPackerMapping: ChannelMapping = {
@@ -347,38 +348,28 @@ export default function App() {
         return;
       }
 
+      const geo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
       let finalX = x;
       let finalY = y;
-      let innerW = 0, innerH = 0;
-      if (state.gridSettings.mode === 'perfect') {
-        innerW = canvasWidth / state.gridSettings.gridX;
-        innerH = canvasHeight / (state.gridSettings.keepSquare ? state.gridSettings.gridX : state.gridSettings.gridY);
-      } else if (state.gridSettings.mode === 'fixed') {
-        innerW = state.gridSettings.cellSize;
-        innerH = state.gridSettings.cellY || state.gridSettings.cellSize;
-      }
 
-      const padding = state.gridSettings.padding || 0;
-      const stepX = innerW + padding * 2;
-      const stepY = innerH + padding * 2;
+      if (state.gridSettings.mode !== 'packing') {
+        const snapped = geo.snap(x, y);
+        finalX = snapped.x;
+        finalY = snapped.y;
 
-      if (state.gridSettings.mode !== 'packing' && innerW > 0 && innerH > 0 && x === 0 && y === 0) {
-        const cols = Math.floor(canvasWidth / stepX);
-        const rows = Math.floor(canvasHeight / stepY);
-        let found = false;
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            const cx = c * stepX + padding;
-            const cy = r * stepY + padding;
-            const isOccupied = state.mainTiles.some(t => 
-              Math.round(t.x) === Math.round(cx) && Math.round(t.y) === Math.round(cy)
-            );
-            if (!isOccupied) {
-              finalX = cx; finalY = cy;
-              found = true; break;
+        if (x === 0 && y === 0) {
+          let found = false;
+          for (let r = 0; r < geo.rows; r++) {
+            for (let c = 0; c < geo.cols; c++) {
+              const isOccupied = state.mainTiles.some(t => geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r));
+              if (!isOccupied) {
+                const pos = geo.getPosFromCell(c, r);
+                finalX = pos.x; finalY = pos.y;
+                found = true; break;
+              }
             }
+            if (found) break;
           }
-          if (found) break;
         }
       }
 
@@ -386,35 +377,26 @@ export default function App() {
         ...tile, 
         id: Math.random().toString(36).substring(2, 9),
         x: finalX, y: finalY,
+        width: geo.cellW,
+        height: geo.cellH,
         isCrop: true
       };
-      set(prev => ({ ...prev, mainTiles: [...prev.mainTiles, newTile] }));
+      
+      const { cx, cy } = geo.getCellAtPos(finalX, finalY);
+      set(prev => ({ 
+        ...prev, 
+        mainTiles: [...prev.mainTiles.filter(t => !geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy)), newTile] 
+      }));
     }
   };
 
   const handleSourceCellClick = async (x: number, y: number, w: number, h: number, scx: number, scy: number, sourceTile: TextureTile) => {
-    const sourcePadding = state.sourceGridSettings.padding || 0;
-    const sourceStepX = w + sourcePadding * 2;
-    const sourceStepY = h + sourcePadding * 2;
-
-    let targetInnerW = 0, targetInnerH = 0;
-    if (state.gridSettings.mode === 'perfect') {
-      targetInnerW = canvasWidth / state.gridSettings.gridX;
-      targetInnerH = canvasHeight / (state.gridSettings.keepSquare ? state.gridSettings.gridX : state.gridSettings.gridY);
-    } else if (state.gridSettings.mode === 'fixed') {
-      targetInnerW = state.gridSettings.cellSize;
-      targetInnerH = state.gridSettings.cellY || state.gridSettings.cellSize;
-    }
-
-    const targetPadding = state.gridSettings.padding || 0;
-    const targetStepX = targetInnerW + targetPadding * 2;
-    const targetStepY = targetInnerH + targetPadding * 2;
-
-    if (targetInnerW <= 0 || targetInnerH <= 0) return;
+    const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceTile.width, sourceTile.height);
+    const targetGeo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
 
     const canvas = document.createElement('canvas');
-    canvas.width = targetInnerW;
-    canvas.height = targetInnerH;
+    canvas.width = targetGeo.cellW;
+    canvas.height = targetGeo.cellH;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -422,8 +404,9 @@ export default function App() {
     await new Promise((resolve) => { img.onload = resolve; img.src = sourceTile.url; });
 
     const createCrop = (cx: number, cy: number) => {
-      ctx.clearRect(0, 0, targetInnerW, targetInnerH);
-      ctx.drawImage(img, cx * sourceStepX + sourcePadding, cy * sourceStepY + sourcePadding, w, h, 0, 0, targetInnerW, targetInnerH);
+      ctx.clearRect(0, 0, targetGeo.cellW, targetGeo.cellH);
+      const { x: sx, y: sy } = sourceGeo.getPosFromCell(cx, cy);
+      ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, targetGeo.cellW, targetGeo.cellH);
       return canvas.toDataURL();
     };
 
@@ -445,25 +428,17 @@ export default function App() {
         const sourceCX = scx + offsetX;
         const sourceCY = scy + offsetY;
 
-        if (sourceCX * sourceStepX < sourceTile.width && sourceCY * sourceStepY < sourceTile.height) {
+        if (sourceCX < sourceGeo.cols && sourceCY < sourceGeo.rows) {
           const croppedUrl = createCrop(sourceCX, sourceCY);
-          const destX = dcx * targetStepX + targetPadding;
-          const destY = dcy * targetStepY + targetPadding;
+          const { x: destX, y: destY } = targetGeo.getPosFromCell(dcx, dcy);
           
-          // Clear all tiles whose centers fall in this target cell
-          filteredMainTiles = filteredMainTiles.filter(t => {
-            const centerX = t.x + (t.width * t.scale) / 2;
-            const centerY = t.y + (t.height * t.scale) / 2;
-            const tcx = Math.floor((centerX - targetPadding) / targetStepX);
-            const tcy = Math.floor((centerY - targetPadding) / targetStepY);
-            return !(tcx === dcx && tcy === dcy);
-          });
+          filteredMainTiles = filteredMainTiles.filter(t => !targetGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy));
 
           newTiles.push({
             id: Math.random().toString(36).substring(2, 9),
             url: croppedUrl,
             name: `${sourceTile.name}_crop_${sourceCX}_${sourceCY}`,
-            width: targetInnerW, height: targetInnerH, x: destX, y: destY,
+            width: targetGeo.cellW, height: targetGeo.cellH, x: destX, y: destY,
             hue: 0, brightness: 100, scale: 1,
           });
         }
@@ -475,7 +450,7 @@ export default function App() {
         id: Math.random().toString(36).substring(2, 9),
         url: croppedUrl,
         name: `${sourceTile.name}_crop_${scx}_${scy}`,
-        width: targetInnerW, height: targetInnerH, x: 0, y: 0,
+        width: targetGeo.cellW, height: targetGeo.cellH, x: 0, y: 0,
         hue: 0, brightness: 100, scale: 1,
       }, 0, 0);
     }
@@ -483,35 +458,21 @@ export default function App() {
 
   const handleSourceCellRightClick = async (x: number, y: number, w: number, h: number, scx: number, scy: number, sourceTile: TextureTile) => {
     if (selectedCells.length === 0) return;
-    const sourcePadding = state.sourceGridSettings.padding || 0;
-    const sourceStepX = w + sourcePadding * 2;
-    const sourceStepY = h + sourcePadding * 2;
-
-    let targetInnerW = 0, targetInnerH = 0;
-    if (state.gridSettings.mode === 'perfect') {
-      targetInnerW = canvasWidth / state.gridSettings.gridX;
-      targetInnerH = canvasHeight / (state.gridSettings.keepSquare ? state.gridSettings.gridX : state.gridSettings.gridY);
-    } else if (state.gridSettings.mode === 'fixed') {
-      targetInnerW = state.gridSettings.cellSize;
-      targetInnerH = state.gridSettings.cellY || state.gridSettings.cellSize;
-    }
-
-    const targetPadding = state.gridSettings.padding || 0;
-    const targetStepX = targetInnerW + targetPadding * 2;
-    const targetStepY = targetInnerH + targetPadding * 2;
-
-    if (targetInnerW <= 0 || targetInnerH <= 0) return;
+    
+    const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceTile.width, sourceTile.height);
+    const targetGeo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
 
     const canvas = document.createElement('canvas');
-    canvas.width = targetInnerW;
-    canvas.height = targetInnerH;
+    canvas.width = targetGeo.cellW;
+    canvas.height = targetGeo.cellH;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const img = new Image();
     await new Promise((resolve) => { img.onload = resolve; img.src = sourceTile.url; });
 
-    ctx.drawImage(img, scx * sourceStepX + sourcePadding, scy * sourceStepY + sourcePadding, w, h, 0, 0, targetInnerW, targetInnerH);
+    const { x: sx, y: sy } = sourceGeo.getPosFromCell(scx, scy);
+    ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, targetGeo.cellW, targetGeo.cellH);
     const croppedUrl = canvas.toDataURL();
 
     const newTiles: TextureTile[] = [];
@@ -519,23 +480,15 @@ export default function App() {
 
     for (const key of selectedCells) {
       const [dcx, dcy] = key.split(',').map(Number);
-      const destX = dcx * targetStepX + targetPadding;
-      const destY = dcy * targetStepY + targetPadding;
+      const { x: destX, y: destY } = targetGeo.getPosFromCell(dcx, dcy);
       
-      // Clear all tiles whose centers fall in this target cell
-      filteredMainTiles = filteredMainTiles.filter(t => {
-        const centerX = t.x + (t.width * t.scale) / 2;
-        const centerY = t.y + (t.height * t.scale) / 2;
-        const tcx = Math.floor((centerX - targetPadding) / targetStepX);
-        const tcy = Math.floor((centerY - targetPadding) / targetStepY);
-        return !(tcx === dcx && tcy === dcy);
-      });
+      filteredMainTiles = filteredMainTiles.filter(t => !targetGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy));
 
       newTiles.push({
         id: Math.random().toString(36).substring(2, 9),
         url: croppedUrl,
         name: `${sourceTile.name}_fill_${scx}_${scy}`,
-        width: targetInnerW, height: targetInnerH, x: destX, y: destY,
+        width: targetGeo.cellW, height: targetGeo.cellH, x: destX, y: destY,
         hue: 0, brightness: 100, scale: 1, isCrop: true
       });
     }
@@ -640,34 +593,22 @@ export default function App() {
 
   const fixGrid = () => {
     if (state.mainTiles.length === 0) return;
-    
-    let cellW = 0, cellH = 0, padding = 0;
-    if (state.gridSettings.mode === 'perfect') {
-      cellW = canvasWidth / state.gridSettings.gridX;
-      cellH = canvasHeight / (state.gridSettings.keepSquare ? state.gridSettings.gridX : state.gridSettings.gridY);
-    } else {
-      padding = state.gridSettings.padding || 0;
-      cellW = state.gridSettings.cellSize;
-      cellH = state.gridSettings.cellY || state.gridSettings.cellSize;
-    }
-
-    const stepX = cellW + padding * 2;
-    const stepY = cellH + padding * 2;
+    const geo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
 
     const fixedTiles = state.mainTiles.map(tile => {
       const centerX = tile.x + (tile.width * tile.scale) / 2;
       const centerY = tile.y + (tile.height * tile.scale) / 2;
-      const cx = Math.floor((centerX - padding) / stepX);
-      const cy = Math.floor((centerY - padding) / stepY);
+      const { cx, cy } = geo.getCellAtPos(centerX - geo.padding, centerY - geo.padding);
+      const pos = geo.getPosFromCell(cx, cy);
       
       console.log(`[Fix Grid] Snapping ${tile.name} from [${tile.x.toFixed(1)}, ${tile.y.toFixed(1)}] to cell (${cx}, ${cy})`);
       
       return {
         ...tile,
-        x: cx * stepX + padding,
-        y: cy * stepY + padding,
-        width: cellW,
-        height: cellH
+        x: pos.x,
+        y: pos.y,
+        width: geo.cellW,
+        height: geo.cellH
       };
     });
 
@@ -805,26 +746,8 @@ export default function App() {
   // Helper to get tile in cell
   const getTileAtCell = (key: string) => {
     const [cx, cy] = key.split(',').map(Number);
-    let cellW = 0, cellH = 0, padding = 0;
-    if (state.gridSettings.mode === 'perfect') {
-      cellW = canvasWidth / state.gridSettings.gridX;
-      cellH = canvasHeight / (state.gridSettings.keepSquare ? state.gridSettings.gridX : state.gridSettings.gridY);
-    } else {
-      padding = state.gridSettings.padding || 0;
-      cellW = state.gridSettings.cellSize;
-      cellH = state.gridSettings.cellY || state.gridSettings.cellSize;
-    }
-    const stepX = cellW + padding * 2;
-    const stepY = cellH + padding * 2;
-    
-    // Find tile whose center is in this cell
-    return state.mainTiles.find(t => {
-      const centerX = t.x + (t.width * t.scale) / 2;
-      const centerY = t.y + (t.height * t.scale) / 2;
-      const tcx = Math.floor((centerX - padding) / stepX);
-      const tcy = Math.floor((centerY - padding) / stepY);
-      return tcx === cx && tcy === cy;
-    });
+    const geo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
+    return state.mainTiles.find(t => geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
   };
 
   // Derived Selection

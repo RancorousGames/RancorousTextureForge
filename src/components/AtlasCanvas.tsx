@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { TextureTile, GridSettings } from '../types';
 import { cn, hexToRgb } from '../lib/utils';
+import { GridGeometry } from '../lib/GridGeometry';
 
 interface AtlasCanvasProps {
   tiles: TextureTile[];
@@ -44,6 +45,11 @@ export function AtlasCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   
+  const geo = useMemo(() => 
+    new GridGeometry(gridSettings, canvasWidth, canvasHeight),
+    [gridSettings, canvasWidth, canvasHeight]
+  );
+  
   // Interaction State
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draggingPos, setDraggingPos] = useState<{ x: number, y: number } | null>(null);
@@ -58,20 +64,6 @@ export function AtlasCanvas({
 
   const MOVE_THRESHOLD = 5; 
 
-  // Coordinate Helpers
-  const getCellSize = () => {
-    let cellW = 0, cellH = 0, padding = 0;
-    if (gridSettings.mode === 'perfect') {
-      cellW = canvasWidth / gridSettings.gridX;
-      cellH = canvasHeight / (gridSettings.keepSquare ? gridSettings.gridX : gridSettings.gridY);
-    } else {
-      padding = gridSettings.padding || 0;
-      cellW = gridSettings.cellSize;
-      cellH = gridSettings.cellY || gridSettings.cellSize;
-    }
-    return { w: cellW, h: cellH, p: padding, stepX: cellW + padding * 2, stepY: cellH + padding * 2 };
-  };
-
   const getPointerPos = (e: React.PointerEvent | React.MouseEvent | PointerEvent) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return null;
@@ -81,15 +73,7 @@ export function AtlasCanvas({
   };
 
   const getTileAtCell = (cx: number, cy: number) => {
-    const { stepX, stepY, p } = getCellSize();
-    // Find tile whose center is in this cell
-    return tiles.find(t => {
-      const centerX = t.x + (t.width * t.scale) / 2;
-      const centerY = t.y + (t.height * t.scale) / 2;
-      const tileCX = Math.floor((centerX - p) / stepX);
-      const tileCY = Math.floor((centerY - p) / stepY);
-      return tileCX === cx && tileCY === cy;
-    });
+    return tiles.find(t => geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
   };
 
   // Zoom Handler
@@ -118,9 +102,7 @@ export function AtlasCanvas({
 
     const x = (e.clientX - rect.left) / zoom;
     const y = (e.clientY - rect.top) / zoom;
-    const { stepX, stepY } = getCellSize();
-    const cx = Math.floor(x / stepX);
-    const cy = Math.floor(y / stepY);
+    const { cx, cy } = geo.getCellAtPos(x, y);
 
     console.log(`[Forge] PointerDown: Button ${e.button} at cell (${cx},${cy})`);
 
@@ -154,9 +136,7 @@ export function AtlasCanvas({
     const pos = getPointerPos(e);
     if (!pos) return;
     
-    const { stepX, stepY, p } = getCellSize();
-    const cx = Math.floor(pos.x / stepX);
-    const cy = Math.floor(pos.y / stepY);
+    const { cx, cy } = geo.getCellAtPos(pos.x, pos.y);
 
     setHoveredCell({ cx, cy });
 
@@ -188,8 +168,9 @@ export function AtlasCanvas({
       let nx = pos.x - dragOffset.x;
       let ny = pos.y - dragOffset.y;
       if (gridSettings.mode !== 'packing') {
-        nx = Math.round((nx - p) / stepX) * stepX + p;
-        ny = Math.round((ny - p) / stepY) * stepY + p;
+        const snapped = geo.snap(nx + geo.cellW / 2, ny + geo.cellH / 2);
+        nx = snapped.x;
+        ny = snapped.y;
       }
       setDraggingPos({ x: nx, y: ny });
     }
@@ -204,10 +185,9 @@ export function AtlasCanvas({
         onCustomSelectionChange(customSelection, { x: e.clientX, y: e.clientY });
       }
       else if (dist <= MOVE_THRESHOLD && pos) {
-        const { stepX, stepY, w, h } = getCellSize();
-        const cx = Math.floor(pos.x / stepX);
-        const cy = Math.floor(pos.y / stepY);
-        if (onCellClick) onCellClick(cx * stepX, cy * stepY, w, h, cx, cy);
+        const { cx, cy } = geo.getCellAtPos(pos.x, pos.y);
+        const cellPos = geo.getPosFromCell(cx, cy);
+        if (onCellClick) onCellClick(cellPos.x, cellPos.y, geo.cellW, geo.cellH, cx, cy);
         else if (onSelectedCellsChange) {
           const key = `${cx},${cy}`;
           onSelectedCellsChange(selectedCells.includes(key) ? selectedCells.filter(k => k !== key) : [...selectedCells, key]);
@@ -218,20 +198,13 @@ export function AtlasCanvas({
     }
     else if (e.button === 2) { // Right Button Up
       if (dist <= MOVE_THRESHOLD && pos) {
-        const { stepX, stepY, w, h, p } = getCellSize();
-        const cx = Math.floor(pos.x / stepX);
-        const cy = Math.floor(pos.y / stepY);
+        const { cx, cy } = geo.getCellAtPos(pos.x, pos.y);
+        const cellPos = geo.getPosFromCell(cx, cy);
         
         if (onCellRightClick) {
-          onCellRightClick(cx * stepX, cy * stepY, w, h, cx, cy);
+          onCellRightClick(cellPos.x, cellPos.y, geo.cellW, geo.cellH, cx, cy);
         } else if (onTilesChange) {
-          const newTiles = tiles.filter(t => {
-            const centerX = t.x + (t.width * t.scale) / 2;
-            const centerY = t.y + (t.height * t.scale) / 2;
-            const tcx = Math.floor((centerX - p) / stepX);
-            const tcy = Math.floor((centerY - p) / stepY);
-            return !(tcx === cx && tcy === cy);
-          });
+          const newTiles = tiles.filter(t => !geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
           if (newTiles.length !== tiles.length) onTilesChange(newTiles);
         } else if (onRemoveTile) {
           const tile = getTileAtCell(cx, cy);
@@ -241,18 +214,12 @@ export function AtlasCanvas({
       else if (draggingId && draggingPos && onTilesChange) {
         const nx = draggingPos.x;
         const ny = draggingPos.y;
-        const { stepX, stepY, p } = getCellSize();
-        const targetCX = Math.floor((nx - p + stepX / 2) / stepX);
-        const targetCY = Math.floor((ny - p + stepY / 2) / stepY);
+        const { cx: targetCX, cy: targetCY } = geo.getCellAtPos(nx + geo.cellW / 2, ny + geo.cellH / 2);
 
         // Logical Overwrite: Purge any tile that occupies this slot
         let newTiles = tiles.filter(t => {
           if (t.id === draggingId) return true;
-          const centerX = t.x + (t.width * t.scale) / 2;
-          const centerY = t.y + (t.height * t.scale) / 2;
-          const tcx = Math.floor((centerX - p) / stepX);
-          const tcy = Math.floor((centerY - p) / stepY);
-          return !(tcx === targetCX && tcy === targetCY);
+          return !geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, targetCX, targetCY);
         });
 
         if (atlasSwapMode) {
@@ -291,30 +258,31 @@ export function AtlasCanvas({
 
   const renderGrid = () => {
     if (gridSettings.mode === 'packing') return null;
-    const { w, h, stepX, stepY, p } = getCellSize();
-    const cols = Math.floor(canvasWidth / stepX);
-    const rows = Math.floor(canvasHeight / stepY);
+    const { cellW, cellH, stepX, stepY, cols, rows } = geo;
     const lines = [];
     for (let i = 0; i <= cols; i++) lines.push(<div key={`v-${i}`} className="absolute top-0 bottom-0 border-r border-white/5" style={{ left: i * stepX }} />);
     for (let i = 0; i <= rows; i++) lines.push(<div key={`h-${i}`} className="absolute left-0 right-0 border-b border-white/5" style={{ top: i * stepY }} />);
     
     if (hoveredCell && !isSelecting && !draggingId) {
+      const { x, y } = geo.getPosFromCell(hoveredCell.cx, hoveredCell.cy);
       lines.push(
         <div 
           key="hover" 
           className="absolute bg-white/5 border border-white/20 pointer-events-none z-10" 
-          style={{ left: hoveredCell.cx * stepX + p, top: hoveredCell.cy * stepY + p, width: w, height: h }} 
+          style={{ left: x, top: y, width: cellW, height: cellH }} 
         />
       );
     }
 
     emptyCells.forEach(key => {
       const [cx, cy] = key.split(',').map(Number);
-      lines.push(<div key={`empty-${key}`} className="absolute border border-dashed border-white/10 pointer-events-none" style={{ left: cx * stepX + p, top: cy * stepY + p, width: w, height: h }} />);
+      const { x, y } = geo.getPosFromCell(cx, cy);
+      lines.push(<div key={`empty-${key}`} className="absolute border border-dashed border-white/10 pointer-events-none" style={{ left: x, top: y, width: cellW, height: cellH }} />);
     });
     selectedCells.forEach(key => {
       const [cx, cy] = key.split(',').map(Number);
-      lines.push(<div key={`sel-${key}`} className="absolute bg-yellow-500/20 border border-yellow-500/50 pointer-events-none z-10" style={{ left: cx * stepX + p, top: cy * stepY + p, width: w, height: h }} />);
+      const { x, y } = geo.getPosFromCell(cx, cy);
+      lines.push(<div key={`sel-${key}`} className="absolute bg-yellow-500/20 border border-yellow-500/50 pointer-events-none z-10" style={{ left: x, top: y, width: cellW, height: cellH }} />);
     });
     return <div className="absolute inset-0 pointer-events-none">{lines}</div>;
   };

@@ -45,9 +45,12 @@ export function SourceAtlas({
   const handleLoadSource = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
     const file = e.target.files[0];
+    console.log(`[Forge] Loading new source image: ${file.name}`);
+    
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
+      console.log(`[Forge] Source image loaded: ${img.width}x${img.height}`);
       setSourceTile({
         id: 'source',
         url,
@@ -60,6 +63,8 @@ export function SourceAtlas({
         brightness: 100,
         scale: 1,
       });
+      setCustomSelection(null);
+      setMenuPos(null);
     };
     img.src = url;
   };
@@ -268,16 +273,17 @@ export function SourceAtlas({
               }}
               className="w-8 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
             />
-            {sourceTile && (
-              <button
-                onClick={() => onAutoDetectGrid(sourceTile)}
-                className="p-1 hover:bg-zinc-800 rounded transition-colors text-zinc-500 hover:text-blue-400"
-                title="Auto-detect grid settings"
-              >
-                <Wand2 className="w-3.5 h-3.5" />
-              </button>
-            )}
           </div>
+          {sourceTile && (
+            <button
+              onClick={() => onAutoDetectGrid(sourceTile)}
+              className="flex items-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-medium px-2 py-1 rounded transition-colors border border-blue-500/30"
+              title="Auto-detect grid settings"
+            >
+              <Wand2 className="w-3.5 h-3.5" />
+              <span>Auto Detect</span>
+            </button>
+          )}
           <button
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium px-2 py-1 rounded transition-colors border border-zinc-700"

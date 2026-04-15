@@ -98,6 +98,35 @@ export default function App() {
   });
   const { state, set, executeCommand, undo, redo, canUndo, canRedo } = useHistory<AppState>(getInitialState());
   
+  const [splitRatio, setSplitRatio] = useState(0.5);
+  const [isResizing, setIsResizing] = useState(false);
+  const splitPaneRef = useRef<HTMLDivElement>(null);
+
+  const handleResizeStart = (e: React.PointerEvent) => {
+    setIsResizing(true);
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMove = (e: PointerEvent) => {
+      if (!splitPaneRef.current) return;
+      const rect = splitPaneRef.current.getBoundingClientRect();
+      const nextRatio = (e.clientX - rect.left) / rect.width;
+      setSplitRatio(Math.min(Math.max(0.1, nextRatio), 0.9));
+    };
+
+    const handleUp = () => setIsResizing(false);
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+    };
+  }, [isResizing]);
+
   // Transient UI state - not in history
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
   const [selectedCells, setSelectedCells] = useState<string[]>([]);
@@ -586,34 +615,78 @@ export default function App() {
   };
 
   const handleAutoDetectMainGrid = async () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = canvasWidth; canvas.height = canvasHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    ctx.fillStyle = state.gridSettings.clearColor;
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    
-    for (const tile of state.mainTiles) {
+    console.log("[Forge] Auto-detecting main grid");
+    let imageData: ImageData | null = null;
+
+    const sharedSourceUrls = Array.from(new Set(
+      state.mainTiles
+        .map((tile) => tile.sourceUrl)
+        .filter((url): url is string => Boolean(url))
+    ));
+
+    if (sharedSourceUrls.length === 1) {
       const img = new Image();
-      await new Promise((resolve) => { img.onload = resolve; img.src = tile.url; });
-      ctx.save();
-      ctx.translate(tile.x, tile.y);
-      ctx.scale(tile.scale, tile.scale);
-      ctx.filter = `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`;
-      ctx.drawImage(img, 0, 0, tile.width, tile.height);
-      ctx.restore();
+      await new Promise((resolve) => {
+        img.onload = resolve;
+        img.src = sharedSourceUrls[0];
+      });
+
+      const realW = img.naturalWidth || img.width;
+      const realH = img.naturalHeight || img.height;
+      const sourceCanvas = document.createElement('canvas');
+      sourceCanvas.width = realW;
+      sourceCanvas.height = realH;
+      const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+
+      if (sourceCtx) {
+        sourceCtx.imageSmoothingEnabled = false;
+        sourceCtx.drawImage(img, 0, 0, realW, realH);
+        imageData = sourceCtx.getImageData(0, 0, realW, realH);
+        console.log(`[Forge] Main detection using shared source image: ${realW}x${realH}`);
+      }
     }
 
-    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+    if (!imageData) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) {
+        console.error("[Forge] Could not get 2D context for main grid detection");
+        return;
+      }
+
+      ctx.fillStyle = state.gridSettings.clearColor;
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+      for (const tile of state.mainTiles) {
+        const img = new Image();
+        await new Promise((resolve) => { img.onload = resolve; img.src = tile.url; });
+        ctx.save();
+        ctx.translate(tile.x, tile.y);
+        ctx.filter = `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`;
+        ctx.drawImage(img, 0, 0, tile.width * tile.scale, tile.height * tile.scale);
+        ctx.restore();
+      }
+
+      imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+      console.log(`[Forge] Main detection falling back to reconstructed canvas: ${canvasWidth}x${canvasHeight}`);
+    }
+
     const data = imageData.data;
-    const detectedClearColor = rgbToHex(data[0], data[1], data[2]);
+    const r = data[0], g = data[1], b = data[2], a = data[3];
+    console.log(`[Forge] Sampled main canvas at (0,0): RGBA(${r},${g},${b},${a})`);
+
+    const detectedClearColor = rgbToHex(r, g, b);
+    console.log(`[Forge] Detected main clear color hex: ${detectedClearColor}`);
 
     const { cellSize, padding } = detectSettingsFromImage(
       imageData, 
       detectedClearColor, 
       state.gridSettings.clearTolerance ?? 10
     );
+
+    console.log(`[Forge] Main detection result: cellSize=${cellSize}, padding=${padding}`);
 
     set(prev => ({
       ...prev,
@@ -628,26 +701,56 @@ export default function App() {
     }));
   };
 
-  const handleAutoDetectSourceGrid = async (sourceTile: TextureTile) => {
-    const img = new Image();
-    await new Promise((resolve) => { img.onload = resolve; img.src = sourceTile.url; });
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(img, 0, 0);
 
-    const imageData = ctx.getImageData(0, 0, img.width, img.height);
+  const handleAutoDetectSourceGrid = async (sourceTile: TextureTile) => {
+    console.log(`[Forge] Auto-detecting source grid for: ${sourceTile.name}`);
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    await new Promise((resolve) => { 
+      img.onload = resolve; 
+      img.onerror = () => {
+        console.error(`[Forge] Failed to load image for detection: ${sourceTile.url}`);
+        resolve(null);
+      };
+      img.src = sourceTile.sourceUrl || sourceTile.url; 
+    });
+    
+    // CRITICAL: Use natural dimensions to avoid browser-side scaling
+    const realW = img.naturalWidth || img.width;
+    const realH = img.naturalHeight || img.height;
+    console.log(`[Forge] Image natural dimensions: ${realW}x${realH}`);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = realW;
+    canvas.height = realH;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) {
+      console.error("[Forge] Could not get 2D context for detection");
+      return;
+    }
+    // Ensure no smoothing
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, 0, 0, realW, realH);
+
+    // CRITICAL: On high-DPI displays, getImageData width/height may differ 
+    // from canvas.width/height if the browser is scaling.
+    const imageData = ctx.getImageData(0, 0, realW, realH);
+    console.log(`[Forge] ImageData actual dimensions: ${imageData.width}x${imageData.height} (DPR: ${window.devicePixelRatio})`);
+    
     const data = imageData.data;
-    const detectedClearColor = rgbToHex(data[0], data[1], data[2]);
+    const r = data[0], g = data[1], b = data[2], a = data[3];
+    console.log(`[Forge] Sampled pixel at (0,0): RGBA(${r},${g},${b},${a})`);
+    
+    const detectedClearColor = rgbToHex(r, g, b);
+    console.log(`[Forge] Detected clear color hex: ${detectedClearColor}`);
 
     const { cellSize, padding } = detectSettingsFromImage(
       imageData, 
       detectedClearColor, 
       state.sourceGridSettings.clearTolerance ?? 10
     );
+
+    console.log(`[Forge] Detection result: cellSize=${cellSize}, padding=${padding}`);
 
     set(prev => ({
       ...prev,
@@ -940,81 +1043,95 @@ export default function App() {
               atlasSwapMode={state.atlasSwapMode}
               setAtlasSwapMode={(val) => set(prev => ({ ...prev, atlasSwapMode: val }))}
             />
-            <div className="flex-1 flex overflow-hidden">
-              {canvasWidth > 0 ? (
-                <MainAtlas
-                  tiles={state.mainTiles}
-                  setTiles={(tiles) => {
-                    if (typeof tiles === 'function') set(prev => ({ ...prev, mainTiles: (tiles as any)(prev.mainTiles) }));
-                    else set(prev => ({ ...prev, mainTiles: tiles }));
-                  }}
-                  onRemoveTile={(tile) => set(prev => ({ ...prev, mainTiles: prev.mainTiles.filter(t => t.id !== tile.id) }))}
-                  onDrop={handleMainAtlasDrop}
-                  gridSettings={state.gridSettings}
-                  selectedCells={selectedCells}
-                  onSelectedCellsChange={setSelectedCells}
-                  atlasSwapMode={state.atlasSwapMode}
-                  canvasWidth={canvasWidth}
-                  canvasHeight={canvasHeight}
-                  tooltip="L-Click: Select | R-Drag: Move | R-Click: Clear | Ctrl+Z/Y: Undo/Redo"
-                  sourceTile={[...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId)}
-                  clearedCells={state.clearedCells}
-                  onMaterialize={handleMaterialize}
-                />
-              ) : (
-                <div 
-                  className="flex-1 flex flex-col items-center justify-center bg-zinc-950 border-r border-zinc-800"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const tileId = e.dataTransfer.getData('text/plain');
-                    const tile = state.secondaryTiles.find(t => t.id === tileId);
-                    if (tile) handleAssetClick(tile);
-                  }}
-                >
-                  <div className="p-12 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center gap-6 max-w-lg text-center">
-                    <div className="w-20 h-20 bg-zinc-900 rounded-2xl flex items-center justify-center border border-zinc-800 shadow-inner">
-                      <ImageIcon className="w-10 h-10 text-zinc-600" />
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold text-zinc-200 tracking-tight">Create atlas or drag in existing one</h3>
-                      <p className="text-sm text-zinc-500 mt-2 max-w-sm mx-auto leading-relaxed">
-                        Start fresh with a specific resolution or drag a texture from the Asset Browser to automatically slice it into tiles.
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
-                      {[1024, 2048, 4096, 0].map(size => (
-                        <button 
-                          key={size}
-                          onClick={() => createNewAtlas(size)}
-                          className={cn(
-                            "flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all border",
-                            size === 0 
-                              ? "bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800" 
-                              : "bg-blue-600 border-blue-500 text-white hover:bg-blue-500 shadow-lg shadow-blue-900/20"
-                          )}
-                        >
-                          {size === 0 ? <Plus className="w-4 h-4" /> : null}
-                          {size === 0 ? 'Custom Size...' : `${size}x${size}`}
-                        </button>
-                      ))}
+            <div className="flex-1 flex overflow-hidden" ref={splitPaneRef}>
+              <div style={{ flex: canvasWidth > 0 ? splitRatio : 1 }} className="flex overflow-hidden">
+                {canvasWidth > 0 ? (
+                  <MainAtlas
+                    tiles={state.mainTiles}
+                    setTiles={(tiles) => {
+                      if (typeof tiles === 'function') set(prev => ({ ...prev, mainTiles: (tiles as any)(prev.mainTiles) }));
+                      else set(prev => ({ ...prev, mainTiles: tiles }));
+                    }}
+                    onRemoveTile={(tile) => set(prev => ({ ...prev, mainTiles: prev.mainTiles.filter(t => t.id !== tile.id) }))}
+                    onDrop={handleMainAtlasDrop}
+                    gridSettings={state.gridSettings}
+                    selectedCells={selectedCells}
+                    onSelectedCellsChange={setSelectedCells}
+                    atlasSwapMode={state.atlasSwapMode}
+                    canvasWidth={canvasWidth}
+                    canvasHeight={canvasHeight}
+                    tooltip="L-Click: Select | R-Drag: Move | R-Click: Clear | Ctrl+Z/Y: Undo/Redo"
+                    sourceTile={[...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId)}
+                    clearedCells={state.clearedCells}
+                    onMaterialize={handleMaterialize}
+                  />
+                ) : (
+                  <div 
+                    className="flex-1 flex flex-col items-center justify-center bg-zinc-950 border-r border-zinc-800"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const tileId = e.dataTransfer.getData('text/plain');
+                      const tile = state.secondaryTiles.find(t => t.id === tileId);
+                      if (tile) handleAssetClick(tile);
+                    }}
+                  >
+                    <div className="p-12 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center gap-6 max-w-lg text-center">
+                      <div className="w-20 h-20 bg-zinc-900 rounded-2xl flex items-center justify-center border border-zinc-800 shadow-inner">
+                        <ImageIcon className="w-10 h-10 text-zinc-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-2xl font-bold text-zinc-200 tracking-tight">Create atlas or drag in existing one</h3>
+                        <p className="text-sm text-zinc-500 mt-2 max-w-sm mx-auto leading-relaxed">
+                          Start fresh with a specific resolution or drag a texture from the Asset Browser to automatically slice it into tiles.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
+                        {[1024, 2048, 4096, 0].map(size => (
+                          <button 
+                            key={size}
+                            onClick={() => createNewAtlas(size)}
+                            className={cn(
+                              "flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all border",
+                              size === 0 
+                                ? "bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800" 
+                                : "bg-blue-600 border-blue-500 text-white hover:bg-blue-500 shadow-lg shadow-blue-900/20"
+                            )}
+                          >
+                            {size === 0 ? <Plus className="w-4 h-4" /> : null}
+                            {size === 0 ? 'Custom Size...' : `${size}x${size}`}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
               {canvasWidth > 0 && (
-                <SourceAtlas
-                  onAddTile={(tile) => handleMainAtlasDrop(tile, 0, 0)}
-                  gridSettings={state.sourceGridSettings}
-                  onGridSettingsChange={(gs) => set(prev => ({ ...prev, sourceGridSettings: gs }))}
-                  onAutoDetectGrid={handleAutoDetectSourceGrid} 
-                  availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]}
-                  onSourceCellClick={handleSourceCellClick}
-                  onSourceCellRightClick={handleSourceCellRightClick}
-                  mainGridSettings={state.gridSettings}
-                  canvasWidth={canvasWidth}
-                  canvasHeight={canvasHeight}
-                />
+                <>
+                  <div 
+                    className={cn(
+                      "w-1 bg-zinc-800 hover:bg-blue-500 cursor-col-resize transition-colors z-50",
+                      isResizing && "bg-blue-600 w-1.5"
+                    )}
+                    onPointerDown={handleResizeStart}
+                  />
+                  <div style={{ flex: 1 - splitRatio }} className="flex overflow-hidden">
+                    <SourceAtlas
+                      onAddTile={(tile) => handleMainAtlasDrop(tile, 0, 0)}
+                      gridSettings={state.sourceGridSettings}
+                      onGridSettingsChange={(gs) => set(prev => ({ ...prev, sourceGridSettings: gs }))}
+                      onAutoDetectGrid={handleAutoDetectSourceGrid} 
+                      availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]}
+                      onSourceCellClick={handleSourceCellClick}
+                      onSourceCellRightClick={handleSourceCellRightClick}
+                      mainGridSettings={state.gridSettings}
+                      canvasWidth={canvasWidth}
+                      canvasHeight={canvasHeight}
+                    />
+                  </div>
+                </>
               )}
             </div>
           </>

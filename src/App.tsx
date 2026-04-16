@@ -98,6 +98,7 @@ export default function App() {
   const [selectedCells, setSelectedCells] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const prevGridModeRef = useRef(state.gridSettings.mode);
 
   const { canvasWidth, canvasHeight } = state;
 
@@ -276,31 +277,30 @@ export default function App() {
     localStorage.setItem('forge_mode', mode);
   }, [mode]);
 
-  // Handle auto-slicing when switching grid modes
+  // Handle auto-slicing ONLY when switching grid modes
   useEffect(() => {
-    if (mode !== 'atlas' || !state.lastSourceTileId) return;
+    const currentGridMode = state.gridSettings.mode;
+    const prevGridMode = prevGridModeRef.current;
+    prevGridModeRef.current = currentGridMode;
+
+    if (mode !== 'atlas' || !state.lastSourceTileId || currentGridMode === prevGridMode) return;
     
     const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
     if (!sourceTile) return;
 
-    const isGridMode = state.gridSettings.mode === 'perfect' || state.gridSettings.mode === 'fixed';
+    const isGridMode = currentGridMode === 'perfect' || currentGridMode === 'fixed';
+    const wasGridMode = prevGridMode === 'perfect' || prevGridMode === 'fixed';
     
-    if (isGridMode) {
-      // Re-slice if we are in a grid mode and currently have a whole image or empty atlas
-      const isAlreadySliced = state.mainTiles.length > 1 || (state.mainTiles.length === 1 && state.mainTiles[0].isCrop);
-      if (!isAlreadySliced) {
-        performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true);
-      }
-    } else if (state.gridSettings.mode === 'packing') {
-      // Revert to full image if switching to packing mode
-      const isAlreadyUnsliced = state.mainTiles.length === 1 && !state.mainTiles[0].isCrop;
-      if (!isAlreadyUnsliced) {
-        set(prev => ({
-          ...prev,
-          mainTiles: [{ ...sourceTile, id: generateId(), x: 0, y: 0, isCrop: false }],
-          clearedCells: []
-        }));
-      }
+    // Only trigger if we are moving between "Slicing" and "Non-Slicing" states
+    if (isGridMode && !wasGridMode) {
+      performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true);
+    } else if (currentGridMode === 'packing' && wasGridMode) {
+      // Revert to full image if switching to packing mode from a grid mode
+      set(prev => ({
+        ...prev,
+        mainTiles: [{ ...sourceTile, id: generateId(), x: 0, y: 0, isCrop: false }],
+        clearedCells: []
+      }));
     }
   }, [state.gridSettings.mode, mode, state.lastSourceTileId, state.secondaryTiles, state.modifiedTiles, state.canvasWidth, state.canvasHeight, performGridSlice, set]);
 

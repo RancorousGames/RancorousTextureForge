@@ -73,17 +73,15 @@ export function useGridSlice(
         const pixels = sliceData.data;
         let hasContent = false;
 
+        // Check for content without modifying pixels
         for (let i = 0; i < pixels.length; i += 4) {
-          if (isMatch(pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3])) {
-            pixels[i] = permClear.r; pixels[i + 1] = permClear.g;
-            pixels[i + 2] = permClear.b; pixels[i + 3] = 255;
-          } else {
+          if (!isMatch(pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3])) {
             hasContent = true;
+            break;
           }
         }
 
         if (hasContent) {
-          sliceCtx.putImageData(sliceData, 0, 0);
           newTiles.push({
             id: generateId(),
             url: sliceCanvas.toDataURL(),

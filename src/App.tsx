@@ -178,14 +178,20 @@ export default function App() {
 
   const handleAssetClick = useCallback(async (tile: TextureTile) => {
     if (mode === 'atlas') {
+      const shouldSlice = state.gridSettings.mode === 'perfect' || state.gridSettings.mode === 'fixed';
+      
       set(prev => ({
         ...prev,
         canvasWidth: tile.width, canvasHeight: tile.height,
-        mainTiles: [], lastSourceTileId: tile.id, clearedCells: [],
+        mainTiles: shouldSlice ? [] : [{ ...tile, id: generateId(), x: 0, y: 0 }], 
+        lastSourceTileId: tile.id, clearedCells: [],
       }));
       setSelectedTileId(null);
       setSelectedCells([]);
-      setTimeout(() => performGridSlice(tile, tile.width, tile.height, false), 50);
+      
+      if (shouldSlice) {
+        setTimeout(() => performGridSlice(tile, tile.width, tile.height, false), 50);
+      }
     } else if (mode === 'adjust') {
       if (state.secondaryTiles.some(t => t.id === tile.id)) {
         const existing = state.modifiedTiles.find(t => t.name === tile.name && t.file === tile.file);
@@ -269,6 +275,34 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('forge_mode', mode);
   }, [mode]);
+
+  // Handle auto-slicing when switching grid modes
+  useEffect(() => {
+    if (mode !== 'atlas' || !state.lastSourceTileId) return;
+    
+    const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
+    if (!sourceTile) return;
+
+    const isGridMode = state.gridSettings.mode === 'perfect' || state.gridSettings.mode === 'fixed';
+    
+    if (isGridMode) {
+      // Re-slice if we are in a grid mode and currently have a whole image or empty atlas
+      const isAlreadySliced = state.mainTiles.length > 1 || (state.mainTiles.length === 1 && state.mainTiles[0].isCrop);
+      if (!isAlreadySliced) {
+        performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true);
+      }
+    } else if (state.gridSettings.mode === 'packing') {
+      // Revert to full image if switching to packing mode
+      const isAlreadyUnsliced = state.mainTiles.length === 1 && !state.mainTiles[0].isCrop;
+      if (!isAlreadyUnsliced) {
+        set(prev => ({
+          ...prev,
+          mainTiles: [{ ...sourceTile, id: generateId(), x: 0, y: 0, isCrop: false }],
+          clearedCells: []
+        }));
+      }
+    }
+  }, [state.gridSettings.mode, mode, state.lastSourceTileId, state.secondaryTiles, state.modifiedTiles, state.canvasWidth, state.canvasHeight, performGridSlice, set]);
 
   useEffect(() => {
     if (!isResizing) return;

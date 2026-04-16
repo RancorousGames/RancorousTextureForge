@@ -127,19 +127,23 @@ export default function App() {
   // ── Derived state ──────────────────────────────────────────────────────────
 
   const activeTiles = useMemo(() => {
-    const candidates = [
+    // Show the source atlas texture as one item rather than individual slices
+    const sourceTile = state.lastSourceTileId
+      ? state.secondaryTiles.find(t => t.id === state.lastSourceTileId)
+      : null;
+
+    const candidates: TextureTile[] = [
+      ...(sourceTile ? [sourceTile] : []),
       ...state.modifiedTiles,
-      ...state.mainTiles.filter(t => !t.isCrop),
       ...state.layeringLayers.map(l => l.tile),
       ...[state.packerMapping.r.tile, state.packerMapping.g.tile,
           state.packerMapping.b.tile, state.packerMapping.a.tile].filter((t): t is TextureTile => t !== null),
       ...[state.pbrSet.baseColor.tile, state.pbrSet.normal.tile,
           state.pbrSet.orm.tile].filter((t): t is TextureTile => t !== null),
     ];
-    return candidates.filter((v, i, a) =>
-      a.findIndex(t => t.url === v.url && t.hue === v.hue && t.brightness === v.brightness && t.scale === v.scale) === i
-    );
-  }, [state.modifiedTiles, state.mainTiles, state.layeringLayers, state.packerMapping, state.pbrSet]);
+    return candidates.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+  }, [state.lastSourceTileId, state.secondaryTiles, state.modifiedTiles,
+      state.layeringLayers, state.packerMapping, state.pbrSet]);
 
   const selectedTile = useMemo(() => {
     if (selectedCells.length > 0) {

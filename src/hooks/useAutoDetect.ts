@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { AppState, TextureTile } from '../types';
-import { rgbToHex, detectSettingsFromImage, findIslands } from '../lib/utils';
-import { loadImage, renderTilesToCanvas, generateId } from '../lib/canvas';
+import { rgbToHex, detectSettingsFromImage } from '../lib/utils';
+import { loadImage, renderTilesToCanvas } from '../lib/canvas';
 
 export function useAutoDetect(
   state: AppState,
@@ -45,44 +45,9 @@ export function useAutoDetect(
     const tolerance = state.gridSettings.clearTolerance ?? 10;
 
     const { cellSize, padding } = detectSettingsFromImage(imageData, detectedClearColor, tolerance);
-    const islands = findIslands(imageData, detectedClearColor, tolerance);
-
-    const capturedImageData = imageData;
-    const nextTiles = await Promise.all(islands.map(async (island, i) => {
-      const step = cellSize + 2 * padding;
-      const col = Math.round((island.x + island.w / 2 - padding - cellSize / 2) / step);
-      const row = Math.round((island.y + island.h / 2 - padding - cellSize / 2) / step);
-
-      const cropCanvas = document.createElement('canvas');
-      cropCanvas.width = island.w; cropCanvas.height = island.h;
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = capturedImageData.width; tempCanvas.height = capturedImageData.height;
-      tempCanvas.getContext('2d')?.putImageData(capturedImageData, 0, 0);
-      cropCanvas.getContext('2d')?.drawImage(tempCanvas, island.x, island.y, island.w, island.h, 0, 0, island.w, island.h);
-
-      const blob = await new Promise<Blob | null>(resolve => cropCanvas.toBlob(resolve, 'image/png'));
-      const url = blob ? URL.createObjectURL(blob) : '';
-
-      return {
-        id: generateId(),
-        name: `Normalized ${col},${row}`,
-        url,
-        x: padding + col * step,
-        y: padding + row * step,
-        width: island.w, height: island.h,
-        scale: 1,
-        scaleX: cellSize / island.w,
-        scaleY: cellSize / island.h,
-        hue: 0, brightness: 100,
-        sourceUrl: sharedSourceUrls[0] || '',
-        sourceX: island.x, sourceY: island.y,
-        sourceW: island.w, sourceH: island.h,
-      } satisfies TextureTile;
-    }));
 
     set(prev => ({
       ...prev,
-      mainTiles: nextTiles,
       gridSettings: {
         ...prev.gridSettings,
         clearColor: detectedClearColor,

@@ -40,8 +40,10 @@ export function useAtlasOps(
     const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
     const { data } = imageData;
     const visited = new Uint8Array(canvasWidth * canvasHeight);
-    const bgR = data[0], bgG = data[1], bgB = data[2];
-    const tolerance = 15;
+
+    // Use the configured clear color — sampling pixel (0,0) fails when a sprite occupies that corner
+    const { r: bgR, g: bgG, b: bgB } = hexToRgb(state.gridSettings.clearColor);
+    const tolerance = state.gridSettings.clearTolerance ?? 15;
 
     const isNotBg = (x: number, y: number) => {
       const idx = (y * canvasWidth + x) * 4;
@@ -68,15 +70,13 @@ export function useAtlasOps(
           const [cx, cy] = queue[head++];
           x1 = Math.min(x1, cx); y1 = Math.min(y1, cy);
           x2 = Math.max(x2, cx); y2 = Math.max(y2, cy);
-          for (let dy = -4; dy <= 4; dy++) {
-            for (let dx = -4; dx <= 4; dx++) {
-              const nx = cx + dx, ny = cy + dy;
-              if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
-                const nidx = ny * canvasWidth + nx;
-                if (!visited[nidx] && isNotBg(nx, ny)) {
-                  visited[nidx] = 1;
-                  queue.push([nx, ny]);
-                }
+          // 4-directional only — bridging caused adjacent sprites to merge when padding < 4px
+          for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]] as [number, number][]) {
+            if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
+              const nidx = ny * canvasWidth + nx;
+              if (!visited[nidx] && isNotBg(nx, ny)) {
+                visited[nidx] = 1;
+                queue.push([nx, ny]);
               }
             }
           }

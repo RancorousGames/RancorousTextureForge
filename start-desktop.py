@@ -53,10 +53,12 @@ def start_desktop():
 
     # 5. Wait for server
     print("Waiting for server to initialize...")
-    max_retries = 20
+    max_retries = 30
+    target_url = f"http://localhost:{port}/RancorousTextureForge/"
     for i in range(max_retries):
         try:
-            response = requests.get(f"http://localhost:{port}/api/health")
+            # We just check if the server is responding at all
+            response = requests.get(target_url, timeout=2)
             if response.status_code == 200:
                 print("Server is ready.")
                 break
@@ -78,13 +80,13 @@ def start_desktop():
     for path in browser_paths:
         if os.path.exists(path):
             print(f"Launching desktop app view via {os.path.basename(path)}...")
-            subprocess.Popen([path, f"--app=http://localhost:{port}"])
+            subprocess.Popen([path, f"--app={target_url}"])
             launched = True
             break
     
     if not launched:
         print("Browser not found. Opening in default browser...")
-        webbrowser.open(f"http://localhost:{port}")
+        webbrowser.open(target_url)
 
     print("Application is running.")
 

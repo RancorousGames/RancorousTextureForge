@@ -10,7 +10,6 @@ interface MainAtlasProps {
   selectedCells: string[];
   onSelectedCellsChange: (cells: string[]) => void;
   atlasSwapMode: boolean;
-  canvasSize: number;
   canvasWidth?: number;
   canvasHeight?: number;
   className?: string;
@@ -29,7 +28,6 @@ export function MainAtlas({
   selectedCells,
   onSelectedCellsChange,
   atlasSwapMode,
-  canvasSize,
   canvasWidth,
   canvasHeight,
   className,

@@ -5,6 +5,21 @@ export interface Command {
   undo(state: AppState): AppState;
 }
 
+export class PatchCommand implements Command {
+  constructor(
+    private forward: Partial<AppState>,
+    private backward: Partial<AppState>
+  ) {}
+
+  execute(state: AppState): AppState {
+    return { ...state, ...this.forward };
+  }
+
+  undo(state: AppState): AppState {
+    return { ...state, ...this.backward };
+  }
+}
+
 export class MoveTileCommand implements Command {
   constructor(
     private tileId: string,

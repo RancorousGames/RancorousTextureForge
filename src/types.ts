@@ -2,7 +2,7 @@ export interface TextureTile {
   id: string;
   file?: File;
   url: string;
-  sourceUrl?: string; // Original URL before resampling
+  sourceUrl?: string;
   name: string;
   width: number;
   height: number;
@@ -14,6 +14,10 @@ export interface TextureTile {
   scaleX?: number;
   scaleY?: number;
   isCrop?: boolean;
+  sourceX?: number;
+  sourceY?: number;
+  sourceW?: number;
+  sourceH?: number;
 }
 
 export type AppMode = 'atlas' | 'adjust' | 'channel-pack' | 'layering';
@@ -71,9 +75,8 @@ export interface AppState {
   pbrSet: PBRSet;
   layeringLayers: Layer[];
   atlasSwapMode: boolean;
-  canvasSize: number;
-  canvasWidth?: number;
-  canvasHeight?: number;
+  canvasWidth: number;
+  canvasHeight: number;
   adjustSettings: AdjustSettings;
   lastSourceTileId: string | null;
   clearedCells: string[];

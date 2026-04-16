@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { TextureTile, AppMode, GridSettings, ChannelMapping, PBRSet, Layer, AppState } from './types';
 import { MainAtlas } from './components/MainAtlas';
 import { SourceAtlas } from './components/SourceAtlas';
@@ -8,13 +8,16 @@ import { ChannelPackerMode } from './components/ChannelPackerMode';
 import { LayeringMode } from './components/LayeringMode';
 import { AdjustMode } from './components/AdjustMode';
 import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon } from 'lucide-react';
-import { cn, hexToRgb, detectSettingsFromImage, rgbToHex } from './lib/utils';
+import { cn } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
-import { GridGeometry } from './lib/GridGeometry';
 import { useAtlas } from './hooks/useAtlas';
+import { useGridSlice } from './hooks/useGridSlice';
+import { useAutoDetect } from './hooks/useAutoDetect';
+import { useAtlasOps } from './hooks/useAtlasOps';
+import { useAssetLibrary } from './hooks/useAssetLibrary';
+import { AddTilesCommand, PatchCommand } from './lib/Commands';
 import { tileRegistry } from './lib/TileRegistry';
-import { AddTilesCommand, RemoveTilesCommand, SetMainTilesCommand, MoveTileCommand } from './lib/Commands';
-import potpack from 'potpack';
+import { generateId } from './lib/canvas';
 
 const initialPackerMapping: ChannelMapping = {
   r: { tile: null, sourceChannel: 'r' },
@@ -38,11 +41,9 @@ const getInitialState = (): AppState => {
     modifiedTiles: [],
     gridSettings: {
       mode: 'fixed',
-      gridX: 8,
-      gridY: 8,
+      gridX: 8, gridY: 8,
       keepSquare: true,
-      cellSize: 128,
-      cellY: 128,
+      cellSize: 128, cellY: 128,
       padding: 0,
       clearColor: '#000000',
       clearTolerance: 10,
@@ -50,11 +51,9 @@ const getInitialState = (): AppState => {
     },
     sourceGridSettings: {
       mode: 'fixed',
-      gridX: 8,
-      gridY: 8,
+      gridX: 8, gridY: 8,
       keepSquare: true,
-      cellSize: 128,
-      cellY: 128,
+      cellSize: 128, cellY: 128,
       padding: 0,
       clearColor: '#000000',
       clearTolerance: 10,
@@ -63,13 +62,9 @@ const getInitialState = (): AppState => {
     pbrSet: initialPBRSet,
     layeringLayers: [],
     atlasSwapMode: false,
-    canvasSize: 0,
     canvasWidth: 0,
     canvasHeight: 0,
-    adjustSettings: {
-      targetW: 'source',
-      targetH: 'source',
-    },
+    adjustSettings: { targetW: 'source', targetH: 'source' },
     lastSourceTileId: null,
     clearedCells: [],
   };
@@ -92,281 +87,108 @@ const getInitialState = (): AppState => {
 };
 
 export default function App() {
-  const [mode, setMode] = useState<AppMode>(() => {
-    const saved = localStorage.getItem('forge_mode');
-    return (saved as AppMode) || 'atlas';
-  });
+  const [mode, setMode] = useState<AppMode>(() => (localStorage.getItem('forge_mode') as AppMode) || 'atlas');
   const { state, set, executeCommand, undo, redo, canUndo, canRedo } = useHistory<AppState>(getInitialState());
-  
+
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [isResizing, setIsResizing] = useState(false);
   const splitPaneRef = useRef<HTMLDivElement>(null);
 
-  const handleResizeStart = (e: React.PointerEvent) => {
-    setIsResizing(true);
-    e.preventDefault();
-  };
-
-  useEffect(() => {
-    if (!isResizing) return;
-
-    const handleMove = (e: PointerEvent) => {
-      if (!splitPaneRef.current) return;
-      const rect = splitPaneRef.current.getBoundingClientRect();
-      const nextRatio = (e.clientX - rect.left) / rect.width;
-      setSplitRatio(Math.min(Math.max(0.1, nextRatio), 0.9));
-    };
-
-    const handleUp = () => setIsResizing(false);
-
-    window.addEventListener('pointermove', handleMove);
-    window.addEventListener('pointerup', handleUp);
-    return () => {
-      window.removeEventListener('pointermove', handleMove);
-      window.removeEventListener('pointerup', handleUp);
-    };
-  }, [isResizing]);
-
-  // Transient UI state - not in history
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
   const [selectedCells, setSelectedCells] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const reSliceTimerRef = useRef<any>(null);
-  
-  const canvasWidth = state.canvasWidth || state.canvasSize;
-  const canvasHeight = state.canvasHeight || state.canvasSize;
+
+  const { canvasWidth, canvasHeight } = state;
 
   const mainAtlas = useAtlas(state.gridSettings, canvasWidth, canvasHeight, {
     tiles: state.mainTiles,
     setTiles: (newTiles) => {
-      const nextTiles = typeof newTiles === 'function' ? newTiles(state.mainTiles) : newTiles;
-      executeCommand(new SetMainTilesCommand(state.mainTiles, nextTiles));
-    }
+      const next = typeof newTiles === 'function' ? newTiles(state.mainTiles) : newTiles;
+      executeCommand(new AddTilesCommand(next, state.mainTiles));
+    },
   });
 
-  const performGridSlice = useCallback(async (sourceTile: TextureTile, width: number, height: number, skipHistory = false) => {
-    const imgUrl = sourceTile.sourceUrl || sourceTile.url;
-    console.log(`[Forge] Reslicing from ${imgUrl}`);
-    const img = new Image();
-    await new Promise((resolve) => {
-      img.onload = resolve;
-      img.src = imgUrl;
+  const { performGridSlice, handleMaterialize, handleSourceCellClick, handleSourceCellRightClick } =
+    useGridSlice(state, canvasWidth, canvasHeight, mainAtlas.geo, selectedCells, set, executeCommand);
+
+  const { handleAutoDetectMainGrid, handleAutoDetectSourceGrid } =
+    useAutoDetect(state, canvasWidth, canvasHeight, set);
+
+  const { packAtlas, fixGrid, packElements, exportAtlas, createNewAtlas } =
+    useAtlasOps(state, canvasWidth, canvasHeight, mainAtlas.geo, set, () => {
+      setSelectedTileId(null);
+      setSelectedCells([]);
     });
 
-    const gs = state.gridSettings;
-    let cellW = 0, cellH = 0, padding = 0;
-    if (gs.mode === 'perfect') {
-      cellW = width / gs.gridX;
-      cellH = height / (gs.keepSquare ? gs.gridX : gs.gridY);
-    } else {
-      padding = gs.padding || 0;
-      cellW = gs.cellSize;
-      cellH = gs.cellY || gs.cellSize;
+  const { addFilesToLibrary, handleOpenDirectory, handleLoadFiles, handleClearLibrary } =
+    useAssetLibrary(state, set, fileInputRef);
+
+  // ── Derived state ──────────────────────────────────────────────────────────
+
+  const activeTiles = useMemo(() => {
+    const candidates = [
+      ...state.modifiedTiles,
+      ...state.mainTiles.filter(t => !t.isCrop),
+      ...state.layeringLayers.map(l => l.tile),
+      ...[state.packerMapping.r.tile, state.packerMapping.g.tile,
+          state.packerMapping.b.tile, state.packerMapping.a.tile].filter((t): t is TextureTile => t !== null),
+      ...[state.pbrSet.baseColor.tile, state.pbrSet.normal.tile,
+          state.pbrSet.orm.tile].filter((t): t is TextureTile => t !== null),
+    ];
+    return candidates.filter((v, i, a) =>
+      a.findIndex(t => t.url === v.url && t.hue === v.hue && t.brightness === v.brightness && t.scale === v.scale) === i
+    );
+  }, [state.modifiedTiles, state.mainTiles, state.layeringLayers, state.packerMapping, state.pbrSet]);
+
+  const selectedTile = useMemo(() => {
+    if (selectedCells.length > 0) {
+      const [cx, cy] = selectedCells[0].split(',').map(Number);
+      return state.mainTiles.find(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy)) ?? null;
     }
+    if (selectedTileId) {
+      return state.modifiedTiles.find(t => t.id === selectedTileId)
+          ?? state.secondaryTiles.find(t => t.id === selectedTileId)
+          ?? null;
+    }
+    return null;
+  }, [selectedCells, selectedTileId, state.mainTiles, state.modifiedTiles, state.secondaryTiles, mainAtlas.geo]);
 
-    const stepX = cellW + padding * 2;
-    const stepY = cellH + padding * 2;
-    const cols = Math.floor(width / stepX);
-    const rows = Math.floor(height / stepY);
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
-    const newTiles: TextureTile[] = [];
-    const sliceCanvas = document.createElement('canvas');
-    sliceCanvas.width = cellW;
-    sliceCanvas.height = cellH;
-    const sliceCtx = sliceCanvas.getContext('2d', { willReadFrequently: true });
-    if (!sliceCtx) return;
-
-    const checkCanvas = document.createElement('canvas');
-    checkCanvas.width = 1; checkCanvas.height = 1;
-    const checkCtx = checkCanvas.getContext('2d');
-    if (!checkCtx) return;
-    checkCtx.drawImage(img, 0, 0, 1, 1, 0, 0, 1, 1);
-    const keyData = checkCtx.getImageData(0, 0, 1, 1).data;
-    const keyColor = { r: keyData[0], g: keyData[1], b: keyData[2], a: keyData[3] };
-    const permClear = hexToRgb(gs.clearColor);
-    const tolerance = gs.clearTolerance;
-
-    const isMatch = (r: number, g: number, b: number, a: number) => {
-      if (a < 5 && keyColor.a < 5) return true;
-      return Math.abs(r - keyColor.r) <= tolerance && Math.abs(g - keyColor.g) <= tolerance && Math.abs(b - keyColor.b) <= tolerance;
-    };
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        sliceCtx.clearRect(0, 0, cellW, cellH);
-        sliceCtx.drawImage(img, c * stepX + padding, r * stepY + padding, cellW, cellH, 0, 0, cellW, cellH);
-        
-        const sliceData = sliceCtx.getImageData(0, 0, cellW, cellH);
-        const pixels = sliceData.data;
-        let hasContent = false;
-
-        for (let i = 0; i < pixels.length; i += 4) {
-          if (isMatch(pixels[i], pixels[i+1], pixels[i+2], pixels[i+3])) {
-            pixels[i] = permClear.r; pixels[i+1] = permClear.g; pixels[i+2] = permClear.b; pixels[i+3] = 255;
-          } else {
-            hasContent = true;
-          }
-        }
-
-        if (hasContent) {
-          sliceCtx.putImageData(sliceData, 0, 0);
-          const newTile: TextureTile = {
-            id: Math.random().toString(36).substring(2, 9),
-            url: sliceCanvas.toDataURL(),
-            sourceUrl: imgUrl,
-            name: `Slice_${c}_${r}`,
-            width: cellW, height: cellH,
-            x: c * stepX + padding, y: r * stepY + padding,
-            hue: 0, brightness: 100, scale: 1,
-            isCrop: true,
-          };
-          tileRegistry.register(newTile);
-          newTiles.push(newTile);
-        }
+  const updateTile = useCallback((id: string, updates: Partial<TextureTile>) => {
+    set(prev => {
+      if (prev.mainTiles.some(t => t.id === id))
+        return { ...prev, mainTiles: prev.mainTiles.map(t => t.id === id ? { ...t, ...updates } : t) };
+      if (prev.modifiedTiles.some(t => t.id === id))
+        return { ...prev, modifiedTiles: prev.modifiedTiles.map(t => t.id === id ? { ...t, ...updates } : t) };
+      if (prev.secondaryTiles.some(t => t.id === id)) {
+        const tile = prev.secondaryTiles.find(t => t.id === id)!;
+        const modified = { ...tile, ...updates, id: generateId() };
+        setSelectedTileId(modified.id);
+        return { ...prev, modifiedTiles: [...prev.modifiedTiles, modified] };
       }
-    }
+      return prev;
+    });
+  }, [set]);
 
-    if (newTiles.length > 0) {
-      tileRegistry.registerMany(newTiles);
-      if (skipHistory) {
-        set(prev => ({ ...prev, mainTiles: newTiles, clearedCells: [] }));
-      } else {
-        executeCommand([
-          new SetMainTilesCommand(state.mainTiles, newTiles),
-          { execute: (s: any) => ({ ...s, lastSourceTileId: sourceTile.id, clearedCells: [] }), undo: (s: any) => ({ ...s, lastSourceTileId: state.lastSourceTileId, clearedCells: state.clearedCells }) } as any
-        ]);
-      }
-    }
-  }, [state.gridSettings.cellSize, state.gridSettings.padding, state.gridSettings.mode, state.gridSettings.gridX, state.gridSettings.gridY, state.gridSettings.keepSquare, state.gridSettings.clearColor, state.gridSettings.clearTolerance, state.lastSourceTileId, state.mainTiles, executeCommand, set]);
-
-  // Save settings on change
-  useEffect(() => {
-    const config = {
-      gridSettings: state.gridSettings,
-      sourceGridSettings: state.sourceGridSettings,
-      adjustSettings: state.adjustSettings,
-    };
-    localStorage.setItem(FORGE_CONFIG_KEY, JSON.stringify(config));
-  }, [state.gridSettings, state.sourceGridSettings, state.adjustSettings]);
-
-  useEffect(() => {
-    localStorage.setItem('forge_mode', mode);
-  }, [mode]);
-
-  const addFilesToLibrary = async (files: File[]) => {
-    const newTiles: TextureTile[] = [];
-    for (const file of files) {
-      if (!file.type.startsWith('image/')) continue;
-      if (state.secondaryTiles.some(t => t.name === file.name)) continue;
-      
-      const tile = await new Promise<TextureTile>((resolve) => {
-        const url = URL.createObjectURL(file);
-        const img = new Image();
-        img.onload = () => {
-          const t: TextureTile = {
-            id: Math.random().toString(36).substring(2, 9),
-            file,
-            url,
-            sourceUrl: url,
-            name: file.name,
-            width: img.width,
-            height: img.height,
-            x: 0,
-            y: 0,
-            hue: 0,
-            brightness: 100,
-            scale: 1,
-          };
-          tileRegistry.register(t);
-          resolve(t);
-        };
-        img.src = url;
-      });
-      newTiles.push(tile);
-    }
-    set((prev) => ({ ...prev, secondaryTiles: [...prev.secondaryTiles, ...newTiles] }));
-  };
-
-  const handleLoadFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return;
-    await addFilesToLibrary(Array.from(e.target.files));
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleClearLibrary = () => {
-    if (confirm('Are you sure you want to clear all loaded assets?')) {
-      set(prev => ({ ...prev, secondaryTiles: [] }));
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleOpenDirectory = async () => {
-    try {
-      // @ts-ignore
-      const dirHandle = await window.showDirectoryPicker();
-      const newTiles: TextureTile[] = [];
-      // @ts-ignore
-      for await (const entry of dirHandle.values()) {
-        if (entry.kind === 'file' && entry.name.match(/\.(png|jpe?g|webp)$/i)) {
-          if (state.secondaryTiles.some(t => t.name === entry.name)) continue;
-          const file = await entry.getFile();
-          const tile = await new Promise<TextureTile>((resolve) => {
-            const url = URL.createObjectURL(file);
-            const img = new Image();
-            img.onload = () => {
-              const t: TextureTile = {
-                id: Math.random().toString(36).substring(2, 9),
-                file,
-                url,
-                name: file.name,
-                width: img.width,
-                height: img.height,
-                x: 0,
-                y: 0,
-                hue: 0,
-                brightness: 100,
-                scale: 1,
-              };
-              tileRegistry.register(t);
-              resolve(t);
-            };
-            img.src = url;
-          });
-          newTiles.push(tile);
-        }
-      }
-      set((prev) => ({ ...prev, secondaryTiles: [...prev.secondaryTiles, ...newTiles] }));
-    } catch (e) {
-      console.log('Directory picker cancelled or failed', e);
-      fileInputRef.current?.click();
-    }
-  };
-
-
-  const handleAssetClick = async (tile: TextureTile) => {
+  const handleAssetClick = useCallback(async (tile: TextureTile) => {
     if (mode === 'atlas') {
-      const w = tile.width;
-      const h = tile.height;
-      set(prev => ({ 
-        ...prev, 
-        canvasWidth: w, 
-        canvasHeight: h, 
-        canvasSize: Math.max(w, h),
-        mainTiles: [],
-        lastSourceTileId: tile.id,
-        clearedCells: []
+      set(prev => ({
+        ...prev,
+        canvasWidth: tile.width, canvasHeight: tile.height,
+        mainTiles: [], lastSourceTileId: tile.id, clearedCells: [],
       }));
       setSelectedTileId(null);
       setSelectedCells([]);
-      setTimeout(() => performGridSlice(tile, w, h, false), 50);
+      setTimeout(() => performGridSlice(tile, tile.width, tile.height, false), 50);
     } else if (mode === 'adjust') {
       if (state.secondaryTiles.some(t => t.id === tile.id)) {
-        const existingModified = state.modifiedTiles.find(t => t.name === tile.name && t.file === tile.file);
-        if (existingModified) {
-          setSelectedTileId(existingModified.id);
+        const existing = state.modifiedTiles.find(t => t.name === tile.name && t.file === tile.file);
+        if (existing) {
+          setSelectedTileId(existing.id);
         } else {
-          const modified = { ...tile, id: Math.random().toString(36).substring(2, 9) };
+          const modified = { ...tile, id: generateId() };
           set(prev => ({ ...prev, modifiedTiles: [...prev.modifiedTiles, modified] }));
           setSelectedTileId(modified.id);
         }
@@ -375,745 +197,90 @@ export default function App() {
       }
     } else if (mode === 'layering') {
       const newLayer: Layer = {
-        id: Math.random().toString(36).substring(2, 9),
-        tile: { ...tile },
-        opacity: 1,
-        transparentColor: null,
-        tolerance: 10,
-        visible: true,
+        id: generateId(), tile: { ...tile },
+        opacity: 1, transparentColor: null, tolerance: 10, visible: true,
       };
       set(prev => ({ ...prev, layeringLayers: [newLayer, ...prev.layeringLayers] }));
     }
-  };
+  }, [mode, state.secondaryTiles, state.modifiedTiles, set, performGridSlice]);
 
-  const handleAdjustDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const tileId = e.dataTransfer.getData('text/plain');
-    const tile = [...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles].find(t => t.id === tileId);
-    if (tile) {
-      handleAssetClick(tile);
-    }
-  };
-
-  const handleMainAtlasDrop = (tileOrId: string | TextureTile, x: number, y: number) => {
-    const tile = typeof tileOrId === 'string' 
+  const handleMainAtlasDrop = useCallback((tileOrId: string | TextureTile, x: number, y: number) => {
+    const tile = typeof tileOrId === 'string'
       ? [...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles].find(t => t.id === tileOrId)
       : tileOrId;
+    if (!tile) return;
 
-    if (tile) {
-      const isFromLibrary = state.secondaryTiles.some(t => t.id === tile.id);
-      if (isFromLibrary) {
-        handleAssetClick(tile);
-        return;
-      }
-
-      let finalX = x;
-      let finalY = y;
-
-      if (state.gridSettings.mode !== 'packing') {
-        const snapped = mainAtlas.geo.snap(x, y);
-        finalX = snapped.x;
-        finalY = snapped.y;
-
-        if (x === 0 && y === 0) {
-          let found = false;
-          for (let r = 0; r < mainAtlas.geo.rows; r++) {
-            for (let c = 0; c < mainAtlas.geo.cols; c++) {
-              const isOccupied = state.mainTiles.some(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r));
-              if (!isOccupied) {
-                const pos = mainAtlas.geo.getPosFromCell(c, r);
-                finalX = pos.x; finalY = pos.y;
-                found = true; break;
-              }
-            }
-            if (found) break;
-          }
-        }
-      }
-
-      const newTile: TextureTile = { 
-        ...tile, 
-        id: Math.random().toString(36).substring(2, 9),
-        x: finalX, y: finalY,
-        width: mainAtlas.geo.cellW,
-        height: mainAtlas.geo.cellH,
-        isCrop: true
-      };
-      
-      tileRegistry.register(newTile);
-      const { cx, cy } = mainAtlas.geo.getCellAtPos(finalX, finalY);
-      const replacedTiles = state.mainTiles.filter(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
-      executeCommand([
-        new AddTilesCommand([newTile], replacedTiles),
-        { execute: (s: any) => ({ ...s, lastSourceTileId: null }), undo: (s: any) => ({ ...s, lastSourceTileId: state.lastSourceTileId }) } as any
-      ]);
-    }
-  };
-
-  const handleSourceCellClick = async (x: number, y: number, w: number, h: number, scx: number, scy: number, sourceTile: TextureTile) => {
-    const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceTile.width, sourceTile.height);
-    const targetGeo = mainAtlas.geo;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = targetGeo.cellW;
-    canvas.height = targetGeo.cellH;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const img = new Image();
-    await new Promise((resolve) => { img.onload = resolve; img.src = sourceTile.url; });
-
-    const createCrop = (cx: number, cy: number) => {
-      ctx.clearRect(0, 0, targetGeo.cellW, targetGeo.cellH);
-      const { x: sx, y: sy } = sourceGeo.getPosFromCell(cx, cy);
-      ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, targetGeo.cellW, targetGeo.cellH);
-      return canvas.toDataURL();
-    };
-
-    if (selectedCells.length > 0) {
-      let minCX = Infinity, minCY = Infinity;
-      selectedCells.forEach(key => {
-        const [cx, cy] = key.split(',').map(Number);
-        if (cx < minCX) minCX = cx;
-        if (cy < minCY) minCY = cy;
-      });
-
-      const newTiles: TextureTile[] = [];
-      const replacedTiles: TextureTile[] = [];
-
-      for (const key of selectedCells) {
-        const [dcx, dcy] = key.split(',').map(Number);
-        const offsetX = dcx - minCX;
-        const offsetY = dcy - minCY;
-        const sourceCX = scx + offsetX;
-        const sourceCY = scy + offsetY;
-
-        if (sourceCX < sourceGeo.cols && sourceCY < sourceGeo.rows) {
-          const croppedUrl = createCrop(sourceCX, sourceCY);
-          const { x: destX, y: destY } = targetGeo.getPosFromCell(dcx, dcy);
-          
-          replacedTiles.push(...state.mainTiles.filter(t => targetGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)));
-
-          const newTile: TextureTile = {
-            id: Math.random().toString(36).substring(2, 9),
-            url: croppedUrl,
-            name: `${sourceTile.name}_crop_${sourceCX}_${sourceCY}`,
-            width: targetGeo.cellW, height: targetGeo.cellH, x: destX, y: destY,
-            hue: 0, brightness: 100, scale: 1,
-          };
-          tileRegistry.register(newTile);
-          newTiles.push(newTile);
-        }
-      }
-      executeCommand([
-        new AddTilesCommand(newTiles, replacedTiles),
-        { execute: (s: any) => ({ ...s, lastSourceTileId: null }), undo: (s: any) => ({ ...s, lastSourceTileId: state.lastSourceTileId }) } as any
-      ]);
-    } else {
-      const croppedUrl = createCrop(scx, scy);
-      handleMainAtlasDrop({
-        ...sourceTile,
-        url: croppedUrl,
-        id: Math.random().toString(36).substring(2, 9),
-        width: targetGeo.cellW,
-        height: targetGeo.cellH
-      }, 0, 0);
-    }
-  };
-
-  const handleMaterialize = async (cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number }) => {
-    const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
-    if (!sourceTile) return;
-
-    const sourceGeo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
-    const cellPos = sourceGeo.getPosFromCell(cx, cy);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = sourceGeo.cellW;
-    canvas.height = sourceGeo.cellH;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const img = new Image();
-    await new Promise((resolve) => { img.onload = resolve; img.src = sourceTile.sourceUrl || sourceTile.url; });
-    ctx.drawImage(img, cellPos.x, cellPos.y, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
-    const croppedUrl = canvas.toDataURL();
-
-    const newTile: TextureTile = {
-      id: Math.random().toString(36).substring(2, 9),
-      url: croppedUrl,
-      sourceUrl: sourceTile.sourceUrl || sourceTile.url,
-      name: `JIT_${cx}_${cy}`,
-      width: sourceGeo.cellW, height: sourceGeo.cellH,
-      x: draggingPos ? draggingPos.x : cellPos.x,
-      y: draggingPos ? draggingPos.y : cellPos.y,
-      hue: 0, brightness: 100, scale: 1,
-      isCrop: true
-    };
-
-    tileRegistry.register(newTile);
-    const key = `${cx},${cy}`;
-
-    if (reason === 'clear') {
-      executeCommand({
-        execute: (s: any) => ({ ...s, clearedCells: [...s.clearedCells, key] }),
-        undo: (s: any) => ({ ...s, clearedCells: s.clearedCells.filter((k: string) => k !== key) })
-      } as any);
-    } else {
-      executeCommand([
-        new AddTilesCommand([newTile], []),
-        { 
-          execute: (s: any) => ({ ...s, clearedCells: [...s.clearedCells, key] }), 
-          undo: (s: any) => ({ ...s, clearedCells: s.clearedCells.filter((k: string) => k !== key) }) 
-        } as any
-      ]);
-    }
-  };
-
-  const handleSourceCellRightClick = async (x: number, y: number, w: number, h: number, scx: number, scy: number, sourceTile: TextureTile) => {
-    if (selectedCells.length === 0) return;
-    
-    const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceTile.width, sourceTile.height);
-    const targetGeo = mainAtlas.geo;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = targetGeo.cellW;
-    canvas.height = targetGeo.cellH;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const img = new Image();
-    await new Promise((resolve) => { img.onload = resolve; img.src = sourceTile.url; });
-
-    const { x: sx, y: sy } = sourceGeo.getPosFromCell(scx, scy);
-    ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, targetGeo.cellW, targetGeo.cellH);
-    const croppedUrl = canvas.toDataURL();
-
-    const newTiles: TextureTile[] = [];
-    const replacedTiles: TextureTile[] = [];
-
-    for (const key of selectedCells) {
-      const [dcx, dcy] = key.split(',').map(Number);
-      const { x: destX, y: destY } = targetGeo.getPosFromCell(dcx, dcy);
-      
-      replacedTiles.push(...state.mainTiles.filter(t => targetGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)));
-
-      const newTile: TextureTile = {
-        id: Math.random().toString(36).substring(2, 9),
-        url: croppedUrl,
-        name: `${sourceTile.name}_fill_${scx}_${scy}`,
-        width: targetGeo.cellW, height: targetGeo.cellH, x: destX, y: destY,
-        hue: 0, brightness: 100, scale: 1, isCrop: true
-      };
-      tileRegistry.register(newTile);
-      newTiles.push(newTile);
-    }
-    executeCommand([
-      new AddTilesCommand(newTiles, replacedTiles),
-      { execute: (s: any) => ({ ...s, lastSourceTileId: null }), undo: (s: any) => ({ ...s, lastSourceTileId: state.lastSourceTileId }) } as any
-    ]);
-  };
-
-  const handleAutoDetectMainGrid = async () => {
-    console.log("[Forge] Auto-detecting main grid");
-    let imageData: ImageData | null = null;
-
-    const sharedSourceUrls = Array.from(new Set(
-      state.mainTiles
-        .map((tile) => tile.sourceUrl)
-        .filter((url): url is string => Boolean(url))
-    ));
-
-    if (sharedSourceUrls.length === 1) {
-      const img = new Image();
-      await new Promise((resolve) => {
-        img.onload = resolve;
-        img.src = sharedSourceUrls[0];
-      });
-
-      const realW = img.naturalWidth || img.width;
-      const realH = img.naturalHeight || img.height;
-      const sourceCanvas = document.createElement('canvas');
-      sourceCanvas.width = realW;
-      sourceCanvas.height = realH;
-      const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
-
-      if (sourceCtx) {
-        sourceCtx.imageSmoothingEnabled = false;
-        sourceCtx.drawImage(img, 0, 0, realW, realH);
-        imageData = sourceCtx.getImageData(0, 0, realW, realH);
-        console.log(`[Forge] Main detection using shared source image: ${realW}x${realH}`);
-      }
-    }
-
-    if (!imageData) {
-      const canvas = document.createElement('canvas');
-      canvas.width = canvasWidth;
-      canvas.height = canvasHeight;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) {
-        console.error("[Forge] Could not get 2D context for main grid detection");
-        return;
-      }
-
-      ctx.fillStyle = state.gridSettings.clearColor;
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-      for (const tile of state.mainTiles) {
-        const img = new Image();
-        await new Promise((resolve) => { img.onload = resolve; img.src = tile.url; });
-        ctx.save();
-        ctx.translate(tile.x, tile.y);
-        ctx.filter = `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`;
-        ctx.drawImage(img, 0, 0, tile.width * tile.scale, tile.height * tile.scale);
-        ctx.restore();
-      }
-
-      imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-      console.log(`[Forge] Main detection falling back to reconstructed canvas: ${canvasWidth}x${canvasHeight}`);
-    }
-
-    const data = imageData.data;
-    const r = data[0], g = data[1], b = data[2], a = data[3];
-    console.log(`[Forge] Sampled main canvas at (0,0): RGBA(${r},${g},${b},${a})`);
-
-    const detectedClearColor = rgbToHex(r, g, b);
-    console.log(`[Forge] Detected main clear color hex: ${detectedClearColor}`);
-
-    const { cellSize, padding } = detectSettingsFromImage(
-      imageData, 
-      detectedClearColor, 
-      state.gridSettings.clearTolerance ?? 10
-    );
-
-    console.log(`[Forge] Main detection result: cellSize=${cellSize}, padding=${padding}`);
-
-    const islands = findIslands(
-      imageData,
-      detectedClearColor,
-      state.gridSettings.clearTolerance ?? 10
-    );
-    console.log(`[Forge] Normalizing ${islands.length} islands`);
-
-    const nextTiles = await Promise.all(islands.map(async (island, i) => {
-      const step = cellSize + 2 * padding;
-      const col = Math.round((island.x + island.w/2 - padding - cellSize/2) / step);
-      const row = Math.round((island.y + island.h/2 - padding - cellSize/2) / step);
-
-      const targetX = padding + col * step;
-      const targetY = padding + row * step;
-
-      // Extract island pixels to a new blob
-      const cropCanvas = document.createElement('canvas');
-      cropCanvas.width = island.w;
-      cropCanvas.height = island.h;
-      const cropCtx = cropCanvas.getContext('2d');
-      if (cropCtx && imageData) {
-        // Create a temporary canvas to hold the full imageData to draw from
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = imageData.width;
-        tempCanvas.height = imageData.height;
-        tempCanvas.getContext('2d')?.putImageData(imageData, 0, 0);
-        cropCtx.drawImage(tempCanvas, island.x, island.y, island.w, island.h, 0, 0, island.w, island.h);
-      }
-      
-      const blob = await new Promise<Blob | null>(resolve => cropCanvas.toBlob(resolve, 'image/png'));
-      const url = blob ? URL.createObjectURL(blob) : "";
-
-      return {
-        id: `tile-${col}-${row}-${Date.now()}-${i}`,
-        name: `Normalized ${col},${row}`,
-        url,
-        x: targetX,
-        y: targetY,
-        width: island.w,
-        height: island.h,
-        scale: 1,
-        scaleX: cellSize / island.w,
-        scaleY: cellSize / island.h,
-        hue: 0,
-        brightness: 100,
-        sourceUrl: sharedSourceUrls[0] || "",
-        sourceX: island.x,
-        sourceY: island.y,
-        sourceW: island.w,
-        sourceH: island.h
-      } as any;
-    }));
-
-    set(prev => ({
-      ...prev,
-      mainTiles: nextTiles,
-      gridSettings: {
-        ...prev.gridSettings,
-        clearColor: detectedClearColor,
-        cellSize,
-        cellY: cellSize,
-        padding,
-        keepSquare: true
-      }
-    }));
-  };
-
-
-  const handleAutoDetectSourceGrid = async (sourceTile: TextureTile) => {
-    console.log(`[Forge] Auto-detecting source grid for: ${sourceTile.name}`);
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    await new Promise((resolve) => { 
-      img.onload = resolve; 
-      img.onerror = () => {
-        console.error(`[Forge] Failed to load image for detection: ${sourceTile.url}`);
-        resolve(null);
-      };
-      img.src = sourceTile.sourceUrl || sourceTile.url; 
-    });
-    
-    // CRITICAL: Use natural dimensions to avoid browser-side scaling
-    const realW = img.naturalWidth || img.width;
-    const realH = img.naturalHeight || img.height;
-    console.log(`[Forge] Image natural dimensions: ${realW}x${realH}`);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = realW;
-    canvas.height = realH;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) {
-      console.error("[Forge] Could not get 2D context for detection");
+    if (state.secondaryTiles.some(t => t.id === tile.id)) {
+      handleAssetClick(tile);
       return;
     }
-    // Ensure no smoothing
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(img, 0, 0, realW, realH);
 
-    // CRITICAL: On high-DPI displays, getImageData width/height may differ 
-    // from canvas.width/height if the browser is scaling.
-    const imageData = ctx.getImageData(0, 0, realW, realH);
-    console.log(`[Forge] ImageData actual dimensions: ${imageData.width}x${imageData.height} (DPR: ${window.devicePixelRatio})`);
-    
-    const data = imageData.data;
-    const r = data[0], g = data[1], b = data[2], a = data[3];
-    console.log(`[Forge] Sampled pixel at (0,0): RGBA(${r},${g},${b},${a})`);
-    
-    const detectedClearColor = rgbToHex(r, g, b);
-    console.log(`[Forge] Detected clear color hex: ${detectedClearColor}`);
+    let finalX = x, finalY = y;
+    if (state.gridSettings.mode !== 'packing') {
+      const snapped = mainAtlas.geo.snap(x, y);
+      finalX = snapped.x; finalY = snapped.y;
 
-    const { cellSize, padding } = detectSettingsFromImage(
-      imageData, 
-      detectedClearColor, 
-      state.sourceGridSettings.clearTolerance ?? 10
+      if (x === 0 && y === 0) {
+        outer: for (let r = 0; r < mainAtlas.geo.rows; r++) {
+          for (let c = 0; c < mainAtlas.geo.cols; c++) {
+            if (!state.mainTiles.some(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r))) {
+              ({ x: finalX, y: finalY } = mainAtlas.geo.getPosFromCell(c, r));
+              break outer;
+            }
+          }
+        }
+      }
+    }
+
+    const newTile: TextureTile = {
+      ...tile,
+      id: generateId(),
+      x: finalX, y: finalY,
+      width: mainAtlas.geo.cellW,
+      height: mainAtlas.geo.cellH,
+      isCrop: true,
+    };
+    tileRegistry.register(newTile);
+    const { cx, cy } = mainAtlas.geo.getCellAtPos(finalX, finalY);
+    const replacedTiles = state.mainTiles.filter(t =>
+      mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy)
     );
+    executeCommand([
+      new AddTilesCommand([newTile], replacedTiles),
+      new PatchCommand({ lastSourceTileId: null }, { lastSourceTileId: state.lastSourceTileId }),
+    ]);
+  }, [state.secondaryTiles, state.modifiedTiles, state.mainTiles, state.gridSettings.mode,
+      state.lastSourceTileId, mainAtlas.geo, handleAssetClick, executeCommand]);
 
-    console.log(`[Forge] Detection result: cellSize=${cellSize}, padding=${padding}`);
+  // ── Effects ────────────────────────────────────────────────────────────────
 
-    set(prev => ({
-      ...prev,
-      sourceGridSettings: {
-        ...prev.sourceGridSettings,
-        clearColor: detectedClearColor,
-        cellSize,
-        cellY: cellSize,
-        padding,
-        keepSquare: true
-      }
+  useEffect(() => {
+    localStorage.setItem(FORGE_CONFIG_KEY, JSON.stringify({
+      gridSettings: state.gridSettings,
+      sourceGridSettings: state.sourceGridSettings,
+      adjustSettings: state.adjustSettings,
     }));
-  };
+  }, [state.gridSettings, state.sourceGridSettings, state.adjustSettings]);
 
-  const packAtlas = () => {
-    let currentX = 0, currentY = 0, rowHeight = 0;
-    const padding = 2;
-    const maxWidth = canvasWidth;
-    const sorted = [...state.mainTiles].sort((a, b) => (b.height * b.scale) - (a.height * a.scale));
-    const packed = sorted.map((tile) => {
-      const scaledWidth = tile.width * tile.scale;
-      const scaledHeight = tile.height * tile.scale;
-      if (currentX + scaledWidth > maxWidth) {
-        currentX = 0; currentY += rowHeight + padding; rowHeight = 0;
-      }
-      const updatedTile = { ...tile, x: currentX, y: currentY };
-      rowHeight = Math.max(rowHeight, scaledHeight);
-      currentX += scaledWidth + padding;
-      return updatedTile;
-    });
-    set((prev) => ({ ...prev, mainTiles: packed }));
-  };
+  useEffect(() => {
+    localStorage.setItem('forge_mode', mode);
+  }, [mode]);
 
-  const fixGrid = async () => {
-    if (state.mainTiles.length === 0) return;
-    
-    // 1. Render current state to a buffer for analysis
-    const canvas = document.createElement('canvas');
-    canvas.width = canvasWidth; canvas.height = canvasHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    // Fill with sampled background (top-left of first tile or black)
-    ctx.fillStyle = state.gridSettings.clearColor;
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    
-    for (const tile of state.mainTiles) {
-      const img = new Image();
-      await new Promise(r => { img.onload = r; img.src = tile.url; });
-      ctx.save();
-      ctx.translate(tile.x, tile.y);
-      ctx.scale(tile.scale, tile.scale);
-      ctx.filter = `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`;
-      ctx.drawImage(img, 0, 0);
-      ctx.restore();
-    }
-
-    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-    const data = imageData.data;
-    const visited = new Uint8Array(canvasWidth * canvasHeight);
-    
-    // Sample BG from top-left pixel
-    const bgR = data[0], bgG = data[1], bgB = data[2];
-    const tolerance = 15;
-
-    const isNotBg = (x: number, y: number) => {
-      const idx = (y * canvasWidth + x) * 4;
-      if (data[idx + 3] < 5) return false;
-      return Math.abs(data[idx] - bgR) >= tolerance || 
-             Math.abs(data[idx+1] - bgG) >= tolerance || 
-             Math.abs(data[idx+2] - bgB) >= tolerance;
+  useEffect(() => {
+    if (!isResizing) return;
+    const handleMove = (e: PointerEvent) => {
+      if (!splitPaneRef.current) return;
+      const rect = splitPaneRef.current.getBoundingClientRect();
+      setSplitRatio(Math.min(Math.max(0.1, (e.clientX - rect.left) / rect.width), 0.9));
     };
-
-    const islands: {x: number, y: number, w: number, h: number}[] = [];
-    const scanStep = 4;
-
-    // 2. Optimized Island Detection (Same as standalone)
-    for (let sy = 0; sy < canvasHeight; sy += scanStep) {
-      for (let sx = 0; sx < canvasWidth; sx += scanStep) {
-        const sidx = sy * canvasWidth + sx;
-        if (visited[sidx] || !isNotBg(sx, sy)) continue;
-
-        let x1 = sx, y1 = sy, x2 = sx, y2 = sy;
-        const queue: [number, number][] = [[sx, sy]];
-        visited[sidx] = 1;
-        let head = 0;
-
-        while (head < queue.length) {
-          const [cx, cy] = queue[head++];
-          x1 = Math.min(x1, cx); y1 = Math.min(y1, cy);
-          x2 = Math.max(x2, cx); y2 = Math.max(y2, cy);
-
-          // 4px Bridge
-          for (let dy = -4; dy <= 4; dy++) {
-            for (let dx = -4; dx <= 4; dx++) {
-              const nx = cx + dx, ny = cy + dy;
-              if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
-                const nidx = ny * canvasWidth + nx;
-                if (!visited[nidx] && isNotBg(nx, ny)) {
-                  visited[nidx] = 1;
-                  queue.push([nx, ny]);
-                }
-              }
-            }
-          }
-        }
-        if (x2 - x1 >= 4 && y2 - y1 >= 4) {
-          islands.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 });
-        }
-      }
-    }
-
-    // 3. Re-align to Grid
-    const geo = mainAtlas.geo;
-    const newTiles = islands.map((isl, i) => {
-      const cx = isl.x + isl.w / 2;
-      const cy = isl.y + isl.h / 2;
-      
-      const stepX = geo.cellW + geo.padding * 2;
-      const stepY = geo.cellH + geo.padding * 2;
-      
-      const col = Math.round((cx - geo.padding - geo.cellW / 2) / stepX);
-      const row = Math.round((cy - geo.padding - geo.cellH / 2) / stepY);
-      
-      const tx = geo.padding + col * stepX;
-      const ty = geo.padding + row * stepY;
-
-      const islCanvas = document.createElement('canvas');
-      islCanvas.width = geo.cellW; 
-      islCanvas.height = geo.cellH;
-      const islCtx = islCanvas.getContext('2d');
-      // Draw stretched to match target cell size
-      islCtx?.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, geo.cellW, geo.cellH);
-
-      return {
-        id: `fixed-${i}-${Date.now()}`,
-        name: `Island_${i}`,
-        url: islCanvas.toDataURL(),
-        x: tx, y: ty,
-        width: geo.cellW, height: geo.cellH,
-        scale: 1, hue: 0, brightness: 100
-      };
-    });
-
-    set(prev => ({ ...prev, mainTiles: newTiles }));
-  };
-
-  const packElements = async () => {
-    if (state.mainTiles.length === 0) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = canvasWidth; canvas.height = canvasHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.fillStyle = state.gridSettings.clearColor;
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    for (const tile of state.mainTiles) {
-      const img = new Image();
-      await new Promise((resolve) => { img.onload = resolve; img.src = tile.url; });
-      ctx.save(); ctx.translate(tile.x, tile.y); ctx.scale(tile.scale, tile.scale);
-      ctx.filter = `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`;
-      ctx.drawImage(img, 0, 0); ctx.restore();
-    }
-    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-    const data = imageData.data;
-    const visited = new Uint8Array(canvasWidth * canvasHeight);
-    const clearRGB = hexToRgb(state.gridSettings.clearColor);
-    const isClear = (idx: number) => {
-      const r = data[idx * 4]; const g = data[idx * 4 + 1]; const b = data[idx * 4 + 2]; const a = data[idx * 4 + 3];
-      if (a === 0) return true;
-      return r === clearRGB.r && g === clearRGB.g && b === clearRGB.b;
+    const handleUp = () => setIsResizing(false);
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
     };
-    const boxes: { x: number, y: number, w: number, h: number, url: string }[] = [];
-    for (let y = 0; y < canvasHeight; y += 4) {
-      for (let x = 0; x < canvasWidth; x += 4) {
-        const idx = y * canvasWidth + x;
-        if (!visited[idx] && !isClear(idx)) {
-          let minX = x, maxX = x, minY = y, maxY = y;
-          const stack = [[x, y]]; visited[idx] = 1;
-          while (stack.length > 0) {
-            const [currX, currY] = stack.pop()!;
-            if (currX < minX) minX = currX; if (currX > maxX) maxX = currX;
-            if (currY < minY) minY = currY; if (currY > maxY) maxY = currY;
-            const neighbors = [[currX+4, currY], [currX-4, currY], [currX, currY+4], [currX, currY-4]];
-            for (const [nx, ny] of neighbors) {
-              if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
-                const nidx = ny * canvasWidth + nx;
-                if (!visited[nidx] && !isClear(nidx)) { visited[nidx] = 1; stack.push([nx, ny]); }
-              }
-            }
-          }
-          const w = maxX - minX + 4; const h = maxY - minY + 4;
-          const blobCanvas = document.createElement('canvas');
-          blobCanvas.width = w; blobCanvas.height = h;
-          const blobCtx = blobCanvas.getContext('2d');
-          if (blobCtx) {
-            blobCtx.drawImage(canvas, minX, minY, w, h, 0, 0, w, h);
-            boxes.push({ x: minX, y: minY, w, h, url: blobCanvas.toDataURL() });
-          }
-        }
-      }
-    }
-    if (boxes.length === 0) return;
-    const padding = state.gridSettings.padding || 2;
-    const packItems = boxes.map((b, i) => ({ w: b.w + padding * 2, h: b.h + padding * 2, i }));
-    if (state.gridSettings.packingAlgo === 'potpack') {
-      potpack(packItems as any);
-    } else {
-      let currentX = 0, currentY = 0, maxHeight = 0;
-      for (const item of packItems) {
-        if (currentX + item.w > canvasWidth) { currentX = 0; currentY += maxHeight; maxHeight = 0; }
-        (item as any).x = currentX; (item as any).y = currentY;
-        currentX += item.w; if (item.h > maxHeight) maxHeight = item.h;
-      }
-    }
-    const newTiles: TextureTile[] = packItems.map(item => {
-      const b = boxes[item.i];
-      return {
-        id: Math.random().toString(36).substring(2, 9),
-        url: b.url, name: `Packed_${item.i}`, width: b.w, height: b.h,
-        x: (item as any).x + padding, y: (item as any).y + padding,
-        hue: 0, brightness: 100, scale: 1, isCrop: true
-      };
-    });
-    set(prev => ({ ...prev, mainTiles: newTiles }));
-  };
-
-  const createNewAtlas = (width: number, height?: number) => {
-    let finalW = width;
-    let finalH = height ?? width;
-
-    if (width === 0) {
-      const inputW = prompt("Enter atlas width (e.g. 1024, 2048):", "2048");
-      if (!inputW) return;
-      finalW = parseInt(inputW);
-      if (isNaN(finalW) || finalW <= 0) return;
-
-      const inputH = prompt("Enter atlas height (leave blank for square):", inputW);
-      finalH = inputH ? parseInt(inputH) : finalW;
-      if (isNaN(finalH) || finalH <= 0) finalH = finalW;
-    }
-
-    set(prev => ({ 
-      ...prev, 
-      canvasWidth: finalW,
-      canvasHeight: finalH,
-      canvasSize: Math.max(finalW, finalH),
-      mainTiles: [],
-      atlasSwapMode: false
-    }));
-    setSelectedTileId(null);
-    setSelectedCells([]);
-  };
-
-  const exportAtlas = async () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = canvasWidth; canvas.height = canvasHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.fillStyle = state.gridSettings.clearColor;
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    for (const tile of state.mainTiles) {
-      const img = new Image();
-      img.src = tile.url;
-      await new Promise(resolve => { img.onload = resolve; });
-      ctx.save(); ctx.translate(tile.x, tile.y);
-      ctx.filter = `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`;
-      ctx.drawImage(img, 0, 0, tile.width * tile.scale, tile.height * tile.scale);
-      ctx.restore();
-    }
-    const link = document.createElement('a');
-    link.href = canvas.toDataURL('image/png');
-    link.download = 'atlas.png';
-    link.click();
-  };
-
-  // Helper to get tile in cell
-  const getTileAtCell = (key: string) => {
-    const [cx, cy] = key.split(',').map(Number);
-    return state.mainTiles.find(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
-  };
-
-  // Derived Selection
-  const selectedTile = selectedCells.length > 0 ? getTileAtCell(selectedCells[0]) : 
-                       (selectedTileId ? (state.modifiedTiles.find(t => t.id === selectedTileId) || state.secondaryTiles.find(t => t.id === selectedTileId)) : null);
-
-  const activeTiles = [
-    ...state.modifiedTiles,
-    ...state.mainTiles.filter(t => !t.isCrop),
-    ...state.layeringLayers.map(l => l.tile),
-    ...[state.packerMapping.r.tile, state.packerMapping.g.tile, state.packerMapping.b.tile, state.packerMapping.a.tile].filter((t): t is TextureTile => t !== null),
-    ...[state.pbrSet.baseColor.tile, state.pbrSet.normal.tile, state.pbrSet.orm.tile].filter((t): t is TextureTile => t !== null),
-  ].filter((v, i, a) => a.findIndex(t => t.url === v.url && t.hue === v.hue && t.brightness === v.brightness && t.scale === v.scale) === i);
-
-  const updateTile = (id: string, updates: Partial<TextureTile>) => {
-    set((prev) => {
-      const isMain = prev.mainTiles.some(t => t.id === id);
-      const isModified = prev.modifiedTiles.some(t => t.id === id);
-      const isSecondary = prev.secondaryTiles.some(t => t.id === id);
-      if (isMain) return { ...prev, mainTiles: prev.mainTiles.map(t => t.id === id ? { ...t, ...updates } : t) };
-      if (isModified) return { ...prev, modifiedTiles: prev.modifiedTiles.map(t => t.id === id ? { ...t, ...updates } : t) };
-      if (isSecondary) {
-        const tile = prev.secondaryTiles.find(t => t.id === id)!;
-        const modified = { ...tile, ...updates, id: Math.random().toString(36).substring(2, 9) };
-        setSelectedTileId(modified.id);
-        return { ...prev, modifiedTiles: [...prev.modifiedTiles, modified] };
-      }
-      return prev;
-    });
-  };
+  }, [isResizing]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1123,6 +290,8 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-200 overflow-hidden">
@@ -1135,16 +304,19 @@ export default function App() {
             <h1 className="font-semibold text-lg tracking-tight">TextureForge</h1>
           </div>
           <div className="flex items-center bg-zinc-950 rounded-lg p-1 border border-zinc-800">
-            {[
+            {([
               { id: 'atlas', icon: LayoutTemplate, label: 'Atlas' },
               { id: 'adjust', icon: SlidersHorizontal, label: 'Adjust' },
               { id: 'channel-pack', icon: Palette, label: 'Channel Pack' },
               { id: 'layering', icon: Layers, label: 'Layering' },
-            ].map((m) => (
+            ] as const).map((m) => (
               <button
                 key={m.id}
                 onClick={() => setMode(m.id as AppMode)}
-                className={cn("px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-colors", mode === m.id ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-200")}
+                className={cn(
+                  'px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-colors',
+                  mode === m.id ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                )}
               >
                 <m.icon className="w-4 h-4" />
                 {m.label}
@@ -1181,7 +353,6 @@ export default function App() {
               onFixGrid={fixGrid}
               onAutoDetect={handleAutoDetectMainGrid}
               onExport={exportAtlas}
-              onRunScript={() => {}}
               gridSettings={state.gridSettings}
               onGridSettingsChange={(gs) => set(prev => ({ ...prev, gridSettings: gs }))}
               atlasSwapMode={state.atlasSwapMode}
@@ -1193,8 +364,8 @@ export default function App() {
                   <MainAtlas
                     tiles={state.mainTiles}
                     setTiles={(tiles) => {
-                      if (typeof tiles === 'function') set(prev => ({ ...prev, mainTiles: (tiles as any)(prev.mainTiles) }));
-                      else set(prev => ({ ...prev, mainTiles: tiles }));
+                      const next = typeof tiles === 'function' ? (tiles as any)(state.mainTiles) : tiles;
+                      set(prev => ({ ...prev, mainTiles: next }));
                     }}
                     onRemoveTile={(tile) => set(prev => ({ ...prev, mainTiles: prev.mainTiles.filter(t => t.id !== tile.id) }))}
                     onDrop={handleMainAtlasDrop}
@@ -1210,13 +381,12 @@ export default function App() {
                     onMaterialize={handleMaterialize}
                   />
                 ) : (
-                  <div 
+                  <div
                     className="flex-1 flex flex-col items-center justify-center bg-zinc-950 border-r border-zinc-800"
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
-                      const tileId = e.dataTransfer.getData('text/plain');
-                      const tile = state.secondaryTiles.find(t => t.id === tileId);
+                      const tile = state.secondaryTiles.find(t => t.id === e.dataTransfer.getData('text/plain'));
                       if (tile) handleAssetClick(tile);
                     }}
                   >
@@ -1232,14 +402,14 @@ export default function App() {
                       </div>
                       <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
                         {[1024, 2048, 4096, 0].map(size => (
-                          <button 
+                          <button
                             key={size}
                             onClick={() => createNewAtlas(size)}
                             className={cn(
-                              "flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all border",
-                              size === 0 
-                                ? "bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800" 
-                                : "bg-blue-600 border-blue-500 text-white hover:bg-blue-500 shadow-lg shadow-blue-900/20"
+                              'flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all border',
+                              size === 0
+                                ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800'
+                                : 'bg-blue-600 border-blue-500 text-white hover:bg-blue-500 shadow-lg shadow-blue-900/20'
                             )}
                           >
                             {size === 0 ? <Plus className="w-4 h-4" /> : null}
@@ -1254,19 +424,16 @@ export default function App() {
 
               {canvasWidth > 0 && (
                 <>
-                  <div 
-                    className={cn(
-                      "w-1 bg-zinc-800 hover:bg-blue-500 cursor-col-resize transition-colors z-50",
-                      isResizing && "bg-blue-600 w-1.5"
-                    )}
-                    onPointerDown={handleResizeStart}
+                  <div
+                    className={cn('w-1 bg-zinc-800 hover:bg-blue-500 cursor-col-resize transition-colors z-50', isResizing && 'bg-blue-600 w-1.5')}
+                    onPointerDown={(e) => { setIsResizing(true); e.preventDefault(); }}
                   />
                   <div style={{ flex: 1 - splitRatio }} className="flex overflow-hidden">
                     <SourceAtlas
                       onAddTile={(tile) => handleMainAtlasDrop(tile, 0, 0)}
                       gridSettings={state.sourceGridSettings}
                       onGridSettingsChange={(gs) => set(prev => ({ ...prev, sourceGridSettings: gs }))}
-                      onAutoDetectGrid={handleAutoDetectSourceGrid} 
+                      onAutoDetectGrid={handleAutoDetectSourceGrid}
                       availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]}
                       onSourceCellClick={handleSourceCellClick}
                       onSourceCellRightClick={handleSourceCellRightClick}
@@ -1282,31 +449,52 @@ export default function App() {
         )}
 
         {mode === 'adjust' && (
-          <div className="flex-1 flex overflow-hidden" onDragOver={(e) => e.preventDefault()} onDrop={handleAdjustDrop}>
-            <AdjustMode selectedTile={selectedTile} updateTile={updateTile} onExport={(url, name) => {}} adjustSettings={state.adjustSettings} onAdjustSettingsChange={(as) => set(prev => ({ ...prev, adjustSettings: as }))} />
+          <div
+            className="flex-1 flex overflow-hidden"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const tile = [...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]
+                .find(t => t.id === e.dataTransfer.getData('text/plain'));
+              if (tile) handleAssetClick(tile);
+            }}
+          >
+            <AdjustMode
+              selectedTile={selectedTile}
+              updateTile={updateTile}
+              onExport={() => {}}
+              adjustSettings={state.adjustSettings}
+              onAdjustSettingsChange={(as) => set(prev => ({ ...prev, adjustSettings: as }))}
+            />
           </div>
         )}
 
         {mode === 'channel-pack' && (
-          <ChannelPackerMode 
-            availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]} 
-            mapping={state.packerMapping} setMapping={(m) => set(prev => ({ ...prev, packerMapping: m }))}
-            pbrSet={state.pbrSet} setPbrSet={(p) => set(prev => ({ ...prev, pbrSet: p }))}
-            onExport={(url, name) => {}}
+          <ChannelPackerMode
+            availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]}
+            mapping={state.packerMapping}
+            setMapping={(m) => set(prev => ({ ...prev, packerMapping: m }))}
+            pbrSet={state.pbrSet}
+            setPbrSet={(p) => set(prev => ({ ...prev, pbrSet: p }))}
+            onExport={() => {}}
           />
         )}
 
         {mode === 'layering' && (
-          <LayeringMode 
-            availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]} 
-            layers={state.layeringLayers} setLayers={(l) => set(prev => ({ ...prev, layeringLayers: l }))}
-            onExport={(url, name) => {}}
+          <LayeringMode
+            availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]}
+            layers={state.layeringLayers}
+            setLayers={(l) => set(prev => ({ ...prev, layeringLayers: l }))}
+            onExport={() => {}}
           />
         )}
-        
+
         <SecondaryAtlas
-          tiles={state.secondaryTiles} activeTiles={activeTiles}
-          onTileClick={handleAssetClick} onFilesDrop={addFilesToLibrary} onClear={handleClearLibrary}
+          tiles={state.secondaryTiles}
+          activeTiles={activeTiles}
+          onTileClick={handleAssetClick}
+          onFilesDrop={addFilesToLibrary}
+          onClear={handleClearLibrary}
         />
       </div>
     </div>

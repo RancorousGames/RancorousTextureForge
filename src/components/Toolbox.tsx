@@ -11,7 +11,6 @@ interface ToolboxProps {
   onFixGrid: () => void;
   onAutoDetect: () => void;
   onExport: () => void;
-  onRunScript: () => void;
   gridSettings: GridSettings;
   onGridSettingsChange: (settings: GridSettings) => void;
   atlasSwapMode: boolean;
@@ -27,7 +26,6 @@ export function Toolbox({
   onFixGrid,
   onAutoDetect,
   onExport,
-  onRunScript,
   gridSettings,
   onGridSettingsChange,
   atlasSwapMode,

@@ -43,17 +43,41 @@ export function useAtlasOps(
     const { data } = imageData;
     const visited = new Uint8Array(canvasWidth * canvasHeight);
 
-    // Use the configured clear color — sampling pixel (0,0) fails when a sprite occupies that corner
     const { r: bgR, g: bgG, b: bgB } = hexToRgb(state.gridSettings.clearColor);
     const tolerance = state.gridSettings.clearTolerance ?? 15;
 
-    const isNotBg = (x: number, y: number) => {
+    const isClearColored = (x: number, y: number) => {
       const idx = (y * canvasWidth + x) * 4;
-      if (data[idx + 3] < 5) return false;
-      return Math.abs(data[idx] - bgR) >= tolerance ||
-             Math.abs(data[idx + 1] - bgG) >= tolerance ||
-             Math.abs(data[idx + 2] - bgB) >= tolerance;
+      if (data[idx + 3] < 5) return true;
+      return Math.abs(data[idx] - bgR) <= tolerance &&
+             Math.abs(data[idx + 1] - bgG) <= tolerance &&
+             Math.abs(data[idx + 2] - bgB) <= tolerance;
     };
+
+    // Flood-fill from every border pixel to find reachable background.
+    // Clear-colored pixels enclosed inside a sprite won't be reachable and
+    // will be treated as sprite content, preventing false island splits.
+    const reachable = new Uint8Array(canvasWidth * canvasHeight);
+    const bgQueue: [number, number][] = [];
+    const seedBorder = (x: number, y: number) => {
+      const idx = y * canvasWidth + x;
+      if (!reachable[idx] && isClearColored(x, y)) { reachable[idx] = 1; bgQueue.push([x, y]); }
+    };
+    for (let x = 0; x < canvasWidth; x++) { seedBorder(x, 0); seedBorder(x, canvasHeight - 1); }
+    for (let y = 1; y < canvasHeight - 1; y++) { seedBorder(0, y); seedBorder(canvasWidth - 1, y); }
+    let bgHead = 0;
+    while (bgHead < bgQueue.length) {
+      const [cx, cy] = bgQueue[bgHead++];
+      for (const [nx, ny] of [[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]] as [number,number][]) {
+        if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
+          const nidx = ny * canvasWidth + nx;
+          if (!reachable[nidx] && isClearColored(nx, ny)) { reachable[nidx] = 1; bgQueue.push([nx, ny]); }
+        }
+      }
+    }
+
+    // A pixel is not background if it was never reached from the border
+    const isNotBg = (x: number, y: number) => reachable[y * canvasWidth + x] === 0;
 
     const islands: { x: number; y: number; w: number; h: number }[] = [];
     const scanStep = 4;
@@ -87,8 +111,24 @@ export function useAtlasOps(
       }
     }
 
+    // Filter out islands that are entirely contained within other islands
+    const filteredIslands = islands
+      .sort((a, b) => (b.w * b.h) - (a.w * a.h))
+      .filter((inner, idx, arr) => {
+        for (let i = 0; i < idx; i++) {
+          const outer = arr[i];
+          const isContained = 
+            inner.x >= outer.x && 
+            inner.y >= outer.y && 
+            (inner.x + inner.w) <= (outer.x + outer.w) && 
+            (inner.y + inner.h) <= (outer.y + outer.h);
+          if (isContained) return false;
+        }
+        return true;
+      });
+
     const geo = mainAtlasGeo;
-    const newTiles: TextureTile[] = islands.map((isl, i) => {
+    const newTiles: TextureTile[] = filteredIslands.map((isl, i) => {
       const stepX = geo.cellW + geo.padding * 2;
       const stepY = geo.cellH + geo.padding * 2;
       const col = Math.round((isl.x + isl.w / 2 - geo.padding - geo.cellW / 2) / stepX);

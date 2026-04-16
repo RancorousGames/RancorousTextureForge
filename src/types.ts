@@ -65,6 +65,8 @@ export interface AdjustSettings {
   targetH: number | 'source';
 }
 
+export type AtlasStatus = 'parametric' | 'modified' | 'baked';
+
 export interface AppState {
   mainTiles: TextureTile[];
   secondaryTiles: TextureTile[];
@@ -75,6 +77,7 @@ export interface AppState {
   pbrSet: PBRSet;
   layeringLayers: Layer[];
   atlasSwapMode: boolean;
+  atlasStatus: AtlasStatus;
   canvasWidth: number;
   canvasHeight: number;
   adjustSettings: AdjustSettings;

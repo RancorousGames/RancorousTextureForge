@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { AppState, TextureTile } from '../types';
-import { Command, AddTilesCommand, SetMainTilesCommand, PatchCommand } from '../lib/Commands';
+import { Command, AddTilesCommand, SetMainTilesCommand, PatchCommand, MaterializeCommand } from '../lib/Commands';
 import { GridGeometry } from '../lib/GridGeometry';
 import { tileRegistry } from '../lib/TileRegistry';
 import { hexToRgb } from '../lib/utils';
@@ -148,21 +148,15 @@ export function useGridSlice(
 
     if (reason === 'clear') {
       executeCommand(new PatchCommand(
-        { clearedCells: [...state.clearedCells, key] },
-        { clearedCells: state.clearedCells.filter(k => k !== key) }
+        { clearedCells: [...state.clearedCells, key], atlasStatus: 'modified' },
+        { clearedCells: state.clearedCells.filter(k => k !== key), atlasStatus: state.atlasStatus }
       ));
     } else {
-      executeCommand([
-        new AddTilesCommand([newTile], []),
-        new PatchCommand(
-          { clearedCells: [...state.clearedCells, key] },
-          { clearedCells: state.clearedCells.filter(k => k !== key) }
-        ),
-      ]);
+      executeCommand(new MaterializeCommand(newTile, key, state.atlasStatus));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.secondaryTiles, state.modifiedTiles, state.lastSourceTileId, state.gridSettings,
-      state.clearedCells, canvasWidth, canvasHeight, executeCommand]);
+      state.clearedCells, state.atlasStatus, canvasWidth, canvasHeight, executeCommand]);
 
   const handleSourceCellClick = useCallback(async (
     _x: number, _y: number, _w: number, _h: number,

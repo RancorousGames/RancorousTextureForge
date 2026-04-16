@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { TextureTile, GridSettings } from '../types';
+import { TextureTile, GridSettings, AtlasStatus } from '../types';
 import { cn, hexToRgb } from '../lib/utils';
 import { GridGeometry } from '../lib/GridGeometry';
 import { InteractionState, DefaultInteractionStrategy } from '../lib/Interactions';
@@ -25,6 +25,7 @@ interface AtlasCanvasProps {
   tooltip?: string;
   sourceTile?: TextureTile | null;
   clearedCells?: string[];
+  atlasStatus?: AtlasStatus;
 }
 
 export function AtlasCanvas({
@@ -48,6 +49,7 @@ export function AtlasCanvas({
   tooltip,
   sourceTile,
   clearedCells = [],
+  atlasStatus = 'parametric',
 }: AtlasCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -195,7 +197,7 @@ export function AtlasCanvas({
         <div className="absolute inset-0 pointer-events-none z-0" style={{ backgroundColor: gridSettings.clearColor }} />
         
         {/* Background Source Image with Holes */}
-        {sourceTile && (
+        {sourceTile && atlasStatus !== 'baked' && (
           <div className="absolute inset-0 pointer-events-none z-[1]">
             <svg width={canvasWidth} height={canvasHeight} className="absolute inset-0 w-full h-full">
               <defs>

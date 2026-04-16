@@ -70,8 +70,8 @@ export function useAtlasOps(
       };
     });
 
-    executeCommand(new SetMainTilesCommand(state.mainTiles, newTiles));
-  }, [state.mainTiles, state.gridSettings.clearColor, state.gridSettings.clearTolerance, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand]);
+    executeCommand(new SetMainTilesCommand(state.mainTiles, newTiles, state.atlasStatus, 'baked'));
+  }, [state.mainTiles, state.gridSettings.clearColor, state.gridSettings.clearTolerance, state.atlasStatus, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand]);
 
   const packElements = useCallback(async () => {
     if (state.mainTiles.length === 0) return;
@@ -153,8 +153,8 @@ export function useAtlasOps(
       };
     });
 
-    executeCommand(new SetMainTilesCommand(state.mainTiles, nextTiles));
-  }, [state.mainTiles, state.gridSettings, canvasWidth, canvasHeight, executeCommand]);
+    executeCommand(new SetMainTilesCommand(state.mainTiles, nextTiles, state.atlasStatus, 'baked'));
+  }, [state.mainTiles, state.gridSettings, state.atlasStatus, canvasWidth, canvasHeight, executeCommand]);
 
   const exportAtlas = useCallback(async () => {
     const canvas = await renderTilesToCanvas(
@@ -183,6 +183,8 @@ export function useAtlasOps(
       ...prev,
       canvasWidth: finalW, canvasHeight: finalH,
       mainTiles: [], atlasSwapMode: false,
+      atlasStatus: 'parametric',
+      clearedCells: [],
     }));
     onAfterNewAtlas?.();
   }, [set, onAfterNewAtlas]);

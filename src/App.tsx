@@ -62,6 +62,7 @@ const getInitialState = (): AppState => {
     pbrSet: initialPBRSet,
     layeringLayers: [],
     atlasSwapMode: false,
+    atlasStatus: 'parametric',
     canvasWidth: 0,
     canvasHeight: 0,
     adjustSettings: { targetW: 'source', targetH: 'source' },
@@ -291,18 +292,30 @@ export default function App() {
     const isGridMode = currentGridMode === 'perfect' || currentGridMode === 'fixed';
     const wasGridMode = prevGridMode === 'perfect' || prevGridMode === 'fixed';
     
+    // Guard: entering packing mode while dirty
+    if (currentGridMode === 'packing' && wasGridMode && state.atlasStatus === 'modified') {
+      if (!confirm('Switching to packing mode will "freeze" your manual moves. Continue?')) {
+         // Revert the setting change - this is slightly messy without a controlled component but works for this architecture
+         set(prev => ({ ...prev, gridSettings: { ...prev.gridSettings, mode: prevGridMode } }));
+         prevGridModeRef.current = prevGridMode;
+         return;
+      }
+    }
+
     // Only trigger if we are moving between "Slicing" and "Non-Slicing" states
     if (isGridMode && !wasGridMode) {
+      set(prev => ({ ...prev, atlasStatus: 'parametric' }));
       performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true);
     } else if (currentGridMode === 'packing' && wasGridMode) {
       // Revert to full image if switching to packing mode from a grid mode
       set(prev => ({
         ...prev,
         mainTiles: [{ ...sourceTile, id: generateId(), x: 0, y: 0, isCrop: false }],
-        clearedCells: []
+        clearedCells: [],
+        atlasStatus: 'parametric'
       }));
     }
-  }, [state.gridSettings.mode, mode, state.lastSourceTileId, state.secondaryTiles, state.modifiedTiles, state.canvasWidth, state.canvasHeight, performGridSlice, set]);
+  }, [state.gridSettings.mode, mode, state.lastSourceTileId, state.secondaryTiles, state.modifiedTiles, state.canvasWidth, state.canvasHeight, state.atlasStatus, performGridSlice, set]);
 
   useEffect(() => {
     if (!isResizing) return;
@@ -392,7 +405,19 @@ export default function App() {
               onAutoDetect={handleAutoDetectMainGrid}
               onExport={exportAtlas}
               gridSettings={state.gridSettings}
-              onGridSettingsChange={(gs) => set(prev => ({ ...prev, gridSettings: gs }))}
+              onGridSettingsChange={(gs) => {
+                const needsPrompt = state.atlasStatus === 'modified' || state.atlasStatus === 'baked';
+                if (needsPrompt && !confirm('Changing grid settings will reset your manual arrangements. Continue?')) return;
+                
+                // If we have a source tile, re-slice. Otherwise just update settings.
+                const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
+                if (sourceTile) {
+                   set(prev => ({ ...prev, gridSettings: gs, mainTiles: [], clearedCells: [], atlasStatus: 'parametric' }));
+                   setTimeout(() => performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true), 50);
+                } else {
+                   set(prev => ({ ...prev, gridSettings: gs }));
+                }
+              }}
               atlasSwapMode={state.atlasSwapMode}
               setAtlasSwapMode={(val) => set(prev => ({ ...prev, atlasSwapMode: val }))}
             />
@@ -416,6 +441,7 @@ export default function App() {
                     tooltip="L-Click: Select | R-Drag: Move | R-Click: Clear | Ctrl+Z/Y: Undo/Redo"
                     sourceTile={[...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId)}
                     clearedCells={state.clearedCells}
+                    atlasStatus={state.atlasStatus}
                     onMaterialize={handleMaterialize}
                   />
                 ) : (

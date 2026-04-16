@@ -1,4 +1,4 @@
-import { AppState, TextureTile } from '../types';
+import { AppState, TextureTile, AtlasStatus } from '../types';
 
 export interface Command {
   execute(state: AppState): AppState;
@@ -82,13 +82,58 @@ export class RemoveTilesCommand implements Command {
 }
 
 export class SetMainTilesCommand implements Command {
-  constructor(private oldTiles: TextureTile[], private newTiles: TextureTile[]) {}
+  constructor(
+    private oldTiles: TextureTile[],
+    private newTiles: TextureTile[],
+    private oldStatus?: AtlasStatus,
+    private newStatus?: AtlasStatus
+  ) {}
 
   execute(state: AppState): AppState {
-    return { ...state, mainTiles: this.newTiles };
+    return { 
+      ...state, 
+      mainTiles: this.newTiles,
+      atlasStatus: this.newStatus ?? state.atlasStatus
+    };
   }
 
   undo(state: AppState): AppState {
-    return { ...state, mainTiles: this.oldTiles };
+    return { 
+      ...state, 
+      mainTiles: this.oldTiles,
+      atlasStatus: this.oldStatus ?? state.atlasStatus
+    };
+  }
+}
+
+export class UpdateStatusCommand implements Command {
+  constructor(private oldStatus: AtlasStatus, private newStatus: AtlasStatus) {}
+  execute(state: AppState): AppState { return { ...state, atlasStatus: this.newStatus }; }
+  undo(state: AppState): AppState { return { ...state, atlasStatus: this.oldStatus }; }
+}
+
+export class MaterializeCommand implements Command {
+  constructor(
+    private newTile: TextureTile,
+    private cellKey: string,
+    private oldStatus: AtlasStatus
+  ) {}
+
+  execute(state: AppState): AppState {
+    return {
+      ...state,
+      mainTiles: [...state.mainTiles, this.newTile],
+      clearedCells: [...state.clearedCells, this.cellKey],
+      atlasStatus: 'modified'
+    };
+  }
+
+  undo(state: AppState): AppState {
+    return {
+      ...state,
+      mainTiles: state.mainTiles.filter(t => t.id !== this.newTile.id),
+      clearedCells: state.clearedCells.filter(k => k !== this.cellKey),
+      atlasStatus: this.oldStatus
+    };
   }
 }

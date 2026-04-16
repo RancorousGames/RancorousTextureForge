@@ -1,5 +1,5 @@
 import React from 'react';
-import { TextureTile, GridSettings } from '../types';
+import { TextureTile, GridSettings, AtlasStatus } from '../types';
 import { AtlasCanvas } from './AtlasCanvas';
 interface MainAtlasProps {
   tiles: TextureTile[];
@@ -16,6 +16,7 @@ interface MainAtlasProps {
   tooltip?: string;
   sourceTile?: TextureTile | null;
   clearedCells?: string[];
+  atlasStatus: AtlasStatus;
   onMaterialize?: (cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number }) => void;
 }
 
@@ -34,6 +35,7 @@ export function MainAtlas({
   tooltip,
   sourceTile,
   clearedCells,
+  atlasStatus,
   onMaterialize
 }: MainAtlasProps) {
   return (
@@ -53,6 +55,7 @@ export function MainAtlas({
       tooltip={tooltip}
       sourceTile={sourceTile}
       clearedCells={clearedCells}
+      atlasStatus={atlasStatus}
       onMaterialize={onMaterialize}
     />
   );

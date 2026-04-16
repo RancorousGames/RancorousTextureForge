@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { AppState, TextureTile } from '../types';
 import { GridGeometry } from '../lib/GridGeometry';
-import { hexToRgb } from '../lib/utils';
+import { hexToRgb, findIslands } from '../lib/utils';
 import { renderTilesToCanvas, generateId } from '../lib/canvas';
 import { Command, SetMainTilesCommand } from '../lib/Commands';
 import potpack from 'potpack';
@@ -40,100 +40,13 @@ export function useAtlasOps(
     );
     const ctx = canvas.getContext('2d')!;
     const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-    const { data } = imageData;
-    const visited = new Uint8Array(canvasWidth * canvasHeight);
-
-    const { r: bgR, g: bgG, b: bgB } = hexToRgb(state.gridSettings.clearColor);
-    const tolerance = state.gridSettings.clearTolerance ?? 15;
-
-    const isClearColored = (x: number, y: number) => {
-      const idx = (y * canvasWidth + x) * 4;
-      if (data[idx + 3] < 5) return true;
-      return Math.abs(data[idx] - bgR) <= tolerance &&
-             Math.abs(data[idx + 1] - bgG) <= tolerance &&
-             Math.abs(data[idx + 2] - bgB) <= tolerance;
-    };
-
-    // Flood-fill from every border pixel to find reachable background.
-    // Clear-colored pixels enclosed inside a sprite won't be reachable and
-    // will be treated as sprite content, preventing false island splits.
-    const reachable = new Uint8Array(canvasWidth * canvasHeight);
-    const bgQueue: [number, number][] = [];
-    const seedBorder = (x: number, y: number) => {
-      const idx = y * canvasWidth + x;
-      if (!reachable[idx] && isClearColored(x, y)) { reachable[idx] = 1; bgQueue.push([x, y]); }
-    };
-    for (let x = 0; x < canvasWidth; x++) { seedBorder(x, 0); seedBorder(x, canvasHeight - 1); }
-    for (let y = 1; y < canvasHeight - 1; y++) { seedBorder(0, y); seedBorder(canvasWidth - 1, y); }
-    let bgHead = 0;
-    while (bgHead < bgQueue.length) {
-      const [cx, cy] = bgQueue[bgHead++];
-      for (const [nx, ny] of [[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]] as [number,number][]) {
-        if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
-          const nidx = ny * canvasWidth + nx;
-          if (!reachable[nidx] && isClearColored(nx, ny)) { reachable[nidx] = 1; bgQueue.push([nx, ny]); }
-        }
-      }
-    }
-
-    // A pixel is not background if it was never reached from the border
-    const isNotBg = (x: number, y: number) => reachable[y * canvasWidth + x] === 0;
-
-    const islands: { x: number; y: number; w: number; h: number }[] = [];
-    const scanStep = 4;
-
-    for (let sy = 0; sy < canvasHeight; sy += scanStep) {
-      for (let sx = 0; sx < canvasWidth; sx += scanStep) {
-        const sidx = sy * canvasWidth + sx;
-        if (visited[sidx] || !isNotBg(sx, sy)) continue;
-
-        let x1 = sx, y1 = sy, x2 = sx, y2 = sy;
-        const queue: [number, number][] = [[sx, sy]];
-        visited[sidx] = 1;
-        let head = 0;
-
-        while (head < queue.length) {
-          const [cx, cy] = queue[head++];
-          x1 = Math.min(x1, cx); y1 = Math.min(y1, cy);
-          x2 = Math.max(x2, cx); y2 = Math.max(y2, cy);
-          // 4-directional only — bridging caused adjacent sprites to merge when padding < 4px
-          for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]] as [number, number][]) {
-            if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
-              const nidx = ny * canvasWidth + nx;
-              if (!visited[nidx] && isNotBg(nx, ny)) {
-                visited[nidx] = 1;
-                queue.push([nx, ny]);
-              }
-            }
-          }
-        }
-        if (x2 - x1 >= 4 && y2 - y1 >= 4) islands.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 });
-      }
-    }
-
-    // Filter out islands that are entirely contained within other islands
-    const filteredIslands = islands
-      .sort((a, b) => (b.w * b.h) - (a.w * a.h))
-      .filter((inner, idx, arr) => {
-        for (let i = 0; i < idx; i++) {
-          const outer = arr[i];
-          const isContained = 
-            inner.x >= outer.x && 
-            inner.y >= outer.y && 
-            (inner.x + inner.w) <= (outer.x + outer.w) && 
-            (inner.y + inner.h) <= (outer.y + outer.h);
-          if (isContained) return false;
-        }
-        return true;
-      });
-
-    // Secondary filter: discard islands significantly smaller than the median size
-    let finalIslands = filteredIslands;
-    if (filteredIslands.length > 0) {
-      const areas = filteredIslands.map(isl => isl.w * isl.h).sort((a, b) => a - b);
-      const medianArea = areas[Math.floor(areas.length / 2)];
-      finalIslands = filteredIslands.filter(isl => (isl.w * isl.h) >= (medianArea * 0.5));
-    }
+    
+    const finalIslands = findIslands(
+      imageData, 
+      state.gridSettings.clearColor, 
+      state.gridSettings.clearTolerance ?? 15,
+      true // useMedianFilter
+    );
 
     const geo = mainAtlasGeo;
     const newTiles: TextureTile[] = finalIslands.map((isl, i) => {
@@ -158,7 +71,7 @@ export function useAtlasOps(
     });
 
     executeCommand(new SetMainTilesCommand(state.mainTiles, newTiles));
-  }, [state.mainTiles, state.gridSettings.clearColor, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand]);
+  }, [state.mainTiles, state.gridSettings.clearColor, state.gridSettings.clearTolerance, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand]);
 
   const packElements = useCallback(async () => {
     if (state.mainTiles.length === 0) return;
@@ -169,49 +82,24 @@ export function useAtlasOps(
     );
     const ctx = canvas.getContext('2d')!;
     const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-    const { data } = imageData;
-    const visited = new Uint8Array(canvasWidth * canvasHeight);
-    const clearRGB = hexToRgb(state.gridSettings.clearColor);
+    
+    const islands = findIslands(
+      imageData,
+      state.gridSettings.clearColor,
+      state.gridSettings.clearTolerance ?? 15,
+      false // useMedianFilter = false for packing
+    );
 
-    const isClear = (idx: number) => {
-      const r = data[idx * 4], g = data[idx * 4 + 1], b = data[idx * 4 + 2], a = data[idx * 4 + 3];
-      if (a === 0) return true;
-      return r === clearRGB.r && g === clearRGB.g && b === clearRGB.b;
-    };
-
-    const boxes: { x: number; y: number; w: number; h: number; url: string }[] = [];
-    for (let y = 0; y < canvasHeight; y += 4) {
-      for (let x = 0; x < canvasWidth; x += 4) {
-        const idx = y * canvasWidth + x;
-        if (visited[idx] || isClear(idx)) continue;
-
-        let minX = x, maxX = x, minY = y, maxY = y;
-        const stack = [[x, y]];
-        visited[idx] = 1;
-
-        while (stack.length > 0) {
-          const [cx, cy] = stack.pop()!;
-          if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
-          if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
-          for (const [nx, ny] of [[cx + 4, cy], [cx - 4, cy], [cx, cy + 4], [cx, cy - 4]] as [number, number][]) {
-            if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
-              const nidx = ny * canvasWidth + nx;
-              if (!visited[nidx] && !isClear(nidx)) { visited[nidx] = 1; stack.push([nx, ny]); }
-            }
-          }
-        }
-
-        const w = maxX - minX + 4, h = maxY - minY + 4;
-        const blobCanvas = document.createElement('canvas');
-        blobCanvas.width = w; blobCanvas.height = h;
-        blobCanvas.getContext('2d')?.drawImage(canvas, minX, minY, w, h, 0, 0, w, h);
-        boxes.push({ x: minX, y: minY, w, h, url: blobCanvas.toDataURL() });
-      }
-    }
-
-    if (boxes.length === 0) return;
+    if (islands.length === 0) return;
 
     const padding = state.gridSettings.padding || 2;
+    const boxes = await Promise.all(islands.map(async (isl) => {
+      const blobCanvas = document.createElement('canvas');
+      blobCanvas.width = isl.w; blobCanvas.height = isl.h;
+      blobCanvas.getContext('2d')?.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, isl.w, isl.h);
+      return { ...isl, url: blobCanvas.toDataURL() };
+    }));
+
     const packItems = boxes.map((b, i) => ({ w: b.w + padding * 2, h: b.h + padding * 2, i, x: 0, y: 0 }));
 
     if (state.gridSettings.packingAlgo === 'potpack') {

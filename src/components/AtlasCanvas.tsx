@@ -220,11 +220,36 @@ export function AtlasCanvas({
         )}
 
         {renderGrid()}
-        {tiles.map(tile => (
-          <div key={tile.id} className="absolute select-none pointer-events-none" style={{ left: interactionState.draggingId === tile.id && interactionState.draggingPos ? interactionState.draggingPos.x : tile.x, top: interactionState.draggingId === tile.id && interactionState.draggingPos ? interactionState.draggingPos.y : tile.y, width: tile.width * tile.scale, height: tile.height * tile.scale, filter: `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`, zIndex: interactionState.draggingId === tile.id ? 50 : 5, opacity: interactionState.draggingId === tile.id ? 0.8 : 1 }}>
-            <img src={tile.url} alt={tile.name} className="w-full h-full object-fill" draggable={false} />
-          </div>
-        ))}
+        {tiles.map(tile => {
+          const sX = tile.scaleX ?? tile.scale;
+          const sY = tile.scaleY ?? tile.scale;
+          const isDragging = interactionState.draggingId === tile.id;
+          const x = isDragging && interactionState.draggingPos ? interactionState.draggingPos.x : tile.x;
+          const y = isDragging && interactionState.draggingPos ? interactionState.draggingPos.y : tile.y;
+          
+          return (
+            <div 
+              key={tile.id} 
+              className="absolute select-none pointer-events-none" 
+              style={{ 
+                left: x, 
+                top: y, 
+                width: tile.width * sX, 
+                height: tile.height * sY, 
+                filter: `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`, 
+                zIndex: isDragging ? 50 : 5, 
+                opacity: isDragging ? 0.8 : 1 
+              }}
+            >
+              <img 
+                src={tile.url} 
+                alt={tile.name} 
+                className="w-full h-full object-fill" 
+                draggable={false} 
+              />
+            </div>
+          );
+        })}
         {customSelection && (
           <div className="absolute border-2 border-blue-400 bg-blue-400/20 pointer-events-none z-[100] ring-1 ring-white/50" style={{ left: customSelection.x, top: customSelection.y, width: customSelection.w, height: customSelection.h }}>
             <div className="absolute bottom-full right-0 bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded-t-sm font-mono whitespace-nowrap shadow-lg">

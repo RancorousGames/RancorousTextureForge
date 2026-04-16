@@ -11,6 +11,8 @@ export interface TextureTile {
   hue: number;
   brightness: number;
   scale: number;
+  scaleX?: number;
+  scaleY?: number;
   isCrop?: boolean;
 }
 

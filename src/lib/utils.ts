@@ -18,6 +18,81 @@ export function rgbToHex(r: number, g: number, b: number) {
   return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
 }
 
+export function findIslands(
+  imageData: ImageData,
+  clearColorHex: string,
+  tolerance: number
+): { x: number; y: number; w: number; h: number }[] {
+  const { width, height, data } = imageData;
+  const clearColor = hexToRgb(clearColorHex);
+  const visited = new Uint8Array(width * height);
+  const islands: { x: number; y: number; w: number; h: number }[] = [];
+
+  const isClear = (idx: number) => {
+    const p = idx * 4;
+    const r = data[p], g = data[p + 1], b = data[p + 2], a = data[p + 3];
+    if (a < 5) return true;
+    return (
+      Math.abs(r - clearColor.r) <= tolerance &&
+      Math.abs(g - clearColor.g) <= tolerance &&
+      Math.abs(b - clearColor.b) <= tolerance
+    );
+  };
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (visited[idx] || isClear(idx)) continue;
+
+      let x1 = x, y1 = y, x2 = x, y2 = y;
+      const queue: [number, number][] = [[x, y]];
+      visited[idx] = 1;
+      let head = 0;
+      while (head < queue.length) {
+        const [cx, cy] = queue[head++];
+        x1 = Math.min(x1, cx); y1 = Math.min(y1, cy);
+        x2 = Math.max(x2, cx); y2 = Math.max(y2, cy);
+
+        const neighbors: [number, number][] = [
+          [cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]
+        ];
+        // Bridge gaps up to 20px
+        for (let dy = -20; dy <= 20; dy += 5) {
+          for (let dx = -20; dx <= 20; dx += 5) {
+            const nx = cx + dx;
+            const ny = cy + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const nIdx = ny * width + nx;
+              if (!visited[nIdx] && !isClear(nIdx)) {
+                // Fine scan around the bridge target
+                for (let fdy = -5; fdy <= 5; fdy++) {
+                  for (let fdx = -5; fdx <= 5; fdx++) {
+                    const fnx = nx + fdx;
+                    const fny = ny + fdy;
+                    if (fnx >= 0 && fnx < width && fny >= 0 && fny < height) {
+                      const fnIdx = fny * width + fnx;
+                      if (!visited[fnIdx] && !isClear(fnIdx)) {
+                        visited[fnIdx] = 1;
+                        queue.push([fnx, fny]);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Filter noise (smaller than 8x8)
+      if (x2 - x1 >= 7 && y2 - y1 >= 7) {
+        islands.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 });
+      }
+    }
+  }
+  return islands;
+}
+
 export function detectSettingsFromImage(
   imageData: ImageData,
   clearColorHex: string,
@@ -80,7 +155,7 @@ export function detectSettingsFromImage(
       const end = i - inactiveRun;
       if (end >= start) {
         const size = end - start + 1;
-        if (size >= 4) bands.push({ start, end, size });
+        if (size >= 16) bands.push({ start, end, size });
       }
       start = -1;
       inactiveRun = 0;
@@ -90,7 +165,7 @@ export function detectSettingsFromImage(
       const end = energy.length - 1 - inactiveRun;
       if (end >= start) {
         const size = end - start + 1;
-        if (size >= 4) bands.push({ start, end, size });
+        if (size >= 16) bands.push({ start, end, size });
       }
     }
 

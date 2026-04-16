@@ -688,8 +688,62 @@ export default function App() {
 
     console.log(`[Forge] Main detection result: cellSize=${cellSize}, padding=${padding}`);
 
+    const islands = findIslands(
+      imageData,
+      detectedClearColor,
+      state.gridSettings.clearTolerance ?? 10
+    );
+    console.log(`[Forge] Normalizing ${islands.length} islands`);
+
+    const nextTiles = await Promise.all(islands.map(async (island, i) => {
+      const step = cellSize + 2 * padding;
+      const col = Math.round((island.x + island.w/2 - padding - cellSize/2) / step);
+      const row = Math.round((island.y + island.h/2 - padding - cellSize/2) / step);
+
+      const targetX = padding + col * step;
+      const targetY = padding + row * step;
+
+      // Extract island pixels to a new blob
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = island.w;
+      cropCanvas.height = island.h;
+      const cropCtx = cropCanvas.getContext('2d');
+      if (cropCtx && imageData) {
+        // Create a temporary canvas to hold the full imageData to draw from
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = imageData.width;
+        tempCanvas.height = imageData.height;
+        tempCanvas.getContext('2d')?.putImageData(imageData, 0, 0);
+        cropCtx.drawImage(tempCanvas, island.x, island.y, island.w, island.h, 0, 0, island.w, island.h);
+      }
+      
+      const blob = await new Promise<Blob | null>(resolve => cropCanvas.toBlob(resolve, 'image/png'));
+      const url = blob ? URL.createObjectURL(blob) : "";
+
+      return {
+        id: `tile-${col}-${row}-${Date.now()}-${i}`,
+        name: `Normalized ${col},${row}`,
+        url,
+        x: targetX,
+        y: targetY,
+        width: island.w,
+        height: island.h,
+        scale: 1,
+        scaleX: cellSize / island.w,
+        scaleY: cellSize / island.h,
+        hue: 0,
+        brightness: 100,
+        sourceUrl: sharedSourceUrls[0] || "",
+        sourceX: island.x,
+        sourceY: island.y,
+        sourceW: island.w,
+        sourceH: island.h
+      } as any;
+    }));
+
     set(prev => ({
       ...prev,
+      mainTiles: nextTiles,
       gridSettings: {
         ...prev.gridSettings,
         clearColor: detectedClearColor,
@@ -784,28 +838,118 @@ export default function App() {
     set((prev) => ({ ...prev, mainTiles: packed }));
   };
 
-  const fixGrid = () => {
+  const fixGrid = async () => {
     if (state.mainTiles.length === 0) return;
-    const geo = mainAtlas.geo;
+    
+    // 1. Render current state to a buffer for analysis
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasWidth; canvas.height = canvasHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Fill with sampled background (top-left of first tile or black)
+    ctx.fillStyle = state.gridSettings.clearColor;
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    
+    for (const tile of state.mainTiles) {
+      const img = new Image();
+      await new Promise(r => { img.onload = r; img.src = tile.url; });
+      ctx.save();
+      ctx.translate(tile.x, tile.y);
+      ctx.scale(tile.scale, tile.scale);
+      ctx.filter = `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`;
+      ctx.drawImage(img, 0, 0);
+      ctx.restore();
+    }
 
-    const fixedTiles = state.mainTiles.map(tile => {
-      const centerX = tile.x + (tile.width * tile.scale) / 2;
-      const centerY = tile.y + (tile.height * tile.scale) / 2;
-      const { cx, cy } = geo.getCellAtPos(centerX - geo.padding, centerY - geo.padding);
-      const pos = geo.getPosFromCell(cx, cy);
+    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+    const data = imageData.data;
+    const visited = new Uint8Array(canvasWidth * canvasHeight);
+    
+    // Sample BG from top-left pixel
+    const bgR = data[0], bgG = data[1], bgB = data[2];
+    const tolerance = 15;
+
+    const isNotBg = (x: number, y: number) => {
+      const idx = (y * canvasWidth + x) * 4;
+      if (data[idx + 3] < 5) return false;
+      return Math.abs(data[idx] - bgR) >= tolerance || 
+             Math.abs(data[idx+1] - bgG) >= tolerance || 
+             Math.abs(data[idx+2] - bgB) >= tolerance;
+    };
+
+    const islands: {x: number, y: number, w: number, h: number}[] = [];
+    const scanStep = 4;
+
+    // 2. Optimized Island Detection (Same as standalone)
+    for (let sy = 0; sy < canvasHeight; sy += scanStep) {
+      for (let sx = 0; sx < canvasWidth; sx += scanStep) {
+        const sidx = sy * canvasWidth + sx;
+        if (visited[sidx] || !isNotBg(sx, sy)) continue;
+
+        let x1 = sx, y1 = sy, x2 = sx, y2 = sy;
+        const queue: [number, number][] = [[sx, sy]];
+        visited[sidx] = 1;
+        let head = 0;
+
+        while (head < queue.length) {
+          const [cx, cy] = queue[head++];
+          x1 = Math.min(x1, cx); y1 = Math.min(y1, cy);
+          x2 = Math.max(x2, cx); y2 = Math.max(y2, cy);
+
+          // 4px Bridge
+          for (let dy = -4; dy <= 4; dy++) {
+            for (let dx = -4; dx <= 4; dx++) {
+              const nx = cx + dx, ny = cy + dy;
+              if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
+                const nidx = ny * canvasWidth + nx;
+                if (!visited[nidx] && isNotBg(nx, ny)) {
+                  visited[nidx] = 1;
+                  queue.push([nx, ny]);
+                }
+              }
+            }
+          }
+        }
+        if (x2 - x1 >= 4 && y2 - y1 >= 4) {
+          islands.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 });
+        }
+      }
+    }
+
+    // 3. Re-align to Grid
+    const geo = mainAtlas.geo;
+    const newTiles = islands.map((isl, i) => {
+      const cx = isl.x + isl.w / 2;
+      const cy = isl.y + isl.h / 2;
       
-      console.log(`[Fix Grid] Snapping ${tile.name} from [${tile.x.toFixed(1)}, ${tile.y.toFixed(1)}] to cell (${cx}, ${cy})`);
+      const stepX = geo.cellW + geo.padding * 2;
+      const stepY = geo.cellH + geo.padding * 2;
       
+      const col = Math.round((cx - geo.padding - geo.cellW / 2) / stepX);
+      const row = Math.round((cy - geo.padding - geo.cellH / 2) / stepY);
+      
+      const tx = geo.padding + col * stepX;
+      const ty = geo.padding + row * stepY;
+
+      const islCanvas = document.createElement('canvas');
+      islCanvas.width = geo.cellW; 
+      islCanvas.height = geo.cellH;
+      const islCtx = islCanvas.getContext('2d');
+      // Draw stretched to match target cell size
+      islCtx?.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, geo.cellW, geo.cellH);
+
       return {
-        ...tile,
-        x: pos.x,
-        y: pos.y,
-        width: geo.cellW,
-        height: geo.cellH
+        id: `fixed-${i}-${Date.now()}`,
+        name: `Island_${i}`,
+        url: islCanvas.toDataURL(),
+        x: tx, y: ty,
+        width: geo.cellW, height: geo.cellH,
+        scale: 1, hue: 0, brightness: 100
       };
     });
 
-    set(prev => ({ ...prev, mainTiles: fixedTiles }));
+    set(prev => ({ ...prev, mainTiles: newTiles }));
   };
 
   const packElements = async () => {

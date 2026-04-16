@@ -3,6 +3,7 @@ import { AppState, TextureTile } from '../types';
 import { GridGeometry } from '../lib/GridGeometry';
 import { hexToRgb } from '../lib/utils';
 import { renderTilesToCanvas, generateId } from '../lib/canvas';
+import { Command, SetMainTilesCommand } from '../lib/Commands';
 import potpack from 'potpack';
 
 export function useAtlasOps(
@@ -11,6 +12,7 @@ export function useAtlasOps(
   canvasHeight: number,
   mainAtlasGeo: GridGeometry,
   set: (v: AppState | ((p: AppState) => AppState)) => void,
+  executeCommand: (c: Command | Command[]) => void,
   onAfterNewAtlas?: () => void
 ) {
   const packAtlas = useCallback(() => {
@@ -26,8 +28,8 @@ export function useAtlasOps(
       currentX += sw + padding;
       return result;
     });
-    set(prev => ({ ...prev, mainTiles: packed }));
-  }, [state.mainTiles, canvasWidth, set]);
+    executeCommand(new SetMainTilesCommand(state.mainTiles, packed));
+  }, [state.mainTiles, canvasWidth, executeCommand]);
 
   const fixGrid = useCallback(async () => {
     if (state.mainTiles.length === 0) return;
@@ -107,8 +109,8 @@ export function useAtlasOps(
       };
     });
 
-    set(prev => ({ ...prev, mainTiles: newTiles }));
-  }, [state.mainTiles, state.gridSettings.clearColor, canvasWidth, canvasHeight, mainAtlasGeo, set]);
+    executeCommand(new SetMainTilesCommand(state.mainTiles, newTiles));
+  }, [state.mainTiles, state.gridSettings.clearColor, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand]);
 
   const packElements = useCallback(async () => {
     if (state.mainTiles.length === 0) return;
@@ -176,16 +178,14 @@ export function useAtlasOps(
       }
     }
 
-    set(prev => ({
-      ...prev,
-      mainTiles: packItems.map(item => ({
-        id: generateId(), url: boxes[item.i].url, name: `Packed_${item.i}`,
-        width: boxes[item.i].w, height: boxes[item.i].h,
-        x: item.x + padding, y: item.y + padding,
-        hue: 0, brightness: 100, scale: 1, isCrop: true,
-      })),
+    const nextTiles = packItems.map(item => ({
+      id: generateId(), url: boxes[item.i].url, name: `Packed_${item.i}`,
+      width: boxes[item.i].w, height: boxes[item.i].h,
+      x: item.x + padding, y: item.y + padding,
+      hue: 0, brightness: 100, scale: 1, isCrop: true,
     }));
-  }, [state.mainTiles, state.gridSettings, canvasWidth, canvasHeight, set]);
+    executeCommand(new SetMainTilesCommand(state.mainTiles, nextTiles));
+  }, [state.mainTiles, state.gridSettings, canvasWidth, canvasHeight, executeCommand]);
 
   const exportAtlas = useCallback(async () => {
     const canvas = await renderTilesToCanvas(

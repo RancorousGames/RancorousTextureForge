@@ -116,7 +116,7 @@ export default function App() {
     useAutoDetect(state, canvasWidth, canvasHeight, set);
 
   const { packAtlas, fixGrid, packElements, exportAtlas, createNewAtlas } =
-    useAtlasOps(state, canvasWidth, canvasHeight, mainAtlas.geo, set, () => {
+    useAtlasOps(state, canvasWidth, canvasHeight, mainAtlas.geo, set, executeCommand, () => {
       setSelectedTileId(null);
       setSelectedCells([]);
     });

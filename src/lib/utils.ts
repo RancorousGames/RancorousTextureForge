@@ -21,108 +21,100 @@ export function rgbToHex(r: number, g: number, b: number) {
 export function findIslands(
   imageData: ImageData,
   clearColorHex: string,
-  tolerance: number
+  tolerance: number,
+  useMedianFilter: boolean = true
 ): { x: number; y: number; w: number; h: number }[] {
   const { width, height, data } = imageData;
   const clearColor = hexToRgb(clearColorHex);
   const visited = new Uint8Array(width * height);
-  const islands: { x: number; y: number; w: number; h: number }[] = [];
+  const reachable = new Uint8Array(width * height);
 
-  const isClear = (idx: number) => {
-    const p = idx * 4;
-    const r = data[p], g = data[p + 1], b = data[p + 2], a = data[p + 3];
-    if (a < 5) return true;
-    return (
-      Math.abs(r - clearColor.r) <= tolerance &&
-      Math.abs(g - clearColor.g) <= tolerance &&
-      Math.abs(b - clearColor.b) <= tolerance
-    );
+  const isClearColored = (x: number, y: number) => {
+    const idx = (y * width + x) * 4;
+    if (data[idx + 3] < 5) return true;
+    return Math.abs(data[idx] - clearColor.r) <= tolerance &&
+           Math.abs(data[idx + 1] - clearColor.g) <= tolerance &&
+           Math.abs(data[idx + 2] - clearColor.b) <= tolerance;
   };
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = y * width + x;
-      if (visited[idx] || isClear(idx)) continue;
+  // 1. Reachable Background pass (Flood-fill from borders)
+  const bgQueue: [number, number][] = [];
+  const seedBorder = (x: number, y: number) => {
+    const idx = y * width + x;
+    if (!reachable[idx] && isClearColored(x, y)) { reachable[idx] = 1; bgQueue.push([x, y]); }
+  };
+  for (let x = 0; x < width; x++) { seedBorder(x, 0); seedBorder(x, height - 1); }
+  for (let y = 1; y < height - 1; y++) { seedBorder(0, y); seedBorder(width - 1, y); }
+  
+  let bgHead = 0;
+  while (bgHead < bgQueue.length) {
+    const [cx, cy] = bgQueue[bgHead++];
+    for (const [nx, ny] of [[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]] as [number,number][]) {
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        const nidx = ny * width + nx;
+        if (!reachable[nidx] && isClearColored(nx, ny)) { reachable[nidx] = 1; bgQueue.push([nx, ny]); }
+      }
+    }
+  }
 
-      let x1 = x, y1 = y, x2 = x, y2 = y;
-      const queue: [number, number][] = [[x, y]];
-      visited[idx] = 1;
+  const isNotBg = (x: number, y: number) => reachable[y * width + x] === 0;
+
+  // 2. Island detection
+  const rawIslands: { x: number; y: number; w: number; h: number }[] = [];
+  const scanStep = 4;
+  for (let sy = 0; sy < height; sy += scanStep) {
+    for (let sx = 0; sx < width; sx += scanStep) {
+      const sidx = sy * width + sx;
+      if (visited[sidx] || !isNotBg(sx, sy)) continue;
+
+      let x1 = sx, y1 = sy, x2 = sx, y2 = sy;
+      const queue: [number, number][] = [[sx, sy]];
+      visited[sidx] = 1;
       let head = 0;
       while (head < queue.length) {
         const [cx, cy] = queue[head++];
         x1 = Math.min(x1, cx); y1 = Math.min(y1, cy);
         x2 = Math.max(x2, cx); y2 = Math.max(y2, cy);
-
-        const neighbors: [number, number][] = [
-          [cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]
-        ];
-        // Bridge gaps up to 20px
-        for (let dy = -20; dy <= 20; dy += 5) {
-          for (let dx = -20; dx <= 20; dx += 5) {
-            const nx = cx + dx;
-            const ny = cy + dy;
-            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-              const nIdx = ny * width + nx;
-              if (!visited[nIdx] && !isClear(nIdx)) {
-                // Fine scan around the bridge target
-                for (let fdy = -5; fdy <= 5; fdy++) {
-                  for (let fdx = -5; fdx <= 5; fdx++) {
-                    const fnx = nx + fdx;
-                    const fny = ny + fdy;
-                    if (fnx >= 0 && fnx < width && fny >= 0 && fny < height) {
-                      const fnIdx = fny * width + fnx;
-                      if (!visited[fnIdx] && !isClear(fnIdx)) {
-                        visited[fnIdx] = 1;
-                        queue.push([fnx, fny]);
-                      }
-                    }
-                  }
-                }
-              }
-            }
+        for (const [nx, ny] of [[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]] as [number,number][]) {
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            const nidx = ny * width + nx;
+            if (!visited[nidx] && isNotBg(nx, ny)) { visited[nidx] = 1; queue.push([nx, ny]); }
           }
         }
       }
-
-      // Filter noise (smaller than 8x8)
-      if (x2 - x1 >= 7 && y2 - y1 >= 7) {
-        islands.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 });
-      }
+      if (x2 - x1 >= 4 && y2 - y1 >= 4) rawIslands.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 });
     }
   }
-  return islands;
+
+  // 3. Containment Filter
+  const filtered = rawIslands
+    .sort((a, b) => (b.w * b.h) - (a.w * a.h))
+    .filter((inner, idx, arr) => {
+      for (let i = 0; i < idx; i++) {
+        const outer = arr[i];
+        if (inner.x >= outer.x && inner.y >= outer.y && (inner.x+inner.w) <= (outer.x+outer.w) && (inner.y+inner.h) <= (outer.y+outer.h)) return false;
+      }
+      return true;
+    });
+
+  // 4. Median Filter
+  if (useMedianFilter && filtered.length > 0) {
+    const areas = filtered.map(isl => isl.w * isl.h).sort((a, b) => a - b);
+    const medianArea = areas[Math.floor(areas.length / 2)];
+    return filtered.filter(isl => (isl.w * isl.h) >= (medianArea * 0.5));
+  }
+
+  return filtered;
 }
 
 export function detectSettingsFromImage(
   imageData: ImageData,
   clearColorHex: string,
-  tolerance: number
+  tolerance: number,
+  useMedianFilter: boolean = true
 ): { cellSize: number; padding: number } {
-  const { width, height, data } = imageData;
-  const clearColor = hexToRgb(clearColorHex);
-
-  console.log(`[Forge-Detect] === GRID SPAN ANALYSIS ===`);
-  console.log(`[Forge-Detect] Buffer: ${width}x${height}`);
-
-  const isClear = (idx: number) => {
-    const p = idx * 4;
-    const r = data[p], g = data[p+1], b = data[p+2], a = data[p+3];
-    if (a < 5) return true;
-    return Math.abs(r - clearColor.r) <= tolerance && 
-           Math.abs(g - clearColor.g) <= tolerance && 
-           Math.abs(b - clearColor.b) <= tolerance;
-  };
-
-  const colEnergy = new Float32Array(width);
-  const rowEnergy = new Float32Array(height);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (!isClear(y * width + x)) {
-        colEnergy[x]++;
-        rowEnergy[y]++;
-      }
-    }
-  }
+  const islands = findIslands(imageData, clearColorHex, tolerance, useMedianFilter);
+  if (islands.length === 0) return { cellSize: 128, padding: 0 };
 
   const getMedian = (arr: number[]) => {
     if (arr.length === 0) return 0;
@@ -130,95 +122,43 @@ export function detectSettingsFromImage(
     return s[Math.floor(s.length / 2)];
   };
 
-  const findContentBands = (energy: Float32Array) => {
-    const maxEnergy = Math.max(...Array.from(energy));
-    if (maxEnergy <= 0) return [];
+  const sizes = islands.map(i => Math.max(i.w, i.h));
+  const rawSize = getMedian(sizes);
 
-    const threshold = Math.max(1, Math.floor(maxEnergy * 0.03));
-    const maxBridge = 2;
-    const bands: { start: number; end: number; size: number }[] = [];
-    let start = -1;
-    let inactiveRun = 0;
-
-    for (let i = 0; i < energy.length; i++) {
-      if (energy[i] >= threshold) {
-        if (start === -1) start = i;
-        inactiveRun = 0;
-        continue;
-      }
-
-      if (start === -1) continue;
-
-      inactiveRun++;
-      if (inactiveRun <= maxBridge) continue;
-
-      const end = i - inactiveRun;
-      if (end >= start) {
-        const size = end - start + 1;
-        if (size >= 16) bands.push({ start, end, size });
-      }
-      start = -1;
-      inactiveRun = 0;
+  // Determine Padding by looking at gaps between islands
+  const hGaps: number[] = [];
+  const vGaps: number[] = [];
+  
+  // X-Gaps (Vertical gutters)
+  const sortedX = [...islands].sort((a, b) => a.x - b.x);
+  for (let i = 0; i < sortedX.length - 1; i++) {
+    const a = sortedX[i], b = sortedX[i+1];
+    const yOverlap = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    if (yOverlap > 0) {
+      const gap = b.x - (a.x + a.w);
+      if (gap >= 0 && gap < rawSize) hGaps.push(gap);
     }
+  }
 
-    if (start !== -1) {
-      const end = energy.length - 1 - inactiveRun;
-      if (end >= start) {
-        const size = end - start + 1;
-        if (size >= 16) bands.push({ start, end, size });
-      }
+  // Y-Gaps (Horizontal gutters)
+  const sortedY = [...islands].sort((a, b) => a.y - b.y);
+  for (let i = 0; i < sortedY.length - 1; i++) {
+    const a = sortedY[i], b = sortedY[i+1];
+    const xOverlap = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    if (xOverlap > 0) {
+      const gap = b.y - (a.y + a.h);
+      if (gap >= 0 && gap < rawSize) vGaps.push(gap);
     }
+  }
 
-    return bands;
-  };
-
-  const summarizeBands = (bands: { start: number; end: number; size: number }[]) => {
-    const steps: number[] = [];
-    const gaps: number[] = [];
-    for (let i = 0; i < bands.length - 1; i++) {
-      steps.push(bands[i + 1].start - bands[i].start);
-      gaps.push(bands[i + 1].start - bands[i].end - 1);
-    }
-
-    return {
-      size: getMedian(bands.map((band) => band.size)),
-      step: getMedian(steps),
-      gap: getMedian(gaps.filter((gap) => gap > 0)),
-    };
-  };
-
-  const xBands = findContentBands(colEnergy);
-  const yBands = findContentBands(rowEnergy);
-
-  console.log(`[Forge-Detect] Bands: X=${xBands.length} Y=${yBands.length}`);
-
-  if (xBands.length === 0 || yBands.length === 0) return { cellSize: 128, padding: 0 };
-
-  const xSummary = summarizeBands(xBands);
-  const ySummary = summarizeBands(yBands);
-  const detectedSize = Math.max(xSummary.size, ySummary.size);
-  const detectedStep = Math.max(xSummary.step, ySummary.step);
-  const detectedGap = Math.max(xSummary.gap, ySummary.gap);
-
-  console.log(`[Forge-Detect] Raw Size: ${detectedSize}, Step: ${detectedStep}, Gap: ${detectedGap}`);
+  const hGap = getMedian(hGaps);
+  const vGap = getMedian(vGaps);
+  const detectedGap = Math.max(hGap, vGap);
 
   const p2s = [32, 64, 128, 256, 512, 1024];
-  const nearestP2 = p2s.reduce((prev, curr) => 
-    Math.abs(curr - detectedSize) < Math.abs(prev - detectedSize) ? curr : prev
-  );
+  const nearestP2 = p2s.reduce((prev, curr) => Math.abs(curr - rawSize) < Math.abs(prev - rawSize) ? curr : prev);
+  let finalSize = Math.round(rawSize / 4) * 4;
+  if (Math.abs(nearestP2 - rawSize) / nearestP2 <= 0.15) finalSize = nearestP2;
 
-  let finalSize = Math.round(detectedSize / 4) * 4;
-  if (Math.abs(nearestP2 - detectedSize) / nearestP2 <= 0.125) {
-    finalSize = nearestP2;
-  }
-
-  let finalPadding = 0;
-  if (detectedGap > 0) {
-    finalPadding = Math.round(detectedGap / 2);
-  } else if (detectedStep > finalSize) {
-    finalPadding = Math.round((detectedStep - finalSize) / 2);
-  }
-
-  console.log(`[Forge-Detect] === RESULT: ${finalSize} / ${finalPadding} ===`);
-  return { cellSize: finalSize, padding: Math.max(0, finalPadding) };
+  return { cellSize: finalSize, padding: Math.round(detectedGap / 2) };
 }

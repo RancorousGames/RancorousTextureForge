@@ -44,7 +44,7 @@ export function useAutoDetect(
     const detectedClearColor = rgbToHex(r, g, b);
     const tolerance = state.gridSettings.clearTolerance ?? 10;
 
-    const { cellSize, padding } = detectSettingsFromImage(imageData, detectedClearColor, tolerance);
+    const { cellSize, padding } = detectSettingsFromImage(imageData, detectedClearColor, tolerance, true);
 
     set(prev => ({
       ...prev,

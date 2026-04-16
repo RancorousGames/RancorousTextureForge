@@ -80,46 +80,79 @@ export function useAtlasOps(
       state.mainTiles, canvasWidth, canvasHeight,
       state.gridSettings.clearColor, { willReadFrequently: true }
     );
-    const ctx = canvas.getContext('2d')!;
-    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-    
-    const islands = findIslands(
-      imageData,
-      state.gridSettings.clearColor,
-      state.gridSettings.clearTolerance ?? 15,
-      false // useMedianFilter = false for packing
-    );
+    const { data } = canvas.getContext('2d')!.getImageData(0, 0, canvasWidth, canvasHeight);
+    const visited = new Uint8Array(canvasWidth * canvasHeight);
+    const { r: bgR, g: bgG, b: bgB } = hexToRgb(state.gridSettings.clearColor);
+    const tolerance = state.gridSettings.clearTolerance ?? 10;
+
+    const isBg = (x: number, y: number) => {
+      const p = (y * canvasWidth + x) * 4;
+      if (data[p + 3] < 5) return true;
+      return Math.abs(data[p] - bgR) <= tolerance &&
+             Math.abs(data[p + 1] - bgG) <= tolerance &&
+             Math.abs(data[p + 2] - bgB) <= tolerance;
+    };
+
+    const islands: { x: number; y: number; w: number; h: number }[] = [];
+
+    for (let sy = 0; sy < canvasHeight; sy++) {
+      for (let sx = 0; sx < canvasWidth; sx++) {
+        const sidx = sy * canvasWidth + sx;
+        if (visited[sidx] || isBg(sx, sy)) continue;
+
+        let x1 = sx, y1 = sy, x2 = sx, y2 = sy;
+        const queue: [number, number][] = [[sx, sy]];
+        visited[sidx] = 1;
+        let head = 0;
+
+        while (head < queue.length) {
+          const [cx, cy] = queue[head++];
+          if (cx < x1) x1 = cx; if (cx > x2) x2 = cx;
+          if (cy < y1) y1 = cy; if (cy > y2) y2 = cy;
+          for (const [nx, ny] of [[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]] as [number,number][]) {
+            if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
+              const nidx = ny * canvasWidth + nx;
+              if (!visited[nidx] && !isBg(nx, ny)) { visited[nidx] = 1; queue.push([nx, ny]); }
+            }
+          }
+        }
+
+        if (x2 - x1 >= 2 && y2 - y1 >= 2) islands.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 });
+      }
+    }
 
     if (islands.length === 0) return;
 
     const padding = state.gridSettings.padding || 2;
-    const boxes = await Promise.all(islands.map(async (isl) => {
-      const blobCanvas = document.createElement('canvas');
-      blobCanvas.width = isl.w; blobCanvas.height = isl.h;
-      blobCanvas.getContext('2d')?.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, isl.w, isl.h);
-      return { ...isl, url: blobCanvas.toDataURL() };
+    const packItems = islands.map((_, i) => ({
+      w: islands[i].w + padding * 2, h: islands[i].h + padding * 2, i, x: 0, y: 0,
     }));
-
-    const packItems = boxes.map((b, i) => ({ w: b.w + padding * 2, h: b.h + padding * 2, i, x: 0, y: 0 }));
 
     if (state.gridSettings.packingAlgo === 'potpack') {
       potpack(packItems as any);
     } else {
-      let currentX = 0, currentY = 0, maxHeight = 0;
+      let curX = 0, curY = 0, rowH = 0;
       for (const item of packItems) {
-        if (currentX + item.w > canvasWidth) { currentX = 0; currentY += maxHeight; maxHeight = 0; }
-        item.x = currentX; item.y = currentY;
-        currentX += item.w;
-        if (item.h > maxHeight) maxHeight = item.h;
+        if (curX + item.w > canvasWidth) { curX = 0; curY += rowH; rowH = 0; }
+        item.x = curX; item.y = curY;
+        curX += item.w;
+        if (item.h > rowH) rowH = item.h;
       }
     }
 
-    const nextTiles = packItems.map(item => ({
-      id: generateId(), url: boxes[item.i].url, name: `Packed_${item.i}`,
-      width: boxes[item.i].w, height: boxes[item.i].h,
-      x: item.x + padding, y: item.y + padding,
-      hue: 0, brightness: 100, scale: 1, isCrop: true,
-    }));
+    const nextTiles: TextureTile[] = packItems.map(item => {
+      const isl = islands[item.i];
+      const blobCanvas = document.createElement('canvas');
+      blobCanvas.width = isl.w; blobCanvas.height = isl.h;
+      blobCanvas.getContext('2d')?.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, isl.w, isl.h);
+      return {
+        id: generateId(), url: blobCanvas.toDataURL(), name: `Packed_${item.i}`,
+        width: isl.w, height: isl.h,
+        x: item.x + padding, y: item.y + padding,
+        hue: 0, brightness: 100, scale: 1, isCrop: true,
+      };
+    });
+
     executeCommand(new SetMainTilesCommand(state.mainTiles, nextTiles));
   }, [state.mainTiles, state.gridSettings, canvasWidth, canvasHeight, executeCommand]);
 

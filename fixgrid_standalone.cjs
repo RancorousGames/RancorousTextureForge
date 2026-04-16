@@ -102,11 +102,19 @@ const filteredIslands = islands
     return true;
   });
 
-console.log(`Found ${islands.length} raw islands, reduced to ${filteredIslands.length} after containment filtering.`);
+// Secondary filter: discard islands significantly smaller than the median size
+let finalIslands = filteredIslands;
+if (filteredIslands.length > 0) {
+  const areas = filteredIslands.map(isl => isl.w * isl.h).sort((a, b) => a - b);
+  const medianArea = areas[Math.floor(areas.length / 2)];
+  finalIslands = filteredIslands.filter(isl => (isl.w * isl.h) >= (medianArea * 0.5));
+}
+
+console.log(`Found ${islands.length} raw islands, reduced to ${filteredIslands.length} after containment, and ${finalIslands.length} after median size filtering.`);
 
 // Debug Visualization
 console.log('Generating debug_output.png...');
-// ... (rest of the run function remains the same, but using filteredIslands)
+// ... (rest of the run function remains the same, but using finalIslands)
 const image = await new Jimp.Jimp({ width, height });
 
 // Fill background from raw data
@@ -120,7 +128,7 @@ for (let y = 0; y < height; y++) {
 
 // Draw detected islands
 const colors = [0xFF0000FF, 0x00FF00FF, 0x0000FFFF, 0xFFFF00FF, 0xFF00FFFF, 0x00FFFFFF];
-filteredIslands.forEach((isl, i) => {
+finalIslands.forEach((isl, i) => {
   const color = colors[i % colors.length];
   // Draw horizontal lines
   for (let x = isl.x; x < isl.x + isl.w; x++) {
@@ -137,7 +145,7 @@ filteredIslands.forEach((isl, i) => {
 await image.write('debug_output.png');
 console.log('Done. debug_output.png generated.');
 
-const finalIslands = filteredIslands.map((island, i) => {
+const fixedIslands = finalIslands.map((island, i) => {
   const stepX = cellSize + padding * 2;
   const stepY = cellSize + padding * 2;
   const col = Math.round((island.x + island.w / 2 - padding - cellSize / 2) / stepX);
@@ -150,7 +158,7 @@ const finalIslands = filteredIslands.map((island, i) => {
   };
 });
 
-finalIslands.slice(0, 10).forEach(fix => {
+fixedIslands.slice(0, 10).forEach(fix => {
   console.log(`Island #${fix.id}: [${fix.old.x}, ${fix.old.y}] -> Cell ${fix.cell.col}, ${fix.cell.row}`);
 });
 }

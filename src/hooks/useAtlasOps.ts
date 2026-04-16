@@ -127,8 +127,16 @@ export function useAtlasOps(
         return true;
       });
 
+    // Secondary filter: discard islands significantly smaller than the median size
+    let finalIslands = filteredIslands;
+    if (filteredIslands.length > 0) {
+      const areas = filteredIslands.map(isl => isl.w * isl.h).sort((a, b) => a - b);
+      const medianArea = areas[Math.floor(areas.length / 2)];
+      finalIslands = filteredIslands.filter(isl => (isl.w * isl.h) >= (medianArea * 0.5));
+    }
+
     const geo = mainAtlasGeo;
-    const newTiles: TextureTile[] = filteredIslands.map((isl, i) => {
+    const newTiles: TextureTile[] = finalIslands.map((isl, i) => {
       const stepX = geo.cellW + geo.padding * 2;
       const stepY = geo.cellH + geo.padding * 2;
       const col = Math.round((isl.x + isl.w / 2 - geo.padding - geo.cellW / 2) / stepX);

@@ -112,6 +112,25 @@ export class UpdateStatusCommand implements Command {
   undo(state: AppState): AppState { return { ...state, atlasStatus: this.oldStatus }; }
 }
 
+export class ClearCellCommand implements Command {
+  constructor(private cellKey: string, private oldStatus: AtlasStatus) {}
+  execute(state: AppState): AppState {
+    if (state.clearedCells.includes(this.cellKey)) return state;
+    return {
+      ...state,
+      clearedCells: [...state.clearedCells, this.cellKey],
+      atlasStatus: 'modified'
+    };
+  }
+  undo(state: AppState): AppState {
+    return {
+      ...state,
+      clearedCells: state.clearedCells.filter(k => k !== this.cellKey),
+      atlasStatus: this.oldStatus
+    };
+  }
+}
+
 export class MaterializeCommand implements Command {
   constructor(
     private newTile: TextureTile,
@@ -120,10 +139,11 @@ export class MaterializeCommand implements Command {
   ) {}
 
   execute(state: AppState): AppState {
+    const alreadyCleared = state.clearedCells.includes(this.cellKey);
     return {
       ...state,
       mainTiles: [...state.mainTiles, this.newTile],
-      clearedCells: [...state.clearedCells, this.cellKey],
+      clearedCells: alreadyCleared ? state.clearedCells : [...state.clearedCells, this.cellKey],
       atlasStatus: 'modified'
     };
   }

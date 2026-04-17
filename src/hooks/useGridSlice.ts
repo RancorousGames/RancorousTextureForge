@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { AppState, TextureTile } from '../types';
-import { Command, AddTilesCommand, SetMainTilesCommand, PatchCommand, MaterializeCommand } from '../lib/Commands';
+import { Command, AddTilesCommand, SetMainTilesCommand, PatchCommand, MaterializeCommand, ClearCellCommand, RemoveTilesCommand } from '../lib/Commands';
 import { GridGeometry } from '../lib/GridGeometry';
 import { tileRegistry } from '../lib/TileRegistry';
 import { hexToRgb } from '../lib/utils';
@@ -99,10 +99,10 @@ export function useGridSlice(
     tileRegistry.registerMany(newTiles);
 
     if (skipHistory) {
-      set(prev => ({ ...prev, mainTiles: newTiles, clearedCells: [] }));
+      set(prev => ({ ...prev, mainTiles: newTiles, clearedCells: [], atlasStatus: 'parametric' }));
     } else {
       executeCommand([
-        new SetMainTilesCommand(state.mainTiles, newTiles),
+        new SetMainTilesCommand(state.mainTiles, newTiles, state.atlasStatus, 'parametric'),
         new PatchCommand(
           { lastSourceTileId: sourceTile.id, clearedCells: [] },
           { lastSourceTileId: state.lastSourceTileId, clearedCells: state.clearedCells }
@@ -110,7 +110,7 @@ export function useGridSlice(
       ]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.gridSettings, state.mainTiles, state.lastSourceTileId, state.clearedCells, executeCommand, set]);
+  }, [state.gridSettings, state.mainTiles, state.lastSourceTileId, state.clearedCells, state.atlasStatus, executeCommand, set]);
 
   const handleMaterialize = useCallback(async (
     cx: number,
@@ -146,17 +146,31 @@ export function useGridSlice(
     tileRegistry.register(newTile);
     const key = `${cx},${cy}`;
 
+    // Clean up: find if there is an existing tile at the target location and remove it
+    // so that materialize-to-move doesn't just "copy" on top of existing work.
+    const { cx: tcx, cy: tcy } = draggingPos 
+       ? geo.getCellAtPos(draggingPos.x + geo.cellW / 2, draggingPos.y + geo.cellH / 2)
+       : { cx, cy };
+    
+    const existingTile = state.mainTiles.find(t => 
+      geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, tcx, tcy)
+    );
+
     if (reason === 'clear') {
-      executeCommand(new PatchCommand(
-        { clearedCells: [...state.clearedCells, key], atlasStatus: 'modified' },
-        { clearedCells: state.clearedCells.filter(k => k !== key), atlasStatus: state.atlasStatus }
-      ));
+      executeCommand(new ClearCellCommand(key, state.atlasStatus));
     } else {
-      executeCommand(new MaterializeCommand(newTile, key, state.atlasStatus));
+      if (existingTile) {
+        executeCommand([
+           new RemoveTilesCommand([existingTile]),
+           new MaterializeCommand(newTile, key, state.atlasStatus)
+        ]);
+      } else {
+        executeCommand(new MaterializeCommand(newTile, key, state.atlasStatus));
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.secondaryTiles, state.modifiedTiles, state.lastSourceTileId, state.gridSettings,
-      state.clearedCells, state.atlasStatus, canvasWidth, canvasHeight, executeCommand]);
+  }, [state.secondaryTiles, state.modifiedTiles, state.mainTiles, state.lastSourceTileId, state.gridSettings,
+      state.atlasStatus, canvasWidth, canvasHeight, executeCommand]);
 
   const handleSourceCellClick = useCallback(async (
     _x: number, _y: number, _w: number, _h: number,

@@ -308,6 +308,7 @@ export function SourceAtlas({
             canvasHeight={sourceTile.height}
             customSelection={customSelection}
             onCustomSelectionChange={handleCustomSelection}
+            uniqueId="source"
             tooltip="L-Click: Transfer | R-Click: Fill | Drag: Free Crop"
           />
         ) : (

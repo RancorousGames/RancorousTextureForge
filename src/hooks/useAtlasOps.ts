@@ -124,9 +124,14 @@ export function useAtlasOps(
     if (islands.length === 0) return;
 
     const padding = state.gridSettings.padding || 2;
-    const packItems = islands.map((_, i) => ({
-      w: islands[i].w + padding * 2, h: islands[i].h + padding * 2, i, x: 0, y: 0,
-    }));
+    const packItems = islands.map((isl, i) => {
+      const padX = (isl.w + padding * 2 > canvasWidth) ? 0 : padding;
+      const padY = (isl.h + padding * 2 > canvasHeight) ? 0 : padding;
+      return {
+        w: isl.w + padX * 2, h: isl.h + padY * 2, i, x: 0, y: 0,
+        padX, padY
+      };
+    });
 
     if (state.gridSettings.packingAlgo === 'potpack') {
       potpack(packItems as any);
@@ -148,7 +153,7 @@ export function useAtlasOps(
       return {
         id: generateId(), url: blobCanvas.toDataURL(), name: `Packed_${item.i}`,
         width: isl.w, height: isl.h,
-        x: item.x + padding, y: item.y + padding,
+        x: item.x + item.padX, y: item.y + item.padY,
         hue: 0, brightness: 100, scale: 1, isCrop: true,
       };
     });

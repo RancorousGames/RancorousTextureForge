@@ -56,6 +56,7 @@ export function MainAtlas({
       sourceTile={sourceTile}
       clearedCells={clearedCells}
       atlasStatus={atlasStatus}
+      uniqueId="main"
       onMaterialize={onMaterialize}
     />
   );

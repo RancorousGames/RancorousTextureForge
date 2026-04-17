@@ -26,6 +26,7 @@ interface AtlasCanvasProps {
   sourceTile?: TextureTile | null;
   clearedCells?: string[];
   atlasStatus?: AtlasStatus;
+  uniqueId?: string;
 }
 
 export function AtlasCanvas({
@@ -50,6 +51,7 @@ export function AtlasCanvas({
   sourceTile,
   clearedCells = [],
   atlasStatus = 'parametric',
+  uniqueId = 'atlas',
 }: AtlasCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -131,7 +133,8 @@ export function AtlasCanvas({
       onTilesChange,
       onRemoveTile,
       onCustomSelectionChange,
-      atlasSwapMode
+      atlasSwapMode,
+      onMaterialize
     });
 
     setInteractionState(prev => ({ ...prev, ...result.state }));
@@ -201,7 +204,7 @@ export function AtlasCanvas({
           <div className="absolute inset-0 pointer-events-none z-[1]">
             <svg width={canvasWidth} height={canvasHeight} className="absolute inset-0 w-full h-full">
               <defs>
-                <mask id={`mask-${sourceTile.id}`} x="0" y="0" width={canvasWidth} height={canvasHeight}>
+                <mask id={`mask-${uniqueId}-${sourceTile.id.replace(/[^a-zA-Z0-9]/g, '_')}`} x="0" y="0" width={canvasWidth} height={canvasHeight}>
                   <rect x="0" y="0" width={canvasWidth} height={canvasHeight} fill="white" />
                   {clearedCells.map(key => {
                     const [cx, cy] = key.split(',').map(Number);
@@ -214,7 +217,7 @@ export function AtlasCanvas({
                 href={sourceTile.sourceUrl || sourceTile.url} 
                 width={canvasWidth} 
                 height={canvasHeight} 
-                mask={`url(#mask-${sourceTile.id})`}
+                mask={`url(#mask-${uniqueId}-${sourceTile.id.replace(/[^a-zA-Z0-9]/g, '_')})`}
                 preserveAspectRatio="none"
               />
             </svg>

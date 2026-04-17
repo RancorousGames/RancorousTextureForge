@@ -86,7 +86,7 @@ export class DefaultInteractionStrategy extends InteractionStrategy {
 
     if (e.button === 0) { // Left Button
       if (state.isSelecting && props.onCustomSelectionChange && dist > this.MOVE_THRESHOLD) {
-        // Custom selection logic would go here if needed
+        // Custom selection logic
       }
       else if (dist <= this.MOVE_THRESHOLD) {
         const cellPos = this.geo.getPosFromCell(cx, cy);
@@ -102,38 +102,56 @@ export class DefaultInteractionStrategy extends InteractionStrategy {
     }
     else if (e.button === 2) { // Right Button
       if (dist <= this.MOVE_THRESHOLD) {
-        const cellPos = this.geo.getPosFromCell(cx, cy);
-        if (props.onCellRightClick) {
+        const tile = tiles.find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
+        
+        // Unified Clear: Punch hole AND remove tile if exists
+        if (props.onMaterialize) {
+          result.onMaterialize = { cx, cy, reason: 'clear' };
+        }
+        if (tile && props.onRemoveTile) {
+          result.onRemoveTile = tile;
+        } else if (!tile && !props.onMaterialize && props.onCellRightClick) {
+          const cellPos = this.geo.getPosFromCell(cx, cy);
           result.onCellRightClick = { ...cellPos, w: this.geo.cellW, h: this.geo.cellH, cx, cy };
-        } else if (props.onTilesChange) {
-          result.onTilesChange = tiles.filter(t => !this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
-        } else if (props.onRemoveTile) {
-          const tile = tiles.find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
-          if (tile) result.onRemoveTile = tile;
         }
       } 
-      else if (state.draggingId && state.draggingPos && props.onTilesChange) {
+      else if (state.draggingId && state.draggingPos) {
         const nx = state.draggingPos.x;
         const ny = state.draggingPos.y;
-        const { cx: targetCX, cy: targetCY } = this.geo.getCellAtPos(nx + this.geo.cellW / 2, ny + this.geo.cellH / 2);
 
-        let newTiles = tiles.filter(t => t.id === state.draggingId || !this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, targetCX, targetCY));
+        if (state.draggingId.startsWith('virtual-')) {
+          const parts = state.draggingId.split('-');
+          const origCX = parseInt(parts[1]);
+          const origCY = parseInt(parts[2]);
+          
+          if (props.onMaterialize) {
+            result.onMaterialize = { 
+              cx: origCX, 
+              cy: origCY, 
+              reason: 'move', 
+              draggingPos: { x: nx, y: ny } 
+            };
+          }
+        } else if (props.onTilesChange) {
+          const { cx: targetCX, cy: targetCY } = this.geo.getCellAtPos(nx + this.geo.cellW / 2, ny + this.geo.cellH / 2);
+          let newTiles = tiles.filter(t => t.id === state.draggingId || !this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, targetCX, targetCY));
 
-        if (props.atlasSwapMode) {
-          const destTile = tiles.find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, targetCX, targetCY));
-          if (destTile) {
-            newTiles = newTiles.map(t => {
-              if (t.id === state.draggingId) return { ...t, x: nx, y: ny };
-              if (t.id === destTile.id) return { ...t, x: state.dragOffset.originalX, y: state.dragOffset.originalY };
-              return t;
-            });
+          if (props.atlasSwapMode) {
+            const destTile = tiles.find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, targetCX, targetCY));
+            if (destTile) {
+              newTiles = newTiles.map(t => {
+                if (t.id === state.draggingId) return { ...t, x: nx, y: ny };
+                if (t.id === destTile.id) return { ...t, x: state.dragOffset.originalX, y: state.dragOffset.originalY };
+                return t;
+              });
+            } else {
+              newTiles = newTiles.map(t => t.id === state.draggingId ? { ...t, x: nx, y: ny } : t);
+            }
           } else {
             newTiles = newTiles.map(t => t.id === state.draggingId ? { ...t, x: nx, y: ny } : t);
           }
-        } else {
-          newTiles = newTiles.map(t => t.id === state.draggingId ? { ...t, x: nx, y: ny } : t);
+          result.onTilesChange = newTiles;
         }
-        result.onTilesChange = newTiles;
       }
     }
 

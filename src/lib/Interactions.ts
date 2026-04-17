@@ -43,10 +43,21 @@ export class DefaultInteractionStrategy extends InteractionStrategy {
       return { isSelecting: true, selectionStart: { x: cx, y: cy } };
     } 
     else if (e.button === 2) { // Right Click
-      const tile = tiles.find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
+      let tile: TextureTile | undefined;
+      if (this.geo.settings.mode === 'packing') {
+        // Precise hit-test for packing mode
+        tile = tiles.slice().reverse().find(t => 
+           pos.x >= t.x && pos.x <= t.x + (t.width * t.scale) &&
+           pos.y >= t.y && pos.y <= t.y + (t.height * t.scale)
+        );
+      } else {
+        tile = tiles.find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
+      }
+
       if (tile) {
         return { draggingId: tile.id, dragOffset: { x: pos.x - tile.x, y: pos.y - tile.y, originalX: tile.x, originalY: tile.y } };
-      } else {
+      } else if (this.geo.settings.mode !== 'packing') {
+        // Only allow virtual drag in grid modes
         const cellPos = this.geo.getPosFromCell(cx, cy);
         return { 
           draggingId: `virtual-${cx}-${cy}`, 
@@ -102,15 +113,24 @@ export class DefaultInteractionStrategy extends InteractionStrategy {
     }
     else if (e.button === 2) { // Right Button
       if (dist <= this.MOVE_THRESHOLD) {
-        const tile = tiles.find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
+        let tile: TextureTile | undefined;
+        if (this.geo.settings.mode === 'packing') {
+          tile = tiles.slice().reverse().find(t => 
+            pos.x >= t.x && pos.x <= t.x + (t.width * t.scale) &&
+            pos.y >= t.y && pos.y <= t.y + (t.height * t.scale)
+          );
+        } else {
+          tile = tiles.find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
+        }
         
         // Unified Clear: Punch hole AND remove tile if exists
-        if (props.onMaterialize) {
+        // (Only materialize if NOT in packing mode)
+        if (props.onMaterialize && this.geo.settings.mode !== 'packing') {
           result.onMaterialize = { cx, cy, reason: 'clear' };
         }
         if (tile && props.onRemoveTile) {
           result.onRemoveTile = tile;
-        } else if (!tile && !props.onMaterialize && props.onCellRightClick) {
+        } else if (!tile && this.geo.settings.mode !== 'packing' && !props.onMaterialize && props.onCellRightClick) {
           const cellPos = this.geo.getPosFromCell(cx, cy);
           result.onCellRightClick = { ...cellPos, w: this.geo.cellW, h: this.geo.cellH, cx, cy };
         }
@@ -133,23 +153,8 @@ export class DefaultInteractionStrategy extends InteractionStrategy {
             };
           }
         } else if (props.onTilesChange) {
-          const { cx: targetCX, cy: targetCY } = this.geo.getCellAtPos(nx + this.geo.cellW / 2, ny + this.geo.cellH / 2);
-          let newTiles = tiles.filter(t => t.id === state.draggingId || !this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, targetCX, targetCY));
-
-          if (props.atlasSwapMode) {
-            const destTile = tiles.find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, targetCX, targetCY));
-            if (destTile) {
-              newTiles = newTiles.map(t => {
-                if (t.id === state.draggingId) return { ...t, x: nx, y: ny };
-                if (t.id === destTile.id) return { ...t, x: state.dragOffset.originalX, y: state.dragOffset.originalY };
-                return t;
-              });
-            } else {
-              newTiles = newTiles.map(t => t.id === state.draggingId ? { ...t, x: nx, y: ny } : t);
-            }
-          } else {
-            newTiles = newTiles.map(t => t.id === state.draggingId ? { ...t, x: nx, y: ny } : t);
-          }
+          // Free move for packing mode, snapped for others
+          let newTiles = tiles.map(t => t.id === state.draggingId ? { ...t, x: nx, y: ny } : t);
           result.onTilesChange = newTiles;
         }
       }

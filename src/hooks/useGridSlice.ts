@@ -25,6 +25,8 @@ export function useGridSlice(
     const img = await loadImage(imgUrl);
     const gs = state.gridSettings;
 
+    if (gs.mode === 'packing') return;
+
     const padding = gs.padding || 0;
     const cellW = gs.cellSize;
     const cellH = gs.cellY || gs.cellSize;

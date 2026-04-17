@@ -305,15 +305,17 @@ export default function App() {
       set(prev => ({ ...prev, atlasStatus: 'parametric' }));
       performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true);
     } else if (currentGridMode === 'packing' && wasGridMode) {
-      // Revert to full image if switching to packing mode from a grid mode
+      // Revert to full image THEN trigger pack to turn it into islands immediately
       set(prev => ({
         ...prev,
         mainTiles: [{ ...sourceTile, id: generateId(), x: 0, y: 0, isCrop: false }],
         clearedCells: [],
-        atlasStatus: 'parametric'
+        atlasStatus: 'baked' // Set to baked immediately to hide background
       }));
+      // Wait for state to settle then turn into islands
+      setTimeout(() => packElements(), 50);
     }
-  }, [state.gridSettings.mode, mode, state.lastSourceTileId, state.secondaryTiles, state.modifiedTiles, state.canvasWidth, state.canvasHeight, state.atlasStatus, performGridSlice, set]);
+  }, [state.gridSettings.mode, mode, state.lastSourceTileId, state.secondaryTiles, state.modifiedTiles, state.canvasWidth, state.canvasHeight, state.atlasStatus, performGridSlice, packElements, set]);
 
   useEffect(() => {
     if (!isResizing) return;
@@ -407,9 +409,9 @@ export default function App() {
                 const needsPrompt = state.atlasStatus === 'modified' || state.atlasStatus === 'baked';
                 if (needsPrompt && !confirm('Changing grid settings will reset your manual arrangements. Continue?')) return;
                 
-                // If we have a source tile, re-slice. Otherwise just update settings.
+                // If we have a source tile and are in a grid mode, re-slice.
                 const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
-                if (sourceTile) {
+                if (sourceTile && gs.mode === 'fixed') {
                    set(prev => ({ ...prev, gridSettings: gs, mainTiles: [], clearedCells: [], atlasStatus: 'parametric' }));
                    setTimeout(() => performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true), 50);
                 } else {

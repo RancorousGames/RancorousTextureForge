@@ -41,7 +41,6 @@ const getInitialState = (): AppState => {
     modifiedTiles: [],
     gridSettings: {
       mode: 'fixed',
-      gridX: 8, gridY: 8,
       keepSquare: true,
       cellSize: 128, cellY: 128,
       padding: 0,
@@ -51,7 +50,6 @@ const getInitialState = (): AppState => {
     },
     sourceGridSettings: {
       mode: 'fixed',
-      gridX: 8, gridY: 8,
       keepSquare: true,
       cellSize: 128, cellY: 128,
       padding: 0,
@@ -180,7 +178,7 @@ export default function App() {
 
   const handleAssetClick = useCallback(async (tile: TextureTile) => {
     if (mode === 'atlas') {
-      const shouldSlice = state.gridSettings.mode === 'perfect' || state.gridSettings.mode === 'fixed';
+      const shouldSlice = state.gridSettings.mode === 'fixed';
       
       set(prev => ({
         ...prev,
@@ -289,8 +287,8 @@ export default function App() {
     const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
     if (!sourceTile) return;
 
-    const isGridMode = currentGridMode === 'perfect' || currentGridMode === 'fixed';
-    const wasGridMode = prevGridMode === 'perfect' || prevGridMode === 'fixed';
+    const isGridMode = currentGridMode === 'fixed';
+    const wasGridMode = prevGridMode === 'fixed';
     
     // Guard: entering packing mode while dirty
     if (currentGridMode === 'packing' && wasGridMode && state.atlasStatus === 'modified') {

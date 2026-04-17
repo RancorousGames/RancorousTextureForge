@@ -62,7 +62,6 @@ export function Toolbox({
             onChange={(e) => onGridSettingsChange({ ...gridSettings, mode: e.target.value as GridMode })}
             className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200"
           >
-            <option value="perfect">Perfect Grid</option>
             <option value="fixed">Fixed Cell Size</option>
             <option value="packing">Atlas Packing</option>
           </select>
@@ -113,53 +112,6 @@ export function Toolbox({
           />
           <label htmlFor="swapMode" className="text-xs text-zinc-400">Swap Tiles on Drag</label>
         </div>
-
-        {gridSettings.mode === 'perfect' && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-[10px] text-zinc-500 flex justify-between">
-                <span>Grid X</span>
-                <span className="font-mono">{gridSettings.gridX}</span>
-              </label>
-              <input
-                type="range"
-                min="2"
-                max="64"
-                value={gridSettings.gridX}
-                onChange={(e) => onGridSettingsChange({ ...gridSettings, gridX: Number(e.target.value) })}
-                className="w-full accent-blue-500"
-              />
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="keepSquare"
-                checked={gridSettings.keepSquare}
-                onChange={(e) => onGridSettingsChange({ ...gridSettings, keepSquare: e.target.checked })}
-                className="rounded border-zinc-700 bg-zinc-950 text-blue-500"
-              />
-              <label htmlFor="keepSquare" className="text-xs text-zinc-400">Keep Square</label>
-            </div>
-
-            {!gridSettings.keepSquare && (
-              <div className="space-y-2">
-                <label className="text-[10px] text-zinc-500 flex justify-between">
-                  <span>Grid Y</span>
-                  <span className="font-mono">{gridSettings.gridY}</span>
-                </label>
-                <input
-                  type="range"
-                  min="2"
-                  max="64"
-                  value={gridSettings.gridY}
-                  onChange={(e) => onGridSettingsChange({ ...gridSettings, gridY: Number(e.target.value) })}
-                  className="w-full accent-blue-500"
-                />
-              </div>
-            )}
-          </div>
-        )}
 
         {gridSettings.mode === 'fixed' && (
           <div className="space-y-4">

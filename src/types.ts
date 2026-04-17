@@ -21,15 +21,13 @@ export interface TextureTile {
 }
 
 export type AppMode = 'atlas' | 'adjust' | 'channel-pack' | 'layering';
-export type GridMode = 'perfect' | 'fixed' | 'packing';
+export type GridMode = 'fixed' | 'packing';
 
 export interface GridSettings {
   mode: GridMode;
-  gridX: number;
-  gridY: number;
   keepSquare: boolean;
   cellSize: number;
-  cellY?: number;
+  cellY: number;
   padding: number;
   clearColor: string;
   clearTolerance: number;

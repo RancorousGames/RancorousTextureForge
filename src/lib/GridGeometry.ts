@@ -12,15 +12,9 @@ export class GridGeometry {
     public readonly canvasW: number,
     public readonly canvasH: number
   ) {
-    if (settings.mode === 'perfect') {
-      this.cellW = canvasW / settings.gridX;
-      this.cellH = canvasH / (settings.keepSquare ? settings.gridX : settings.gridY);
-      this.padding = 0;
-    } else {
-      this.padding = settings.padding || 0;
-      this.cellW = settings.cellSize;
-      this.cellH = settings.cellY || settings.cellSize;
-    }
+    this.padding = settings.padding || 0;
+    this.cellW = settings.cellSize;
+    this.cellH = settings.cellY || settings.cellSize;
     this.stepX = this.cellW + this.padding * 2;
     this.stepY = this.cellH + this.padding * 2;
   }

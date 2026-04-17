@@ -177,14 +177,8 @@ export function SourceAtlas({
     console.log(`[Forge] Summary: Replaced ${replacedCount} of ${sw * sh} pixels. Mismatches: ${mismatchSamples.join(' | ')}`);
     cropCtx.putImageData(finalCropData, 0, 0);
 
-    let targetW = 0, targetH = 0;
-    if (mainGridSettings.mode === 'perfect') {
-      targetW = targetCanvasW / mainGridSettings.gridX;
-      targetH = targetCanvasH / (mainGridSettings.keepSquare ? mainGridSettings.gridX : mainGridSettings.gridY);
-    } else {
-      targetW = mainGridSettings.cellSize;
-      targetH = mainGridSettings.cellY || mainGridSettings.cellSize;
-    }
+    const targetW = mainGridSettings.cellSize;
+    const targetH = mainGridSettings.cellY || mainGridSettings.cellSize;
 
     const finalCanvas = document.createElement('canvas');
     finalCanvas.width = targetW; finalCanvas.height = targetH;

@@ -25,16 +25,9 @@ export function useGridSlice(
     const img = await loadImage(imgUrl);
     const gs = state.gridSettings;
 
-    let cellW: number, cellH: number, padding: number;
-    if (gs.mode === 'perfect') {
-      cellW = width / gs.gridX;
-      cellH = height / (gs.keepSquare ? gs.gridX : gs.gridY);
-      padding = 0;
-    } else {
-      padding = gs.padding || 0;
-      cellW = gs.cellSize;
-      cellH = gs.cellY || gs.cellSize;
-    }
+    const padding = gs.padding || 0;
+    const cellW = gs.cellSize;
+    const cellH = gs.cellY || gs.cellSize;
 
     const stepX = cellW + padding * 2;
     const stepY = cellH + padding * 2;

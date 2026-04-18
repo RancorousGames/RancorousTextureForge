@@ -7,7 +7,7 @@ import { Toolbox } from './components/Toolbox';
 import { ChannelPackerMode } from './components/ChannelPackerMode';
 import { LayeringMode } from './components/LayeringMode';
 import { AdjustMode } from './components/AdjustMode';
-import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon } from 'lucide-react';
+import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { cn } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
 import { useAtlas } from './hooks/useAtlas';
@@ -123,6 +123,35 @@ export default function App() {
     }
   }, [state.secondaryTiles, state.modifiedTiles, state.lastSourceTileId,
       state.canvasWidth, state.canvasHeight, set, performGridSlice]);
+
+  const handleResultExport = useCallback((url: string, name: string) => {
+    const link = document.createElement('a');
+    link.download = name;
+    link.href = url;
+    link.click();
+
+    // Add to library
+    const img = new Image();
+    img.onload = () => {
+      const newTile: TextureTile = {
+        id: generateId(),
+        url: url,
+        name: name,
+        width: img.width,
+        height: img.height,
+        x: 0,
+        y: 0,
+        hue: 0,
+        brightness: 100,
+        scale: 1,
+      };
+      set(prev => ({
+        ...prev,
+        secondaryTiles: [newTile, ...prev.secondaryTiles]
+      }));
+    };
+    img.src = url;
+  }, [set]);
 
   const { handleAutoDetectMainGrid, handleAutoDetectSourceGrid } =
     useAutoDetect(state, canvasWidth, canvasHeight, set, onAutoDetectSettingsApplied);
@@ -398,6 +427,16 @@ export default function App() {
         </div>
         <div className="flex items-center gap-3">
           <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={handleLoadFiles} />
+          <a
+            href="https://www.fab.com/listings/9b4a13ba-d6d9-4811-b993-4d628edf9d0c"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium px-3 py-1.5 rounded transition-colors border border-zinc-700"
+            title="Unreal Plugin"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Unreal Plugin
+          </a>
           <button onClick={handleOpenDirectory} className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium px-3 py-1.5 rounded transition-colors border border-zinc-700" title="Load images or directories into the asset library">
             <FolderOpen className="w-4 h-4" />
             Load Assets
@@ -539,7 +578,7 @@ export default function App() {
             <AdjustMode
               selectedTile={selectedTile}
               updateTile={updateTile}
-              onExport={() => {}}
+              onExport={handleResultExport}
               adjustSettings={state.adjustSettings}
               onAdjustSettingsChange={(as) => set(prev => ({ ...prev, adjustSettings: as }))}
             />
@@ -553,7 +592,7 @@ export default function App() {
             setMapping={(m) => set(prev => ({ ...prev, packerMapping: m }))}
             pbrSet={state.pbrSet}
             setPbrSet={(p) => set(prev => ({ ...prev, pbrSet: p }))}
-            onExport={() => {}}
+            onExport={handleResultExport}
           />
         )}
 
@@ -562,7 +601,9 @@ export default function App() {
             availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]}
             layers={state.layeringLayers}
             setLayers={(l) => set(prev => ({ ...prev, layeringLayers: l }))}
-            onExport={() => {}}
+            onExport={handleResultExport}
+            canvasWidth={canvasWidth}
+            canvasHeight={canvasHeight}
           />
         )}
 

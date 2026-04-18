@@ -54,6 +54,7 @@ export function AtlasCanvas({
   uniqueId = 'atlas',
 }: AtlasCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   
   const geo = useMemo(() => 
@@ -99,6 +100,15 @@ export function AtlasCanvas({
       if (el) el.removeEventListener('wheel', handleWheel);
     };
   }, []);
+
+  // Fit-to-view when canvas dimensions change (new atlas loaded)
+  useEffect(() => {
+    if (!canvasWidth || !canvasHeight || !viewportRef.current) return;
+    const { clientWidth, clientHeight } = viewportRef.current;
+    if (clientWidth === 0 || clientHeight === 0) return;
+    const scale = Math.min(clientWidth / canvasWidth, clientHeight / canvasHeight) * 0.95;
+    setZoom(Math.min(Math.max(0.1, scale), 10));
+  }, [canvasWidth, canvasHeight]);
 
   // Pointer Handlers
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -195,7 +205,7 @@ export function AtlasCanvas({
   };
 
   return (
-    <div className={cn("flex-1 h-full bg-zinc-950 relative overflow-hidden checkerboard", className)} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setInteractionState(prev => ({ ...prev, hoveredCell: null }))} onContextMenu={e => e.preventDefault()} onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
+    <div ref={viewportRef} className={cn("flex-1 h-full bg-zinc-950 relative overflow-hidden checkerboard", className)} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setInteractionState(prev => ({ ...prev, hoveredCell: null }))} onContextMenu={e => e.preventDefault()} onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
       <div ref={containerRef} className="relative origin-top-left shadow-2xl transition-transform duration-75 ease-out" style={{ width: canvasWidth, height: canvasHeight, transform: `scale(${zoom})` }}>
         <div className="absolute inset-0 pointer-events-none z-0" style={{ backgroundColor: gridSettings.clearColor }} />
         

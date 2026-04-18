@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { TextureTile, GridSettings } from '../types';
 import { AtlasCanvas } from './AtlasCanvas';
-import { Image as ImageIcon, Plus, Wand2 } from 'lucide-react';
-import { hexToRgb } from '../lib/utils';
+import { Image as ImageIcon, Plus, Wand2, LayoutTemplate } from 'lucide-react';
+import { hexToRgb, findIslands, cn } from '../lib/utils';
+import { GridGeometry } from '../lib/GridGeometry';
 
 interface SourceAtlasProps {
   onAddTile: (tile: TextureTile) => void;
@@ -40,6 +41,47 @@ export function SourceAtlas({
     if (tile) {
       setSourceTile({ ...tile, id: 'source' });
     }
+  };
+
+  const handleExtractIslands = async () => {
+    if (!sourceTile) return;
+
+    const img = new Image();
+    await new Promise(resolve => { img.onload = resolve; img.src = sourceTile.url; });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = sourceTile.width;
+    canvas.height = sourceTile.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const islands = findIslands(
+      imageData,
+      gridSettings.clearColor,
+      gridSettings.clearTolerance,
+      true
+    );
+
+    console.log(`[SourceAtlas] Fix Grid found ${islands.length} islands`);
+
+    const geo = new GridGeometry(gridSettings, sourceTile.width, sourceTile.height);
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = sourceTile.width;
+    outCanvas.height = sourceTile.height;
+    const outCtx = outCanvas.getContext('2d');
+    if (!outCtx) return;
+
+    islands.forEach((isl) => {
+      const col = Math.round((isl.x + isl.w / 2 - geo.padding - geo.cellW / 2) / geo.stepX);
+      const row = Math.round((isl.y + isl.h / 2 - geo.padding - geo.cellH / 2) / geo.stepY);
+      const destX = geo.padding + col * geo.stepX;
+      const destY = geo.padding + row * geo.stepY;
+      outCtx.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, destX, destY, geo.cellW, geo.cellH);
+    });
+
+    setSourceTile({ ...sourceTile, url: outCanvas.toDataURL() });
   };
 
   const handleLoadSource = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -272,23 +314,43 @@ export function SourceAtlas({
               title="Color-key matching tolerance against the background color"
             />
           </div>
-          {sourceTile && (
-            <button
-              onClick={() => onAutoDetectGrid(sourceTile)}
-              className="flex items-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-medium px-2 py-1 rounded transition-colors border border-blue-500/30"
-              title="Automatically detect grid size and padding from the current source image"
-            >
-              <Wand2 className="w-3.5 h-3.5" />
-              <span>Auto Detect</span>
-            </button>
-          )}
+
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium px-2 py-1 rounded transition-colors border border-zinc-700"
-            title="Load a new source image to pick from"
+            className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded transition-colors border border-zinc-700"
+            title="Load Source Image"
           >
-            <Plus className="w-3 h-3" />
-            Load Source
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            disabled={!sourceTile}
+            onClick={() => sourceTile && onAutoDetectGrid(sourceTile)}
+            className={cn(
+              "flex items-center gap-2 text-xs font-medium px-2 py-1 rounded transition-colors border",
+              sourceTile 
+                ? "bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border-blue-500/30" 
+                : "bg-zinc-800/50 text-zinc-600 border-zinc-800 opacity-50 cursor-not-allowed"
+            )}
+            title="Automatically detect grid size and padding from the current source image"
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            <span>Auto Detect</span>
+          </button>
+
+          <button
+            disabled={!sourceTile}
+            onClick={handleExtractIslands}
+            className={cn(
+              "flex items-center gap-2 text-xs font-medium px-2 py-1 rounded transition-colors border",
+              sourceTile 
+                ? "bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border-amber-500/30" 
+                : "bg-zinc-800/50 text-zinc-600 border-zinc-800 opacity-50 cursor-not-allowed"
+            )}
+            title="Run Fix Grid algorithm on the entire source image to extract islands"
+          >
+            <LayoutTemplate className="w-3.5 h-3.5" />
+            <span>Fix Grid</span>
           </button>
         </div>
         <input type="file" className="hidden" ref={fileInputRef} onChange={handleLoadSource} accept="image/*" />

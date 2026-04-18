@@ -11,9 +11,11 @@ export function useAutoDetect(
   onSettingsDetected?: (gs: GridSettings) => void
 ) {
   const handleAutoDetectMainGrid = useCallback(async (tile?: TextureTile) => {
+    const totalStart = performance.now();
     let imageData: ImageData | null = null;
 
     if (tile) {
+      const loadStart = performance.now();
       const img = await loadImage(tile.sourceUrl || tile.url).catch(() => null);
       if (img) {
         const realW = img.naturalWidth || img.width;
@@ -25,11 +27,13 @@ export function useAutoDetect(
           ctx.imageSmoothingEnabled = false;
           ctx.drawImage(img, 0, 0, realW, realH);
           imageData = ctx.getImageData(0, 0, realW, realH);
+          console.log(`[AutoDetect] Main Grid: Image loaded and ImageData captured in ${(performance.now() - loadStart).toFixed(2)}ms`);
         }
       }
     }
 
     if (!imageData) {
+      const loadStart = performance.now();
       const sharedSourceUrls = Array.from(new Set(
         state.mainTiles.map(t => t.sourceUrl).filter((u): u is string => Boolean(u))
       ));
@@ -46,24 +50,26 @@ export function useAutoDetect(
             ctx.imageSmoothingEnabled = false;
             ctx.drawImage(img, 0, 0, realW, realH);
             imageData = ctx.getImageData(0, 0, realW, realH);
+            console.log(`[AutoDetect] Main Grid: Shared source image loaded in ${(performance.now() - loadStart).toFixed(2)}ms`);
           }
         }
       }
     }
 
     if (!imageData) {
+      const renderStart = performance.now();
       const canvas = await renderTilesToCanvas(
         state.mainTiles, canvasWidth, canvasHeight,
         state.gridSettings.clearColor, { willReadFrequently: true }
       );
       imageData = canvas.getContext('2d')!.getImageData(0, 0, canvasWidth, canvasHeight);
+      console.log(`[AutoDetect] Main Grid: Tiles rendered to canvas in ${(performance.now() - renderStart).toFixed(2)}ms`);
     }
 
     const tolerance = state.gridSettings.clearTolerance ?? 10;
     const keyColor = detectBackgroundColor(imageData, tolerance);
     const detectedClearColor = rgbToHex(keyColor.r, keyColor.g, keyColor.b);
-    console.log(`[AutoDetect] Main Grid: Detected background color ${detectedClearColor}.`);
-
+    
     const { cellSize, padding } = detectSettingsFromImage(imageData, detectedClearColor, tolerance, true);
 
     const newSettings: GridSettings = {
@@ -74,6 +80,7 @@ export function useAutoDetect(
     };
 
     console.log(`[AutoDetect] Applying Main Grid settings: Cell=${cellSize}, Pad=${padding}, Color=${detectedClearColor}`);
+    console.log(`[AutoDetect] Main Grid TOTAL TIME: ${(performance.now() - totalStart).toFixed(2)}ms`);
     set(prev => ({ ...prev, gridSettings: newSettings }));
     onSettingsDetected?.(newSettings);
     return newSettings;
@@ -81,6 +88,8 @@ export function useAutoDetect(
   }, [state.mainTiles, state.gridSettings, canvasWidth, canvasHeight, set, onSettingsDetected]);
 
   const handleAutoDetectSourceGrid = useCallback(async (sourceTile: TextureTile) => {
+    const totalStart = performance.now();
+    const loadStart = performance.now();
     const img = await loadImage(sourceTile.sourceUrl || sourceTile.url).catch(() => null);
     if (!img) return;
 
@@ -93,11 +102,11 @@ export function useAutoDetect(
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(img, 0, 0, realW, realH);
     const imageData = ctx.getImageData(0, 0, realW, realH);
+    console.log(`[AutoDetect] Source Grid: Image loaded in ${(performance.now() - loadStart).toFixed(2)}ms`);
 
     const tolerance = state.sourceGridSettings.clearTolerance ?? 10;
     const keyColor = detectBackgroundColor(imageData, tolerance);
     const detectedClearColor = rgbToHex(keyColor.r, keyColor.g, keyColor.b);
-    console.log(`[AutoDetect] Source Grid: Detected background color ${detectedClearColor}.`);
     
     const { cellSize, padding } = detectSettingsFromImage(
       imageData, detectedClearColor, tolerance
@@ -111,6 +120,7 @@ export function useAutoDetect(
     };
 
     console.log(`[AutoDetect] Applying Source Grid settings: Cell=${cellSize}, Pad=${padding}, Color=${detectedClearColor}`);
+    console.log(`[AutoDetect] Source Grid TOTAL TIME: ${(performance.now() - totalStart).toFixed(2)}ms`);
     set(prev => ({
       ...prev,
       sourceGridSettings: newSettings,

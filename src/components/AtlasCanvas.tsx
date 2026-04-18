@@ -239,6 +239,9 @@ export function AtlasCanvas({
                 height={canvasHeight} 
                 mask={`url(#mask-${uniqueId}-${sourceAsset.id.replace(/[^a-zA-Z0-9]/g, '_')})`}
                 preserveAspectRatio="none"
+                style={{
+                  filter: `hue-rotate(${sourceAsset.hue}deg) brightness(${sourceAsset.brightness}%)`
+                }}
               />
             </svg>
           </div>

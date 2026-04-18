@@ -69,6 +69,7 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
       }
 
       if (entry) {
+        console.log(`[Interaction] Drag Start (Real Entry): id=${entry.id}, pos=(${entry.x},${entry.y}), cell=(${cx},${cy})`);
         if (callbacks.onEntriesChange || callbacks.onMaterialize) {
           return {
             state: {
@@ -78,6 +79,7 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
           };
         }
       } else if (this.geo.settings.mode !== 'packing') {
+        console.log(`[Interaction] Drag Start (Virtual Cell): cell=(${cx},${cy})`);
         if (callbacks.onMaterialize) {
           const cellPos = this.geo.getPosFromCell(cx, cy);
           return {

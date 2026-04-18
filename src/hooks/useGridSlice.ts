@@ -79,6 +79,7 @@ export function useGridSlice(
     };
 
     const newEntries: TextureAsset[] = [];
+    const newClearedCells: string[] = [];
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         sliceCtx.clearRect(0, 0, cellW, cellH);
@@ -96,6 +97,8 @@ export function useGridSlice(
         }
 
         if (hasContent) {
+          const key = `${col},${row}`;
+          newClearedCells.push(key);
           newEntries.push({
             id: generateId(),
             url: sliceCanvas.toDataURL(),
@@ -103,7 +106,7 @@ export function useGridSlice(
             name: `Slice_${col}_${row}`,
             width: cellW, height: cellH,
             x: col * stepX + padding, y: row * stepY + padding,
-            hue: 0, brightness: 100, scale: 1, isCrop: true,
+            hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1, isCrop: true,
           });
         }
       }
@@ -113,12 +116,12 @@ export function useGridSlice(
     tileRegistry.registerMany(newEntries);
 
     if (skipHistory) {
-      set(prev => ({ ...prev, atlasEntries: newEntries, clearedCells: [], atlasStatus: 'parametric' }));
+      set(prev => ({ ...prev, atlasEntries: newEntries, clearedCells: newClearedCells, atlasStatus: 'parametric' }));
     } else {
       executeCommand([
         new SetMainTilesCommand(state.atlasEntries, newEntries, state.atlasStatus, 'parametric'),
         new PatchCommand(
-          { lastSourceAssetId: sourceAsset.id, clearedCells: [] },
+          { lastSourceAssetId: sourceAsset.id, clearedCells: newClearedCells },
           { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
         ),
       ]);
@@ -155,7 +158,7 @@ export function useGridSlice(
       width: geo.cellW, height: geo.cellH,
       x: draggingPos ? draggingPos.x : cellPos.x,
       y: draggingPos ? draggingPos.y : cellPos.y,
-      hue: 0, brightness: 100, scale: 1, isCrop: true,
+      hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1, isCrop: true,
     };
     tileRegistry.register(newEntry);
     const key = `${cx},${cy}`;
@@ -253,6 +256,8 @@ export function useGridSlice(
 
       const newEntries: TextureAsset[] = [];
       const replacedEntries: TextureAsset[] = [];
+      const newClearedCells = [...state.clearedCells];
+
       for (const key of selectedCells) {
         const [dcx, dcy] = key.split(',').map(Number);
         const sourceCX = scx + (dcx - minCX);
@@ -263,25 +268,34 @@ export function useGridSlice(
         replacedEntries.push(...state.atlasEntries.filter(t =>
           mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)
         ));
+
+        if (!newClearedCells.includes(key)) newClearedCells.push(key);
+
         const newEntry: TextureAsset = {
           id: generateId(), url: createCrop(sourceCX, sourceCY),
           name: `${sourceAsset.name}_crop_${sourceCX}_${sourceCY}`,
           width: mainAtlasGeo.cellW, height: mainAtlasGeo.cellH,
-          x: dX, y: dY, hue: 0, brightness: 100, scale: 1,
+          x: dX, y: dY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1,
         };
         tileRegistry.register(newEntry);
         newEntries.push(newEntry);
       }
       executeCommand([
         new AddTilesCommand(newEntries, replacedEntries),
-        new PatchCommand({ lastSourceAssetId: null }, { lastSourceAssetId: state.lastSourceAssetId }),
+        new PatchCommand(
+          { lastSourceAssetId: null, clearedCells: newClearedCells }, 
+          { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
+        ),
       ]);
     } else {
+      const cellKey = `${mainAtlasGeo.getCellAtPos(destX, destY).cx},${mainAtlasGeo.getCellAtPos(destX, destY).cy}`;
+      const newClearedCells = state.clearedCells.includes(cellKey) ? state.clearedCells : [...state.clearedCells, cellKey];
+
       const newEntry: TextureAsset = {
         id: generateId(), url: createCrop(scx, scy),
         name: `${sourceAsset.name}_crop_${scx}_${scy}`,
         width: mainAtlasGeo.cellW, height: mainAtlasGeo.cellH,
-        x: destX, y: destY, hue: 0, brightness: 100, scale: 1, isCrop: true,
+        x: destX, y: destY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1, isCrop: true,
       };
       tileRegistry.register(newEntry);
       const { cx: tcx, cy: tcy } = mainAtlasGeo.getCellAtPos(destX, destY);
@@ -290,7 +304,10 @@ export function useGridSlice(
       );
       executeCommand([
         new AddTilesCommand([newEntry], replacedEntries),
-        new PatchCommand({ lastSourceAssetId: null }, { lastSourceAssetId: state.lastSourceAssetId }),
+        new PatchCommand(
+          { lastSourceAssetId: null, clearedCells: newClearedCells }, 
+          { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
+        ),
       ]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -317,24 +334,32 @@ export function useGridSlice(
 
     const newEntries: TextureAsset[] = [];
     const replacedEntries: TextureAsset[] = [];
+    const newClearedCells = [...state.clearedCells];
+
     for (const key of selectedCells) {
       const [dcx, dcy] = key.split(',').map(Number);
       const { x: destX, y: destY } = mainAtlasGeo.getPosFromCell(dcx, dcy);
       replacedEntries.push(...state.atlasEntries.filter(t =>
         mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)
       ));
+
+      if (!newClearedCells.includes(key)) newClearedCells.push(key);
+
       const newEntry: TextureAsset = {
         id: generateId(), url: croppedUrl,
         name: `${sourceAsset.name}_fill_${scx}_${scy}`,
         width: mainAtlasGeo.cellW, height: mainAtlasGeo.cellH,
-        x: destX, y: destY, hue: 0, brightness: 100, scale: 1, isCrop: true,
+        x: destX, y: destY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1, isCrop: true,
       };
       tileRegistry.register(newEntry);
       newEntries.push(newEntry);
     }
     executeCommand([
       new AddTilesCommand(newEntries, replacedEntries),
-      new PatchCommand({ lastSourceAssetId: null }, { lastSourceAssetId: state.lastSourceAssetId }),
+      new PatchCommand(
+        { lastSourceAssetId: null, clearedCells: newClearedCells }, 
+        { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
+      ),
     ]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId,

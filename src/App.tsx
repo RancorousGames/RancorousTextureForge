@@ -15,7 +15,7 @@ import { useGridSlice } from './hooks/useGridSlice';
 import { useAutoDetect } from './hooks/useAutoDetect';
 import { useAtlasOps } from './hooks/useAtlasOps';
 import { useAssetLibrary } from './hooks/useAssetLibrary';
-import { AddTilesCommand, PatchCommand } from './lib/Commands';
+import { AddTilesCommand, PatchCommand, SetMainTilesCommand } from './lib/Commands';
 import { tileRegistry } from './lib/TileRegistry';
 import { generateId, renderTilesToCanvas } from './lib/canvas';
 
@@ -109,7 +109,7 @@ export default function App() {
     entries: state.atlasEntries,
     setEntries: (newEntries) => {
       const next = typeof newEntries === 'function' ? newEntries(state.atlasEntries) : newEntries;
-      executeCommand(new AddTilesCommand(next, state.atlasEntries));
+      executeCommand(new SetMainTilesCommand(state.atlasEntries, next));
     },
   });
 
@@ -385,6 +385,7 @@ export default function App() {
   }, [mode, state.libraryAssets, state.modifiedAssets, state.autoDetectEnabled, state.gridSettings, handleGetMainAtlasSnapshot, handleAutoDetectMainGrid, handleAutoDetectSourceGrid, performGridSlice, set]);
 
   const handleMainAtlasDrop = useCallback((assetOrId: string | TextureAsset, x: number, y: number) => {
+    console.log(`[Forge] handleMainAtlasDrop: assetOrId=${typeof assetOrId === 'string' ? assetOrId : assetOrId.id}, x=${x}, y=${y}`);
     let asset: TextureAsset | undefined;
     
     if (typeof assetOrId === 'string') {
@@ -393,9 +394,15 @@ export default function App() {
       asset = assetOrId;
     }
     
-    if (!asset) return;
+    if (!asset) {
+      console.warn(`[Forge] Drop failed: Asset not found.`);
+      return;
+    }
 
-    if (state.libraryAssets.some(t => t.id === asset!.id) || asset.id === VIRTUAL_MAIN_ATLAS_ID) {
+    if (state.libraryAssets.some(t => t.id === asset!.id) || 
+        state.modifiedAssets.some(t => t.id === asset!.id) || 
+        asset.id === VIRTUAL_MAIN_ATLAS_ID) {
+      console.log(`[Forge] Browser/Virtual asset dropped. Triggering handleAssetClick (Replace Source mode).`);
       handleAssetClick(asset);
       return;
     }
@@ -404,12 +411,15 @@ export default function App() {
     if (state.gridSettings.mode !== 'packing') {
       const snapped = mainAtlas.geo.snap(x, y);
       finalX = snapped.x; finalY = snapped.y;
+      console.log(`[Forge] Grid Snap: Original(${x},${y}) -> Snapped(${finalX},${finalY})`);
 
       if (x === 0 && y === 0) {
+        console.log(`[Forge] Detected drop at (0,0). Searching for first empty cell...`);
         outer: for (let r = 0; r < mainAtlas.geo.rows; r++) {
           for (let c = 0; c < mainAtlas.geo.cols; c++) {
             if (!state.atlasEntries.some(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r))) {
               ({ x: finalX, y: finalY } = mainAtlas.geo.getPosFromCell(c, r));
+              console.log(`[Forge] Teleporting to first empty cell at (${c},${r}) -> pos(${finalX},${finalY})`);
               break outer;
             }
           }
@@ -426,13 +436,28 @@ export default function App() {
       isCrop: true,
     };
     tileRegistry.register(newEntry);
+    
     const { cx, cy } = mainAtlas.geo.getCellAtPos(finalX, finalY);
+    console.log(`[Forge] Placing Entry: id=${newEntry.id}, cell=(${cx},${cy}), pos=(${finalX},${finalY})`);
+
     const replacedEntries = state.atlasEntries.filter(t =>
       mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy)
     );
+    if (replacedEntries.length > 0) {
+      console.log(`[Forge] Replacing ${replacedEntries.length} existing entries in cell.`);
+    }
+
+    const cellKey = `${cx},${cy}`;
+    const nextClearedCells = state.clearedCells.includes(cellKey) 
+      ? state.clearedCells 
+      : [...state.clearedCells, cellKey];
+
     executeCommand([
       new AddTilesCommand([newEntry], replacedEntries),
-      new PatchCommand({ lastSourceAssetId: null }, { lastSourceAssetId: state.lastSourceAssetId }),
+      new PatchCommand(
+        { lastSourceAssetId: null, clearedCells: nextClearedCells }, 
+        { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
+      ),
     ]);
   }, [state.libraryAssets, state.modifiedAssets, state.atlasEntries, state.gridSettings.mode,
       state.lastSourceAssetId, mainAtlas.geo, handleAssetClick, executeCommand]);

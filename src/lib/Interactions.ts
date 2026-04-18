@@ -189,9 +189,30 @@ export class DefaultInteractionStrategy extends InteractionStrategy {
             };
           }
         } else if (props.onTilesChange) {
-          // Free move for packing mode, snapped for others
-          let newTiles = tiles.map(t => t.id === state.draggingId ? { ...t, x: nx, y: ny } : t);
-          result.onTilesChange = newTiles;
+          if (this.geo.settings.mode !== 'packing') {
+            const { cx: destCx, cy: destCy } = this.geo.getCellAtPos(nx + this.geo.cellW / 2, ny + this.geo.cellH / 2);
+            const hitTile = tiles.find(t =>
+              t.id !== state.draggingId &&
+              this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, destCx, destCy)
+            );
+            if (hitTile && props.atlasSwapMode) {
+              const origX = state.dragOffset.originalX;
+              const origY = state.dragOffset.originalY;
+              result.onTilesChange = tiles.map(t => {
+                if (t.id === state.draggingId) return { ...t, x: nx, y: ny };
+                if (t.id === hitTile.id) return { ...t, x: origX, y: origY };
+                return t;
+              });
+            } else if (hitTile) {
+              result.onTilesChange = tiles
+                .filter(t => t.id !== hitTile.id)
+                .map(t => t.id === state.draggingId ? { ...t, x: nx, y: ny } : t);
+            } else {
+              result.onTilesChange = tiles.map(t => t.id === state.draggingId ? { ...t, x: nx, y: ny } : t);
+            }
+          } else {
+            result.onTilesChange = tiles.map(t => t.id === state.draggingId ? { ...t, x: nx, y: ny } : t);
+          }
         }
       }
     }

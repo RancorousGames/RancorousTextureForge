@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { AppState, TextureTile } from '../types';
 import { GridGeometry } from '../lib/GridGeometry';
 import { hexToRgb, findIslands } from '../lib/utils';
-import { renderTilesToCanvas, generateId } from '../lib/canvas';
+import { renderTilesToCanvas, loadImage, generateId } from '../lib/canvas';
 import { Command, SetMainTilesCommand } from '../lib/Commands';
 import potpack from 'potpack';
 
@@ -19,48 +19,76 @@ export function useAtlasOps(
     let currentX = 0, currentY = 0, rowHeight = 0;
     const padding = 2;
     const sorted = [...state.mainTiles].sort((a, b) => (b.height * b.scale) - (a.height * a.scale));
-    const packed = sorted.map(tile => {
+    
+    console.log(`[PackAtlas] Starting pack of ${sorted.length} tiles. CanvasWidth: ${canvasWidth}`);
+
+    const packed = sorted.map((tile, i) => {
       const sw = tile.width * tile.scale;
       const sh = tile.height * tile.scale;
-      if (currentX + sw > canvasWidth) { currentX = 0; currentY += rowHeight + padding; rowHeight = 0; }
+      if (currentX + sw > canvasWidth) { 
+        console.log(`[PackAtlas] Row full. Moving from X:${currentX.toFixed(1)} to X:0, Y:${(currentY + rowHeight + padding).toFixed(1)}`);
+        currentX = 0; currentY += rowHeight + padding; rowHeight = 0; 
+      }
       const result = { ...tile, x: currentX, y: currentY };
+      if (i < 5 || i === sorted.length - 1) {
+        console.log(`[PackAtlas] Tile #${i} ('${tile.name}'): size ${sw}x${sh} -> placed at ${currentX},${currentY}`);
+      }
       rowHeight = Math.max(rowHeight, sh);
       currentX += sw + padding;
       return result;
     });
+    console.log(`[PackAtlas] Complete.`);
     executeCommand(new SetMainTilesCommand(state.mainTiles, packed));
   }, [state.mainTiles, canvasWidth, executeCommand]);
 
   const fixGrid = useCallback(async () => {
-    if (state.mainTiles.length === 0) return;
+    const sourceTileObj = [...state.secondaryTiles, ...state.modifiedTiles]
+      .find(t => t.id === state.lastSourceTileId);
+    if (!sourceTileObj) return;
 
-    const canvas = await renderTilesToCanvas(
-      state.mainTiles, canvasWidth, canvasHeight,
-      state.gridSettings.clearColor, { willReadFrequently: true }
-    );
+    if (state.atlasStatus === 'modified' || state.atlasStatus === 'baked') {
+      if (!confirm('Fix Grid will revert the atlas to the source image. Manual changes will be lost. Continue?')) return;
+    }
 
-    const ctx = canvas.getContext('2d')!;
+    const img = await loadImage(sourceTileObj.url);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, canvasWidth, canvasHeight);
+
     const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-    
     const tolerance = state.gridSettings.clearTolerance ?? 10;
     const finalIslands = findIslands(
-      imageData, 
-      state.gridSettings.clearColor, 
+      imageData,
+      state.gridSettings.clearColor,
       tolerance,
-      true // useMedianFilter
+      true
     );
 
-    console.log(`[FixGrid] Found ${finalIslands.length} islands`);
-
     const geo = mainAtlasGeo;
-    const newTiles: TextureTile[] = finalIslands.map((isl, i) => {
-      const stepX = geo.cellW + geo.padding * 2;
-      const stepY = geo.cellH + geo.padding * 2;
-      const col = Math.round((isl.x + isl.w / 2 - geo.padding - geo.cellW / 2) / stepX);
-      const row = Math.round((isl.y + isl.h / 2 - geo.padding - geo.cellH / 2) / stepY);
+    console.log(`[FixGrid] Found ${finalIslands.length} islands. Using Geometry: Cell=${geo.cellW}x${geo.cellH}, Pad=${geo.padding}, Step=${geo.stepX}x${geo.stepY}`);
 
-      const destX = geo.padding + col * stepX;
-      const destY = geo.padding + row * stepY;
+    const newTiles: TextureTile[] = finalIslands.map((isl, i) => {
+      const centerX = isl.x + isl.w / 2;
+      const centerY = isl.y + isl.h / 2;
+
+      const relX = centerX - geo.padding - geo.cellW / 2;
+      const relY = centerY - geo.padding - geo.cellH / 2;
+
+      const col = Math.round(relX / geo.stepX);
+      const row = Math.round(relY / geo.stepY);
+
+      const destX = geo.padding + col * geo.stepX;
+      const destY = geo.padding + row * geo.stepY;
+
+      if (i < 5 || i === finalIslands.length - 1) {
+        console.log(`[FixGrid] Island #${i}: Rect(${isl.x},${isl.y},${isl.w},${isl.h}) Center(${centerX.toFixed(1)},${centerY.toFixed(1)})`);
+        console.log(`[FixGrid]   -> Mapping: Rel(${relX.toFixed(1)},${relY.toFixed(1)}) -> Cell(${col},${row}) -> Dest(${destX},${destY})`);
+      } else if (i === 5) {
+        console.log(`[FixGrid] ... (skipping logs for intermediate islands) ...`);
+      }
 
       const islCanvas = document.createElement('canvas');
       islCanvas.width = geo.cellW; islCanvas.height = geo.cellH;
@@ -77,8 +105,9 @@ export function useAtlasOps(
       };
     });
 
+    console.log(`[FixGrid] Complete. Generated ${newTiles.length} fixed tiles.`);
     executeCommand(new SetMainTilesCommand(state.mainTiles, newTiles, state.atlasStatus, 'baked'));
-  }, [state.mainTiles, state.gridSettings.clearColor, state.gridSettings.clearTolerance, state.atlasStatus, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand]);
+  }, [state.secondaryTiles, state.modifiedTiles, state.lastSourceTileId, state.atlasStatus, state.gridSettings.clearColor, state.gridSettings.clearTolerance, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand]);
 
   const packElements = useCallback(async () => {
     if (state.mainTiles.length === 0) return;
@@ -91,6 +120,7 @@ export function useAtlasOps(
     const visited = new Uint8Array(canvasWidth * canvasHeight);
     const { r: bgR, g: bgG, b: bgB } = hexToRgb(state.gridSettings.clearColor);
     const tolerance = state.gridSettings.clearTolerance ?? 10;
+    console.log(`[PackElements] Starting island detection. Background: rgb(${bgR},${bgG},${bgB}), Tolerance: ${tolerance}`);
 
     const isBg = (x: number, y: number) => {
       const p = (y * canvasWidth + x) * 4;
@@ -128,9 +158,13 @@ export function useAtlasOps(
       }
     }
 
+    console.log(`[PackElements] Found ${islands.length} islands.`);
+
     if (islands.length === 0) return;
 
     const padding = state.gridSettings.padding || 2;
+    console.log(`[PackElements] Packing with algorithm: ${state.gridSettings.packingAlgo}, Padding: ${padding}`);
+
     const packItems = islands.map((isl, i) => {
       const padX = (isl.w + padding * 2 > canvasWidth) ? 0 : padding;
       const padY = (isl.h + padding * 2 > canvasHeight) ? 0 : padding;
@@ -152,11 +186,16 @@ export function useAtlasOps(
       }
     }
 
-    const nextTiles: TextureTile[] = packItems.map(item => {
+    const nextTiles: TextureTile[] = packItems.map((item, idx) => {
       const isl = islands[item.i];
       const blobCanvas = document.createElement('canvas');
       blobCanvas.width = isl.w; blobCanvas.height = isl.h;
       blobCanvas.getContext('2d')?.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, isl.w, isl.h);
+      
+      if (idx < 5 || idx === packItems.length - 1) {
+        console.log(`[PackElements] Island #${idx}: Original Rect(${isl.x},${isl.y},${isl.w},${isl.h}) -> Packed at ${item.x + item.padX},${item.y + item.padY}`);
+      }
+
       return {
         id: generateId(), url: blobCanvas.toDataURL(), name: `Packed_${item.i}`,
         width: isl.w, height: isl.h,
@@ -165,6 +204,7 @@ export function useAtlasOps(
       };
     });
 
+    console.log(`[PackElements] Complete.`);
     executeCommand(new SetMainTilesCommand(state.mainTiles, nextTiles, state.atlasStatus, 'baked'));
   }, [state.mainTiles, state.gridSettings, state.atlasStatus, canvasWidth, canvasHeight, executeCommand]);
 

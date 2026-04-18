@@ -459,7 +459,7 @@ export default function App() {
               gridSettings={state.gridSettings}
               onGridSettingsChange={(gs) => {
                 const needsPrompt = state.atlasStatus === 'modified' || state.atlasStatus === 'baked';
-                if (needsPrompt && !confirm('Changing grid settings will reset your manual arrangements. Continue?')) return;
+                if (needsPrompt && !confirm('Changing grid settings will revert the atlas to the source image. Manual changes will be lost. Continue?')) return;
                 
                 // If we have a source tile and are in a grid mode, re-slice.
                 const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);

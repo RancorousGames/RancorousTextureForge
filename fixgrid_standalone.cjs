@@ -100,6 +100,8 @@ async function run() {
   const cellSize = meta.cellSize ?? 128, padding = meta.padding ?? 0;
 
   console.log(`Analyzing ${width}x${height} with unified logic...`);
+  console.log(`Config: ClearColor=${meta.clearColor}, Tolerance=${tolerance}, CellSize=${cellSize}, Padding=${padding}`);
+  
   const finalIslands = findIslands({ width, height, data }, clearColor, tolerance, true);
   console.log(`Final count: ${finalIslands.length} islands.`);
 
@@ -123,10 +125,27 @@ async function run() {
   console.log('Done. debug_output.png generated.');
 
   const stepX = cellSize + padding * 2, stepY = cellSize + padding * 2;
-  finalIslands.slice(0, 10).map((isl, i) => {
-    const col = Math.round((isl.x + isl.w / 2 - padding - cellSize / 2) / stepX);
-    const row = Math.round((isl.y + isl.h / 2 - padding - cellSize / 2) / stepY);
-    console.log(`Island #${i}: [${isl.x}, ${isl.y}] -> Cell ${col}, ${row}`);
+  console.log(`Grid Geometry: StepX=${stepX}, StepY=${stepY}`);
+
+  finalIslands.forEach((isl, i) => {
+    const centerX = isl.x + isl.w / 2;
+    const centerY = isl.y + isl.h / 2;
+    
+    const relX = centerX - padding - cellSize / 2;
+    const relY = centerY - padding - cellSize / 2;
+    
+    const col = Math.round(relX / stepX);
+    const row = Math.round(relY / stepY);
+    
+    const destX = padding + col * stepX;
+    const destY = padding + row * stepY;
+
+    if (i < 10 || i === finalIslands.length - 1) {
+      console.log(`Island #${i}: Original Rect(${isl.x},${isl.y},${isl.w},${isl.h}) Center(${centerX.toFixed(1)},${centerY.toFixed(1)})`);
+      console.log(`  -> Mapping: Rel(${relX.toFixed(1)},${relY.toFixed(1)}) -> Cell(${col},${row}) -> Dest(${destX},${destY})`);
+    } else if (i === 10) {
+      console.log(`... (skipping logs for intermediate islands) ...`);
+    }
   });
 }
 run().catch(console.error);

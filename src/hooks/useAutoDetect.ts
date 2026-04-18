@@ -44,6 +44,7 @@ export function useAutoDetect(
     const lastIdx = (imageData.width * imageData.height - 1) * 4;
     const [r, g, b] = [imageData.data[lastIdx], imageData.data[lastIdx + 1], imageData.data[lastIdx + 2]];
     const detectedClearColor = rgbToHex(r, g, b);
+    console.log(`[AutoDetect] Main Grid: Detected background color ${detectedClearColor} from bottom-right pixel.`);
     const tolerance = state.gridSettings.clearTolerance ?? 10;
 
     const { cellSize, padding } = detectSettingsFromImage(imageData, detectedClearColor, tolerance, true);
@@ -55,6 +56,7 @@ export function useAutoDetect(
       padding, keepSquare: true,
     };
 
+    console.log(`[AutoDetect] Applying Main Grid settings: Cell=${cellSize}, Pad=${padding}, Color=${detectedClearColor}`);
     set(prev => ({ ...prev, gridSettings: newSettings }));
     onSettingsDetected?.(newSettings);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -77,10 +79,13 @@ export function useAutoDetect(
     const lastIdx = (imageData.width * imageData.height - 1) * 4;
     const [r, g, b] = [imageData.data[lastIdx], imageData.data[lastIdx + 1], imageData.data[lastIdx + 2]];
     const detectedClearColor = rgbToHex(r, g, b);
+    console.log(`[AutoDetect] Source Grid: Detected background color ${detectedClearColor} from bottom-right pixel.`);
+    
     const { cellSize, padding } = detectSettingsFromImage(
       imageData, detectedClearColor, state.sourceGridSettings.clearTolerance ?? 10
     );
 
+    console.log(`[AutoDetect] Applying Source Grid settings: Cell=${cellSize}, Pad=${padding}, Color=${detectedClearColor}`);
     set(prev => ({
       ...prev,
       sourceGridSettings: {

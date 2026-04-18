@@ -64,23 +64,42 @@ export function SourceAtlas({
       true
     );
 
-    console.log(`[SourceAtlas] Fix Grid found ${islands.length} islands`);
+    console.log(`[FixGrid] Algorithm Start: Image ${sourceTile.width}x${sourceTile.height}`);
+    console.log(`[FixGrid] Found ${islands.length} raw islands using tolerance ${gridSettings.clearTolerance}`);
 
     const geo = new GridGeometry(gridSettings, sourceTile.width, sourceTile.height);
+    console.log(`[FixGrid] Geometry Config: CellSize=${geo.cellW}x${geo.cellH}, Padding=${geo.padding}, Step=${geo.stepX}x${geo.stepY}`);
+
     const outCanvas = document.createElement('canvas');
     outCanvas.width = sourceTile.width;
     outCanvas.height = sourceTile.height;
     const outCtx = outCanvas.getContext('2d');
     if (!outCtx) return;
 
-    islands.forEach((isl) => {
-      const col = Math.round((isl.x + isl.w / 2 - geo.padding - geo.cellW / 2) / geo.stepX);
-      const row = Math.round((isl.y + isl.h / 2 - geo.padding - geo.cellH / 2) / geo.stepY);
+    islands.forEach((isl, idx) => {
+      const centerX = isl.x + isl.w / 2;
+      const centerY = isl.y + isl.h / 2;
+      
+      const relX = centerX - geo.padding - geo.cellW / 2;
+      const relY = centerY - geo.padding - geo.cellH / 2;
+      
+      const col = Math.round(relX / geo.stepX);
+      const row = Math.round(relY / geo.stepY);
+      
       const destX = geo.padding + col * geo.stepX;
       const destY = geo.padding + row * geo.stepY;
+      
+      if (idx < 5 || idx === islands.length - 1) {
+        console.log(`[FixGrid] Island #${idx}: Original Rect(${isl.x},${isl.y},${isl.w},${isl.h}) Center(${centerX.toFixed(1)},${centerY.toFixed(1)})`);
+        console.log(`[FixGrid]   -> Mapping: Rel(${relX.toFixed(1)},${relY.toFixed(1)}) -> Cell(${col},${row}) -> Dest(${destX},${destY})`);
+      } else if (idx === 5) {
+        console.log(`[FixGrid] ... (skipping logs for intermediate islands) ...`);
+      }
+
       outCtx.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, destX, destY, geo.cellW, geo.cellH);
     });
 
+    console.log(`[FixGrid] Finished processing ${islands.length} islands.`);
     setSourceTile({ ...sourceTile, url: outCanvas.toDataURL() });
   };
 

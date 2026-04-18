@@ -29,6 +29,8 @@ export function findIslands(
   const visited = new Uint8Array(width * height);
   const reachable = new Uint8Array(width * height);
 
+  console.log(`[findIslands] Starting detection on ${width}x${height} image. ClearColor: rgb(${clearColor.r},${clearColor.g},${clearColor.b}), Tolerance: ${tolerance}`);
+
   const isClearColored = (x: number, y: number) => {
     const idx = (y * width + x) * 4;
     if (data[idx + 3] < 5) return true;
@@ -56,6 +58,8 @@ export function findIslands(
       }
     }
   }
+
+  console.log(`[findIslands] Step 1: Background flood-fill complete. Marked ${bgQueue.length} pixels as reachable background.`);
 
   const isNotBg = (x: number, y: number) => reachable[y * width + x] === 0;
 
@@ -86,6 +90,8 @@ export function findIslands(
     }
   }
 
+  console.log(`[findIslands] Step 2: Found ${rawIslands.length} raw foreground clusters.`);
+
   // 3. Containment Filter
   const filtered = rawIslands
     .sort((a, b) => (b.w * b.h) - (a.w * a.h))
@@ -97,11 +103,15 @@ export function findIslands(
       return true;
     });
 
+  console.log(`[findIslands] Step 3: Containment filter reduced ${rawIslands.length} -> ${filtered.length} islands.`);
+
   // 4. Median Filter
   if (useMedianFilter && filtered.length > 0) {
     const areas = filtered.map(isl => isl.w * isl.h).sort((a, b) => a - b);
     const medianArea = areas[Math.floor(areas.length / 2)];
-    return filtered.filter(isl => (isl.w * isl.h) >= (medianArea * 0.5));
+    const result = filtered.filter(isl => (isl.w * isl.h) >= (medianArea * 0.5));
+    console.log(`[findIslands] Step 4: Median area filter (${medianArea}px). Reduced ${filtered.length} -> ${result.length} islands.`);
+    return result;
   }
 
   return filtered;
@@ -124,14 +134,21 @@ export function detectSettingsFromImage(
 
   const sizes = islands.map(i => Math.max(i.w, i.h));
   const rawSize = getMedian(sizes);
-  console.log(`[AutoDetect] Islands found: ${islands.length}, rawSize (median): ${rawSize}`);
+  console.log(`[AutoDetect] Island sizes: ${sizes.join(', ')}`);
+  console.log(`[AutoDetect] Raw median size: ${rawSize}`);
 
   const p2s = [32, 64, 128, 256, 512, 1024];
   const nearestP2 = p2s.reduce((prev, curr) => Math.abs(curr - rawSize) < Math.abs(prev - rawSize) ? curr : prev);
   let finalSize = Math.round(rawSize / 4) * 4;
-  if (Math.abs(nearestP2 - rawSize) / nearestP2 <= 0.02) {
-    console.log(`[AutoDetect] Snapping cell size ${finalSize} -> ${nearestP2}`);
+  
+  const p2Diff = Math.abs(nearestP2 - rawSize) / nearestP2;
+  console.log(`[AutoDetect] Nearest P2: ${nearestP2}, Difference: ${(p2Diff * 100).toFixed(2)}%`);
+
+  if (p2Diff <= 0.02) {
+    console.log(`[AutoDetect] Snapping cell size ${finalSize} -> ${nearestP2} (within 2% threshold)`);
     finalSize = nearestP2;
+  } else {
+    console.log(`[AutoDetect] Keeping calculated size: ${finalSize}`);
   }
 
   // New Simplified Gap Detection
@@ -145,23 +162,25 @@ export function detectSettingsFromImage(
   const numX = Math.max(1, Math.floor(bbW / (finalSize * 1.01)));
   const numY = Math.max(1, Math.floor(bbH / (finalSize * 1.01)));
 
+  console.log(`[AutoDetect] Bounding Box: min(${minX},${minY}) max(${maxX},${maxY}) size(${bbW}x${bbH})`);
+  console.log(`[AutoDetect] Estimated Grid: ${numX} columns, ${numY} rows based on size ${finalSize}`);
+
   const totalGapX = bbW - (numX * finalSize);
   const totalGapY = bbH - (numY * finalSize);
   
   const paddingX = numX > 1 ? (totalGapX / (numX - 1)) / 2 : 0;
   const paddingY = numY > 1 ? (totalGapY / (numY - 1)) / 2 : 0;
 
-  console.log(`[AutoDetect] BB: min(${minX},${minY}) max(${maxX},${maxY}) size(${bbW}x${bbH})`);
-  console.log(`[AutoDetect] Formula X: (${bbW} - (${numX} * ${finalSize})) / (${numX} - 1) / 2 = ${paddingX.toFixed(3)}`);
-  console.log(`[AutoDetect] Formula Y: (${bbH} - (${numY} * ${finalSize})) / (${numY} - 1) / 2 = ${paddingY.toFixed(3)}`);
-  console.log(`[AutoDetect] numX: ${numX}, numY: ${numY}`);
+  console.log(`[AutoDetect] Padding Math X: (${bbW} - (${numX} * ${finalSize})) / (${numX}-1) / 2 = ${paddingX.toFixed(3)}`);
+  console.log(`[AutoDetect] Padding Math Y: (${bbH} - (${numY} * ${finalSize})) / (${numY}-1) / 2 = ${paddingY.toFixed(3)}`);
 
   const targetPadding = finalSize * 0.03;
   const distX = Math.abs(paddingX - targetPadding);
   const distY = Math.abs(paddingY - targetPadding);
   const rawPadding = distX <= distY ? paddingX : paddingY;
   
-  console.log(`[AutoDetect] targetPadding (3%): ${targetPadding.toFixed(3)}, picking: ${distX <= distY ? 'X' : 'Y'}`);
+  console.log(`[AutoDetect] Target padding (3% of cell): ${targetPadding.toFixed(3)}`);
+  console.log(`[AutoDetect] Best fit padding: ${rawPadding.toFixed(3)} (picked ${distX <= distY ? 'X' : 'Y'} axis)`);
 
   let detectedPadding = Math.round(rawPadding);
   
@@ -170,15 +189,16 @@ export function detectSettingsFromImage(
   const nearestPaddingP2 = paddingP2s.reduce((prev, curr) => {
     const distPrev = Math.abs(prev - rawPadding);
     const distCurr = Math.abs(curr - rawPadding);
-    // Use <= to prefer the larger P2 in case of an exact tie
     return distCurr <= distPrev ? curr : prev;
   });
   
   if (Math.abs(rawPadding - nearestPaddingP2) <= 1.0) {
-    console.log(`[AutoDetect] Snapping raw padding ${rawPadding.toFixed(3)} -> ${nearestPaddingP2}`);
+    console.log(`[AutoDetect] Padding Snapping: ${rawPadding.toFixed(3)} -> ${nearestPaddingP2} (within 1px of power-of-two)`);
     detectedPadding = nearestPaddingP2;
+  } else {
+    console.log(`[AutoDetect] Padding Snapping: Keeping rounded ${detectedPadding}`);
   }
 
-  console.log(`[AutoDetect] Final Result -> Cell: ${finalSize}, Padding: ${detectedPadding}`);
+  console.log(`[AutoDetect] FINAL RESULT -> Cell: ${finalSize}, Padding: ${detectedPadding}`);
   return { cellSize: finalSize, padding: detectedPadding };
 }

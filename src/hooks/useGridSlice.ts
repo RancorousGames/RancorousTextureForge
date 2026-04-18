@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { AppState, TextureTile } from '../types';
 import { Command, AddTilesCommand, SetMainTilesCommand, PatchCommand, MaterializeCommand, ClearCellCommand, RemoveTilesCommand } from '../lib/Commands';
 import { GridGeometry } from '../lib/GridGeometry';
@@ -15,15 +15,30 @@ export function useGridSlice(
   set: (v: AppState | ((p: AppState) => AppState)) => void,
   executeCommand: (c: Command | Command[]) => void
 ) {
+  // Monotonically-increasing counter. Each new slice call claims a generation;
+  // stale in-flight calls bail out when they see a newer generation was started.
+  const sliceGenRef = useRef(0);
+  // Always holds the latest gridSettings without creating a closure dependency —
+  // prevents slicing image B with image A's auto-detected cell/padding values.
+  const gridSettingsRef = useRef(state.gridSettings);
+  gridSettingsRef.current = state.gridSettings;
+
   const performGridSlice = useCallback(async (
     sourceTile: TextureTile,
     width: number,
     height: number,
-    skipHistory = false
+    skipHistory = false,
+    settingsOverride?: any
   ) => {
+    const gen = ++sliceGenRef.current;
+
     const imgUrl = sourceTile.sourceUrl || sourceTile.url;
     const img = await loadImage(imgUrl);
-    const gs = state.gridSettings;
+
+    // A newer slice was requested while we were loading — discard this result.
+    if (gen !== sliceGenRef.current) return;
+
+    const gs = settingsOverride || gridSettingsRef.current;
 
     if (gs.mode === 'packing') return;
 
@@ -107,7 +122,7 @@ export function useGridSlice(
       ]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.gridSettings, state.mainTiles, state.lastSourceTileId, state.clearedCells, state.atlasStatus, executeCommand, set]);
+  }, [state.mainTiles, state.lastSourceTileId, state.clearedCells, state.atlasStatus, executeCommand, set]);
 
   const handleMaterialize = useCallback(async (
     cx: number,

@@ -112,8 +112,20 @@ export default function App() {
   const { performGridSlice, handleMaterialize, handleSourceCellClick, handleSourceCellRightClick } =
     useGridSlice(state, canvasWidth, canvasHeight, mainAtlas.geo, selectedCells, set, executeCommand);
 
+  // After auto-detect updates gridSettings, re-slice the current source image so
+  // the tiles immediately reflect the newly detected cell size and padding.
+  const onAutoDetectSettingsApplied = useCallback((gs: GridSettings) => {
+    const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles]
+      .find(t => t.id === state.lastSourceTileId);
+    if (sourceTile && gs.mode === 'fixed') {
+      set(prev => ({ ...prev, mainTiles: [], clearedCells: [], atlasStatus: 'parametric' }));
+      performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true, gs);
+    }
+  }, [state.secondaryTiles, state.modifiedTiles, state.lastSourceTileId,
+      state.canvasWidth, state.canvasHeight, set, performGridSlice]);
+
   const { handleAutoDetectMainGrid, handleAutoDetectSourceGrid } =
-    useAutoDetect(state, canvasWidth, canvasHeight, set);
+    useAutoDetect(state, canvasWidth, canvasHeight, set, onAutoDetectSettingsApplied);
 
   const { packAtlas, fixGrid, packElements, exportAtlas, createNewAtlas } =
     useAtlasOps(state, canvasWidth, canvasHeight, mainAtlas.geo, set, executeCommand, () => {
@@ -190,7 +202,7 @@ export default function App() {
       setSelectedCells([]);
       
       if (shouldSlice) {
-        setTimeout(() => performGridSlice(tile, tile.width, tile.height, false), 50);
+        performGridSlice(tile, tile.width, tile.height, false);
       }
     } else if (mode === 'adjust') {
       if (state.secondaryTiles.some(t => t.id === tile.id)) {
@@ -413,7 +425,7 @@ export default function App() {
                 const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
                 if (sourceTile && gs.mode === 'fixed') {
                    set(prev => ({ ...prev, gridSettings: gs, mainTiles: [], clearedCells: [], atlasStatus: 'parametric' }));
-                   setTimeout(() => performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true), 50);
+                   performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true);
                 } else {
                    set(prev => ({ ...prev, gridSettings: gs }));
                 }

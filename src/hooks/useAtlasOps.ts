@@ -38,15 +38,19 @@ export function useAtlasOps(
       state.mainTiles, canvasWidth, canvasHeight,
       state.gridSettings.clearColor, { willReadFrequently: true }
     );
+
     const ctx = canvas.getContext('2d')!;
     const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
     
+    const tolerance = state.gridSettings.clearTolerance ?? 10;
     const finalIslands = findIslands(
       imageData, 
       state.gridSettings.clearColor, 
-      state.gridSettings.clearTolerance ?? 15,
+      tolerance,
       true // useMedianFilter
     );
+
+    console.log(`[FixGrid] Found ${finalIslands.length} islands`);
 
     const geo = mainAtlasGeo;
     const newTiles: TextureTile[] = finalIslands.map((isl, i) => {
@@ -54,6 +58,9 @@ export function useAtlasOps(
       const stepY = geo.cellH + geo.padding * 2;
       const col = Math.round((isl.x + isl.w / 2 - geo.padding - geo.cellW / 2) / stepX);
       const row = Math.round((isl.y + isl.h / 2 - geo.padding - geo.cellH / 2) / stepY);
+
+      const destX = geo.padding + col * stepX;
+      const destY = geo.padding + row * stepY;
 
       const islCanvas = document.createElement('canvas');
       islCanvas.width = geo.cellW; islCanvas.height = geo.cellH;
@@ -63,8 +70,8 @@ export function useAtlasOps(
         id: `fixed-${i}-${Date.now()}`,
         name: `Island_${i}`,
         url: islCanvas.toDataURL(),
-        x: geo.padding + col * stepX,
-        y: geo.padding + row * stepY,
+        x: destX,
+        y: destY,
         width: geo.cellW, height: geo.cellH,
         scale: 1, hue: 0, brightness: 100,
       };

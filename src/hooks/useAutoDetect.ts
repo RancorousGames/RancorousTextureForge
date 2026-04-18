@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { AppState, TextureTile } from '../types';
+import { AppState, GridSettings, TextureTile } from '../types';
 import { rgbToHex, detectSettingsFromImage } from '../lib/utils';
 import { loadImage, renderTilesToCanvas } from '../lib/canvas';
 
@@ -7,7 +7,8 @@ export function useAutoDetect(
   state: AppState,
   canvasWidth: number,
   canvasHeight: number,
-  set: (v: AppState | ((p: AppState) => AppState)) => void
+  set: (v: AppState | ((p: AppState) => AppState)) => void,
+  onSettingsDetected?: (gs: GridSettings) => void
 ) {
   const handleAutoDetectMainGrid = useCallback(async () => {
     let imageData: ImageData | null = null;
@@ -47,17 +48,17 @@ export function useAutoDetect(
 
     const { cellSize, padding } = detectSettingsFromImage(imageData, detectedClearColor, tolerance, true);
 
-    set(prev => ({
-      ...prev,
-      gridSettings: {
-        ...prev.gridSettings,
-        clearColor: detectedClearColor,
-        cellSize, cellY: cellSize,
-        padding, keepSquare: true,
-      },
-    }));
+    const newSettings: GridSettings = {
+      ...state.gridSettings,
+      clearColor: detectedClearColor,
+      cellSize, cellY: cellSize,
+      padding, keepSquare: true,
+    };
+
+    set(prev => ({ ...prev, gridSettings: newSettings }));
+    onSettingsDetected?.(newSettings);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.mainTiles, state.gridSettings, canvasWidth, canvasHeight, set]);
+  }, [state.mainTiles, state.gridSettings, canvasWidth, canvasHeight, set, onSettingsDetected]);
 
   const handleAutoDetectSourceGrid = useCallback(async (sourceTile: TextureTile) => {
     const img = await loadImage(sourceTile.sourceUrl || sourceTile.url).catch(() => null);

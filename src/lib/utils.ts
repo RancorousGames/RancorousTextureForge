@@ -26,6 +26,7 @@ export interface RGBA {
 }
 
 export function detectBackgroundColor(imageData: ImageData, tolerance: number = 10): RGBA {
+
   const startTime = performance.now();
   const { width, height, data } = imageData;
   
@@ -180,6 +181,7 @@ export function findIslands(
           }
         }
       }
+
       if (x2 - x1 >= 4 && y2 - y1 >= 4) rawIslands.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 });
     }
   }
@@ -307,14 +309,19 @@ export function checkGridDensity(
   imageHeight: number,
   cellWidth: number,
   cellHeight: number
-): boolean {
+): { cellSize: number; cellY: number } | null {
   const maxRatio = 30;
   const ratioX = imageWidth / cellWidth;
   const ratioY = imageHeight / cellHeight;
 
   if (ratioX > maxRatio || ratioY > maxRatio) {
-    const message = `The current grid settings result in a very high density (${Math.max(ratioX, ratioY).toFixed(1)} cells across). This might be slow to process and render. Do you want to continue?`;
-    return confirm(message);
+    const message = `The current grid settings result in a very high density (${Math.max(ratioX, ratioY).toFixed(1)} cells across). This might be slow to process and render. \n\nClick OK to continue anyway, or CANCEL to use a safer density (1/16th of resolution).`;
+    if (confirm(message)) {
+      return { cellSize: cellWidth, cellY: cellHeight };
+    } else {
+      const safeSize = Math.max(16, Math.floor(Math.max(imageWidth, imageHeight) / 16));
+      return { cellSize: safeSize, cellY: safeSize };
+    }
   }
-  return true;
+  return { cellSize: cellWidth, cellY: cellHeight };
 }

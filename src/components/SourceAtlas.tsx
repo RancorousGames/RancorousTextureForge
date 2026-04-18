@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { TextureTile, GridSettings } from '../types';
 import { AtlasCanvas } from './AtlasCanvas';
+import { DeferredNumberInput } from './DeferredNumberInput';
 import { Image as ImageIcon, Plus, Wand2, LayoutTemplate, RefreshCw } from 'lucide-react';
 import { hexToRgb, findIslands, cn } from '../lib/utils';
 import { GridGeometry } from '../lib/GridGeometry';
@@ -300,60 +301,40 @@ export function SourceAtlas({
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5" title="Source grid settings (Width, Height, Padding, Tolerance)">
             <span className="text-[9px] text-zinc-500 uppercase font-bold" title="Cell Width">W</span>
-            <input
-              type="number"
+            <DeferredNumberInput
               value={gridSettings.cellSize}
-              onBlur={(e) => {
-                const val = Math.max(16, Number(e.target.value));
-                onGridSettingsChange({ ...gridSettings, cellSize: val, cellY: gridSettings.keepSquare ? val : (gridSettings.cellY || val) });
-              }}
-              onChange={(e) => {
-                const val = e.target.value === '' ? 0 : Number(e.target.value);
+              min={16}
+              onCommit={(val) => {
                 onGridSettingsChange({ ...gridSettings, cellSize: val, cellY: gridSettings.keepSquare ? val : (gridSettings.cellY || val) });
               }}
               className="w-10 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
               title="Width for defining the source grid"
             />
             <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1" title="Cell Height">H</span>
-            <input
-              type="number"
+            <DeferredNumberInput
               value={gridSettings.cellY || gridSettings.cellSize}
-              onBlur={(e) => {
-                const val = Math.max(16, Number(e.target.value));
-                onGridSettingsChange({ ...gridSettings, cellY: val, keepSquare: false });
-              }}
-              onChange={(e) => {
-                const val = e.target.value === '' ? 0 : Number(e.target.value);
+              min={16}
+              onCommit={(val) => {
                 onGridSettingsChange({ ...gridSettings, cellY: val, keepSquare: false });
               }}
               className="w-10 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
               title="Height for defining the source grid"
             />
             <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1" title="Cell Padding">Pad</span>
-            <input
-              type="number"
+            <DeferredNumberInput
               value={gridSettings.padding}
-              onBlur={(e) => {
-                const val = Math.max(0, Number(e.target.value));
-                onGridSettingsChange({ ...gridSettings, padding: val });
-              }}
-              onChange={(e) => {
-                const val = e.target.value === '' ? 0 : Number(e.target.value);
+              min={0}
+              onCommit={(val) => {
                 onGridSettingsChange({ ...gridSettings, padding: val });
               }}
               className="w-8 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
               title="Padding for defining the source grid spacing"
             />
             <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1" title="Color Tolerance">Tol</span>
-            <input
-              type="number"
+            <DeferredNumberInput
               value={gridSettings.clearTolerance}
-              onBlur={(e) => {
-                const val = Math.max(0, Number(e.target.value));
-                onGridSettingsChange({ ...gridSettings, clearTolerance: val });
-              }}
-              onChange={(e) => {
-                const val = e.target.value === '' ? 0 : Number(e.target.value);
+              min={0}
+              onCommit={(val) => {
                 onGridSettingsChange({ ...gridSettings, clearTolerance: val });
               }}
               className="w-8 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"

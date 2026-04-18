@@ -120,10 +120,12 @@ export default function App() {
     const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles]
       .find(t => t.id === state.lastSourceTileId);
     if (sourceTile && gs.mode === 'fixed') {
-      if (!checkGridDensity(sourceTile.width, sourceTile.height, gs.cellSize, gs.cellY || gs.cellSize)) return;
+      const validated = checkGridDensity(sourceTile.width, sourceTile.height, gs.cellSize, gs.cellY || gs.cellSize);
+      if (!validated) return;
       
-      set(prev => ({ ...prev, mainTiles: [], clearedCells: [], atlasStatus: 'parametric' }));
-      performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true, gs);
+      const finalGs = { ...gs, cellSize: validated.cellSize, cellY: validated.cellY };
+      set(prev => ({ ...prev, gridSettings: finalGs, mainTiles: [], clearedCells: [], atlasStatus: 'parametric' }));
+      performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true, finalGs);
     }
   }, [state.secondaryTiles, state.modifiedTiles, state.lastSourceTileId,
       state.canvasWidth, state.canvasHeight, set, performGridSlice]);
@@ -244,8 +246,16 @@ export default function App() {
         await handleAutoDetectSourceGrid(tile);
         
         if (newMainSettings) {
-           if (!checkGridDensity(tile.width, tile.height, newMainSettings.cellSize, newMainSettings.cellY || newMainSettings.cellSize)) return;
-           performGridSlice(tile, tile.width, tile.height, false, newMainSettings);
+           const validated = checkGridDensity(tile.width, tile.height, newMainSettings.cellSize, newMainSettings.cellY || newMainSettings.cellSize);
+           if (!validated) return;
+           const finalSettings = { ...newMainSettings, cellSize: validated.cellSize, cellY: validated.cellY };
+           
+           // Ensure state is updated if guard changed the settings
+           if (finalSettings.cellSize !== newMainSettings.cellSize || finalSettings.cellY !== newMainSettings.cellY) {
+             set(prev => ({ ...prev, gridSettings: finalSettings }));
+           }
+           
+           performGridSlice(tile, tile.width, tile.height, false, finalSettings);
         }
         return;
       }
@@ -494,10 +504,12 @@ export default function App() {
                 // If we have a source tile and are in a grid mode, re-slice.
                 const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
                 if (sourceTile && gs.mode === 'fixed') {
-                   if (!checkGridDensity(sourceTile.width, sourceTile.height, gs.cellSize, gs.cellY || gs.cellSize)) return;
+                   const validated = checkGridDensity(sourceTile.width, sourceTile.height, gs.cellSize, gs.cellY || gs.cellSize);
+                   if (!validated) return;
                    
-                   set(prev => ({ ...prev, gridSettings: gs, mainTiles: [], clearedCells: [], atlasStatus: 'parametric' }));
-                   performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true);
+                   const finalGs = { ...gs, cellSize: validated.cellSize, cellY: validated.cellY };
+                   set(prev => ({ ...prev, gridSettings: finalGs, mainTiles: [], clearedCells: [], atlasStatus: 'parametric' }));
+                   performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true, finalGs);
                 } else {
                    set(prev => ({ ...prev, gridSettings: gs }));
                 }
@@ -584,8 +596,13 @@ export default function App() {
                       gridSettings={state.sourceGridSettings}
                       onGridSettingsChange={(gs) => {
                         const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
-                        if (sourceTile && !checkGridDensity(sourceTile.width, sourceTile.height, gs.cellSize, gs.cellY || gs.cellSize)) return;
-                        set(prev => ({ ...prev, sourceGridSettings: gs }));
+                        if (sourceTile) {
+                          const validated = checkGridDensity(sourceTile.width, sourceTile.height, gs.cellSize, gs.cellY || gs.cellSize);
+                          if (!validated) return;
+                          set(prev => ({ ...prev, sourceGridSettings: { ...gs, cellSize: validated.cellSize, cellY: validated.cellY } }));
+                        } else {
+                          set(prev => ({ ...prev, sourceGridSettings: gs }));
+                        }
                       }}
                       onAutoDetectGrid={handleAutoDetectSourceGrid}
                       availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]}

@@ -1,36 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-
-function DeferredNumberInput({ value, min, onCommit, className, title }: {
-  value: number;
-  min?: number;
-  onCommit: (val: number) => void;
-  className?: string;
-  title?: string;
-}) {
-  const [local, setLocal] = useState(String(value));
-
-  useEffect(() => { setLocal(String(value)); }, [value]);
-
-  const commit = useCallback(() => {
-    const parsed = Number(local);
-    const safe = isNaN(parsed) ? value : parsed;
-    const clamped = min !== undefined ? Math.max(min, safe) : safe;
-    setLocal(String(clamped));
-    onCommit(clamped);
-  }, [local, value, min, onCommit]);
-
-  return (
-    <input
-      type="number"
-      value={local}
-      onChange={e => setLocal(e.target.value)}
-      onBlur={commit}
-      onKeyDown={e => { if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); } }}
-      className={className}
-      title={title}
-    />
-  );
-}
+import { DeferredNumberInput } from './DeferredNumberInput';
 import { TextureTile, GridSettings, GridMode } from '../types';
 import { cn } from '../lib/utils';
 import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus, Box } from 'lucide-react';

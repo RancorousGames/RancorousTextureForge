@@ -72,10 +72,19 @@ export function SourceAtlas({
       true
     );
 
-    console.log(`[FixGrid] Algorithm Start: Image ${sourceTile.width}x${sourceTile.height}`);
-    console.log(`[FixGrid] Found ${islands.length} raw islands using tolerance ${gridSettings.clearTolerance}`);
+    if (islands.length <= 1) {
+      console.log(`[FixGrid] Aborting: Only ${islands.length} island(s) detected. FixGrid requires multiple islands.`);
+      return;
+    }
 
     const geo = new GridGeometry(gridSettings, sourceTile.width, sourceTile.height);
+    if (geo.padding === 0) {
+      console.log(`[FixGrid] Aborting: Cell padding is 0. FixGrid requires non-zero padding to align islands.`);
+      return;
+    }
+
+    console.log(`[FixGrid] Algorithm Start: Image ${sourceTile.width}x${sourceTile.height}`);
+    console.log(`[FixGrid] Found ${islands.length} raw islands using tolerance ${gridSettings.clearTolerance}`);
     console.log(`[FixGrid] Geometry Config: CellSize=${geo.cellW}x${geo.cellH}, Padding=${geo.padding}, Step=${geo.stepX}x${geo.stepY}`);
 
     const outCanvas = document.createElement('canvas');

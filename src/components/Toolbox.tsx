@@ -1,4 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+
+function DeferredNumberInput({ value, min, onCommit, className, title }: {
+  value: number;
+  min?: number;
+  onCommit: (val: number) => void;
+  className?: string;
+  title?: string;
+}) {
+  const [local, setLocal] = useState(String(value));
+
+  useEffect(() => { setLocal(String(value)); }, [value]);
+
+  const commit = useCallback(() => {
+    const parsed = Number(local);
+    const safe = isNaN(parsed) ? value : parsed;
+    const clamped = min !== undefined ? Math.max(min, safe) : safe;
+    setLocal(String(clamped));
+    onCommit(clamped);
+  }, [local, value, min, onCommit]);
+
+  return (
+    <input
+      type="number"
+      value={local}
+      onChange={e => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); } }}
+      className={className}
+      title={title}
+    />
+  );
+}
 import { TextureTile, GridSettings, GridMode } from '../types';
 import { cn } from '../lib/utils';
 import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus, Box } from 'lucide-react';
@@ -93,10 +125,10 @@ interface ToolboxProps {
                 <span>Padding</span>
                 <span className="font-mono">{gridSettings.padding}</span>
               </label>
-              <input
-                type="number"
+              <DeferredNumberInput
                 value={gridSettings.padding}
-                onChange={(e) => onGridSettingsChange({ ...gridSettings, padding: Number(e.target.value) })}
+                min={0}
+                onCommit={(val) => onGridSettingsChange({ ...gridSettings, padding: val })}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 font-mono"
                 title="Internal padding between packed sprites"
               />
@@ -140,25 +172,14 @@ interface ToolboxProps {
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="text-[10px] text-zinc-500" title="Width of each grid cell in pixels">Cell Width (Pixels)</label>
-              <input
-                type="number"
+              <DeferredNumberInput
                 value={gridSettings.cellSize}
-                onBlur={(e) => {
-                  const val = Math.max(16, Number(e.target.value));
-                  onGridSettingsChange({ 
-                    ...gridSettings, 
-                    cellSize: val,
-                    cellY: gridSettings.keepSquare ? val : (gridSettings.cellY || val)
-                  });
-                }}
-                onChange={(e) => {
-                  const val = e.target.value === '' ? 0 : Number(e.target.value);
-                  onGridSettingsChange({ 
-                    ...gridSettings, 
-                    cellSize: val,
-                    cellY: gridSettings.keepSquare ? val : (gridSettings.cellY || val)
-                  });
-                }}
+                min={16}
+                onCommit={(val) => onGridSettingsChange({
+                  ...gridSettings,
+                  cellSize: val,
+                  cellY: gridSettings.keepSquare ? val : (gridSettings.cellY || val)
+                })}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200 font-mono"
                 title="Width of each grid cell. Used for defining the grid and snap points."
               />
@@ -186,11 +207,10 @@ interface ToolboxProps {
             {!gridSettings.keepSquare && (
               <div className="space-y-2">
                 <label className="text-[10px] text-zinc-500" title="Height of each grid cell in pixels">Cell Height (Pixels)</label>
-                <input
-                  type="number"
-                  min="16"
+                <DeferredNumberInput
                   value={gridSettings.cellY || gridSettings.cellSize}
-                  onChange={(e) => onGridSettingsChange({ ...gridSettings, cellY: Math.max(16, Number(e.target.value)) })}
+                  min={16}
+                  onCommit={(val) => onGridSettingsChange({ ...gridSettings, cellY: val })}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200 font-mono"
                   title="Vertical size for defining the grid"
                 />
@@ -199,11 +219,10 @@ interface ToolboxProps {
 
             <div className="space-y-2">
               <label className="text-[10px] text-zinc-500" title="Padding around each sprite inside its cell">Cell Padding (Pixels)</label>
-              <input
-                type="number"
-                min="0"
+              <DeferredNumberInput
                 value={gridSettings.padding}
-                onChange={(e) => onGridSettingsChange({ ...gridSettings, padding: Math.max(0, Number(e.target.value)) })}
+                min={0}
+                onCommit={(val) => onGridSettingsChange({ ...gridSettings, padding: val })}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200 font-mono"
                 title="Padding around each sprite inside its cell. Used for defining the grid spacing."
               />

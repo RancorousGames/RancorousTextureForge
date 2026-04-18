@@ -103,6 +103,17 @@ async function run() {
   console.log(`Config: ClearColor=${meta.clearColor}, Tolerance=${tolerance}, CellSize=${cellSize}, Padding=${padding}`);
   
   const finalIslands = findIslands({ width, height, data }, clearColor, tolerance, true);
+  
+  if (finalIslands.length <= 1) {
+    console.log(`Aborting: Only ${finalIslands.length} island(s) detected. FixGrid requires multiple islands.`);
+    process.exit(0);
+  }
+
+  if (padding === 0) {
+    console.log(`Aborting: Cell padding is 0. FixGrid requires non-zero padding to align islands.`);
+    process.exit(0);
+  }
+
   console.log(`Final count: ${finalIslands.length} islands.`);
 
   console.log('Generating debug_output.png...');

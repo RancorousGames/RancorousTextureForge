@@ -68,6 +68,17 @@ export function useAtlasOps(
     );
 
     const geo = mainAtlasGeo;
+
+    if (finalIslands.length <= 1) {
+      console.log(`[FixGrid] Aborting: Only ${finalIslands.length} island(s) detected. FixGrid requires multiple islands.`);
+      return;
+    }
+
+    if (geo.padding === 0) {
+      console.log(`[FixGrid] Aborting: Cell padding is 0. FixGrid requires non-zero padding to align islands.`);
+      return;
+    }
+
     console.log(`[FixGrid] Found ${finalIslands.length} islands. Using Geometry: Cell=${geo.cellW}x${geo.cellH}, Pad=${geo.padding}, Step=${geo.stepX}x${geo.stepY}`);
 
     const newTiles: TextureTile[] = finalIslands.map((isl, i) => {

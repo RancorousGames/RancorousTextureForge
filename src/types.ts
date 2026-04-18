@@ -82,6 +82,7 @@ export interface AppState {
   lastSourceTileId: string | null;
   clearedCells: string[];
   autoDetectEnabled: boolean;
+  textureName: string;
 }
 
 

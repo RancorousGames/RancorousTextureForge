@@ -80,9 +80,9 @@ interface ToolboxProps {
             value={gridSettings.mode}
             onChange={(e) => onGridSettingsChange({ ...gridSettings, mode: e.target.value as GridMode })}
             className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200"
-            title="Switch between fixed grid slicing and free-form atlas packing"
+            title="Switch between grid slicing and free-form atlas packing"
           >
-            <option value="fixed">Fixed Cell Size</option>
+            <option value="fixed">Grid</option>
             <option value="packing">Atlas Packing</option>
           </select>
         </div>

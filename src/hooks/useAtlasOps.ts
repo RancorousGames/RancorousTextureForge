@@ -225,9 +225,9 @@ export function useAtlasOps(
     );
     const link = document.createElement('a');
     link.href = canvas.toDataURL('image/png');
-    link.download = 'atlas.png';
+    link.download = `${state.textureName || 'atlas'}.png`;
     link.click();
-  }, [state.mainTiles, state.gridSettings.clearColor, canvasWidth, canvasHeight]);
+  }, [state.mainTiles, state.gridSettings.clearColor, state.textureName, canvasWidth, canvasHeight]);
 
   const createNewAtlas = useCallback((width: number, height?: number) => {
     let finalW = width, finalH = height ?? width;

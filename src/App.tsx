@@ -7,7 +7,7 @@ import { Toolbox } from './components/Toolbox';
 import { ChannelPackerMode } from './components/ChannelPackerMode';
 import { LayeringMode } from './components/LayeringMode';
 import { AdjustMode } from './components/AdjustMode';
-import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon, ExternalLink, Type } from 'lucide-react';
 import { cn, checkGridDensity } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
 import { useAtlas } from './hooks/useAtlas';
@@ -67,6 +67,7 @@ const getInitialState = (): AppState => {
     lastSourceTileId: null,
     clearedCells: [],
     autoDetectEnabled: false,
+    textureName: 'atlas',
   };
 
   try {
@@ -79,6 +80,7 @@ const getInitialState = (): AppState => {
         sourceGridSettings: { ...baseState.sourceGridSettings, ...config.sourceGridSettings },
         adjustSettings: { ...baseState.adjustSettings, ...config.adjustSettings },
         autoDetectEnabled: config.autoDetectEnabled ?? false,
+        textureName: config.textureName ?? 'atlas',
       };
     }
   } catch (e) {
@@ -131,8 +133,23 @@ export default function App() {
       state.canvasWidth, state.canvasHeight, set, performGridSlice]);
 
   const handleResultExport = useCallback((url: string, name: string) => {
+    let finalName = name;
+    if (state.textureName) {
+      const ext = name.split('.').pop() || 'png';
+      if (name.startsWith('adjusted_')) {
+        finalName = `${state.textureName}_adjusted.${ext}`;
+      } else if (name === 'packed_texture.png') {
+        finalName = `${state.textureName}_packed.${ext}`;
+      } else if (name === 'layered_texture.png') {
+        finalName = `${state.textureName}_layered.${ext}`;
+      } else {
+        // Fallback or other cases
+        finalName = `${state.textureName}.${ext}`;
+      }
+    }
+
     const link = document.createElement('a');
-    link.download = name;
+    link.download = finalName;
     link.href = url;
     link.click();
 
@@ -157,7 +174,7 @@ export default function App() {
       }));
     };
     img.src = url;
-  }, [set]);
+  }, [set, state.textureName]);
 
   const { handleAutoDetectMainGrid, handleAutoDetectSourceGrid } =
     useAutoDetect(state, canvasWidth, canvasHeight, set, onAutoDetectSettingsApplied);
@@ -350,8 +367,9 @@ export default function App() {
       sourceGridSettings: state.sourceGridSettings,
       adjustSettings: state.adjustSettings,
       autoDetectEnabled: state.autoDetectEnabled,
+      textureName: state.textureName,
     }));
-  }, [state.gridSettings, state.sourceGridSettings, state.adjustSettings, state.autoDetectEnabled]);
+  }, [state.gridSettings, state.sourceGridSettings, state.adjustSettings, state.autoDetectEnabled, state.textureName]);
 
   useEffect(() => {
     localStorage.setItem('forge_mode', mode);
@@ -455,6 +473,17 @@ export default function App() {
                 {m.label}
               </button>
             ))}
+          </div>
+          <div className="flex items-center gap-2 border-l border-zinc-800 pl-4">
+            <Type className="w-4 h-4 text-zinc-500" />
+            <input
+              type="text"
+              value={state.textureName}
+              onChange={(e) => set(prev => ({ ...prev, textureName: e.target.value }))}
+              placeholder="Texture Name"
+              className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 w-32 focus:outline-none focus:border-blue-500 transition-colors"
+              title="Set the name used when exporting the texture"
+            />
           </div>
           <div className="flex items-center gap-1 border-l border-zinc-800 pl-4">
             <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded hover:bg-zinc-800 disabled:opacity-30 text-zinc-400" title="Undo (Ctrl+Z)">

@@ -245,6 +245,7 @@ export function AtlasCanvas({
                 zIndex: isDragging ? 50 : 5, 
                 opacity: isDragging ? 0.8 : 1 
               }}
+              title={`${tile.name} (${tile.width}x${tile.height})`}
             >
               <img 
                 src={tile.url} 

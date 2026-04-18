@@ -205,13 +205,13 @@ export function SourceAtlas({
   return (
     <div className="flex-1 h-full bg-zinc-900 flex flex-col overflow-hidden relative">
       <div className="p-4 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" title="Pick textures from this source image">
           <ImageIcon className="w-4 h-4 text-zinc-400" />
           <h2 className="text-sm font-semibold text-zinc-200">Source Atlas</h2>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">
-            <span className="text-[9px] text-zinc-500 uppercase font-bold">W</span>
+          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5" title="Source grid settings (Width, Height, Padding, Tolerance)">
+            <span className="text-[9px] text-zinc-500 uppercase font-bold" title="Cell Width">W</span>
             <input
               type="number"
               value={gridSettings.cellSize}
@@ -224,8 +224,9 @@ export function SourceAtlas({
                 onGridSettingsChange({ ...gridSettings, cellSize: val, cellY: gridSettings.keepSquare ? val : (gridSettings.cellY || val) });
               }}
               className="w-10 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
+              title="Width for defining the source grid"
             />
-            <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1">H</span>
+            <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1" title="Cell Height">H</span>
             <input
               type="number"
               value={gridSettings.cellY || gridSettings.cellSize}
@@ -238,8 +239,9 @@ export function SourceAtlas({
                 onGridSettingsChange({ ...gridSettings, cellY: val, keepSquare: false });
               }}
               className="w-10 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
+              title="Height for defining the source grid"
             />
-            <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1">Pad</span>
+            <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1" title="Cell Padding">Pad</span>
             <input
               type="number"
               value={gridSettings.padding}
@@ -252,8 +254,9 @@ export function SourceAtlas({
                 onGridSettingsChange({ ...gridSettings, padding: val });
               }}
               className="w-8 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
+              title="Padding for defining the source grid spacing"
             />
-            <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1">Tol</span>
+            <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1" title="Color Tolerance">Tol</span>
             <input
               type="number"
               value={gridSettings.clearTolerance}
@@ -266,13 +269,14 @@ export function SourceAtlas({
                 onGridSettingsChange({ ...gridSettings, clearTolerance: val });
               }}
               className="w-8 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
+              title="Color-key matching tolerance against the background color"
             />
           </div>
           {sourceTile && (
             <button
               onClick={() => onAutoDetectGrid(sourceTile)}
               className="flex items-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-medium px-2 py-1 rounded transition-colors border border-blue-500/30"
-              title="Auto-detect grid settings"
+              title="Automatically detect grid size and padding from the current source image"
             >
               <Wand2 className="w-3.5 h-3.5" />
               <span>Auto Detect</span>
@@ -281,6 +285,7 @@ export function SourceAtlas({
           <button
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium px-2 py-1 rounded transition-colors border border-zinc-700"
+            title="Load a new source image to pick from"
           >
             <Plus className="w-3 h-3" />
             Load Source

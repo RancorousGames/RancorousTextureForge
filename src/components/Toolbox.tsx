@@ -56,11 +56,12 @@ export function Toolbox({
       
       <div className="p-4 space-y-4 border-b border-zinc-800 overflow-y-auto flex-1">
         <div className="space-y-1">
-          <label className="text-[10px] font-semibold text-zinc-500 uppercase">Mode</label>
+          <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="Choose the layout logic for the atlas">Mode</label>
           <select
             value={gridSettings.mode}
             onChange={(e) => onGridSettingsChange({ ...gridSettings, mode: e.target.value as GridMode })}
             className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200"
+            title="Switch between fixed grid slicing and free-form atlas packing"
           >
             <option value="fixed">Fixed Cell Size</option>
             <option value="packing">Atlas Packing</option>
@@ -70,7 +71,7 @@ export function Toolbox({
         {gridSettings.mode === 'packing' && (
           <div className="space-y-4 pt-2 border-t border-zinc-800">
             <div className="space-y-2">
-              <label className="text-[10px] text-zinc-500 flex justify-between">
+              <label className="text-[10px] text-zinc-500 flex justify-between" title="Space between elements in pixels">
                 <span>Padding</span>
                 <span className="font-mono">{gridSettings.padding}</span>
               </label>
@@ -79,14 +80,16 @@ export function Toolbox({
                 value={gridSettings.padding}
                 onChange={(e) => onGridSettingsChange({ ...gridSettings, padding: Number(e.target.value) })}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 font-mono"
+                title="Internal padding between packed sprites"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-semibold text-zinc-500 uppercase">Algorithm</label>
+              <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="The mathematical logic used to arrange sprites">Algorithm</label>
               <select
                 value={gridSettings.packingAlgo}
                 onChange={(e) => onGridSettingsChange({ ...gridSettings, packingAlgo: e.target.value })}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200"
+                title="Select the packing algorithm"
               >
                 <option value="potpack">Potpack (Fast)</option>
                 <option value="shelf">Shelf (Simple)</option>
@@ -95,6 +98,7 @@ export function Toolbox({
             <button
               onClick={onPackElements}
               className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-1.5 px-4 rounded text-xs font-medium transition-colors"
+              title="Run the packing algorithm to arrange all sprites efficiently"
             >
               <Box className="w-3.5 h-3.5" />
               Pack Elements
@@ -109,14 +113,15 @@ export function Toolbox({
             checked={atlasSwapMode}
             onChange={(e) => setAtlasSwapMode(e.target.checked)}
             className="rounded border-zinc-700 bg-zinc-950 text-blue-500"
+            title="Toggle tile swapping behavior during drag-and-drop"
           />
-          <label htmlFor="swapMode" className="text-xs text-zinc-400">Swap Tiles on Drag</label>
+          <label htmlFor="swapMode" className="text-xs text-zinc-400" title="When enabled, dragging a tile onto another will swap their positions">Swap Tiles on Drag</label>
         </div>
 
         {gridSettings.mode === 'fixed' && (
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-[10px] text-zinc-500">Cell Width (Pixels)</label>
+              <label className="text-[10px] text-zinc-500" title="Width of each grid cell in pixels">Cell Width (Pixels)</label>
               <input
                 type="number"
                 value={gridSettings.cellSize}
@@ -137,6 +142,7 @@ export function Toolbox({
                   });
                 }}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200 font-mono"
+                title="Width of each grid cell. Used for defining the grid and snap points."
               />
             </div>
 
@@ -154,38 +160,41 @@ export function Toolbox({
                   });
                 }}
                 className="rounded border-zinc-700 bg-zinc-950 text-blue-500"
+                title="Lock aspect ratio to 1:1"
               />
-              <label htmlFor="keepSquareFixed" className="text-xs text-zinc-400">Keep Square</label>
+              <label htmlFor="keepSquareFixed" className="text-xs text-zinc-400" title="Force height to match width">Keep Square</label>
             </div>
 
             {!gridSettings.keepSquare && (
               <div className="space-y-2">
-                <label className="text-[10px] text-zinc-500">Cell Height (Pixels)</label>
+                <label className="text-[10px] text-zinc-500" title="Height of each grid cell in pixels">Cell Height (Pixels)</label>
                 <input
                   type="number"
                   min="16"
                   value={gridSettings.cellY || gridSettings.cellSize}
                   onChange={(e) => onGridSettingsChange({ ...gridSettings, cellY: Math.max(16, Number(e.target.value)) })}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200 font-mono"
+                  title="Vertical size for defining the grid"
                 />
               </div>
             )}
 
             <div className="space-y-2">
-              <label className="text-[10px] text-zinc-500">Cell Padding (Pixels)</label>
+              <label className="text-[10px] text-zinc-500" title="Padding around each sprite inside its cell">Cell Padding (Pixels)</label>
               <input
                 type="number"
                 min="0"
                 value={gridSettings.padding}
                 onChange={(e) => onGridSettingsChange({ ...gridSettings, padding: Math.max(0, Number(e.target.value)) })}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200 font-mono"
+                title="Padding around each sprite inside its cell. Used for defining the grid spacing."
               />
             </div>
           </div>
         )}
 
         <div className="space-y-2">
-          <label className="text-[10px] text-zinc-500">Clear Color</label>
+          <label className="text-[10px] text-zinc-500" title="The base color of the atlas. Used for clearing tiles (R-Click) and as the key color for detecting islands in images.">Background Color</label>
           <div className="flex items-center gap-2">
             <input
               type="color"
@@ -193,13 +202,14 @@ export function Toolbox({
               onChange={(e) => setLocalClearColor(e.target.value)}
               onBlur={() => onGridSettingsChange({ ...gridSettings, clearColor: localClearColor })}
               className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0"
+              title="Select the background and transparency key color"
             />
-            <span className="text-xs font-mono text-zinc-400 uppercase">{localClearColor}</span>
+            <span className="text-xs font-mono text-zinc-400 uppercase" title="Hex code of the current background color">{localClearColor}</span>
           </div>
         </div>
 
         <div className="space-y-2">
-          <label className="text-[10px] text-zinc-500 flex justify-between">
+          <label className="text-[10px] text-zinc-500 flex justify-between" title="Sensitivity for color matching during island detection">
             <span>Tolerance</span>
             <span className="font-mono">{gridSettings.clearTolerance}</span>
           </label>
@@ -210,6 +220,7 @@ export function Toolbox({
             value={gridSettings.clearTolerance ?? 10}
             onChange={(e) => onGridSettingsChange({ ...gridSettings, clearTolerance: Number(e.target.value) })}
             className="w-full accent-blue-500"
+            title="Adjust how closely colors must match the background color to be considered transparent"
           />
         </div>
       </div>
@@ -219,6 +230,7 @@ export function Toolbox({
           <button
             onClick={() => setShowNewAtlas(!showNewAtlas)}
             className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-2 px-4 rounded text-sm font-medium transition-colors border border-zinc-700"
+            title="Create a new empty atlas or reset current session"
           >
             <Plus className="w-4 h-4" />
             New Atlas
@@ -233,6 +245,7 @@ export function Toolbox({
                     setShowNewAtlas(false);
                   }}
                   className="bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono py-1 rounded border border-zinc-700"
+                  title={size === 0 ? "Specify a custom resolution" : `Create a ${size}x${size} atlas`}
                 >
                   {size === 0 ? 'Custom...' : `${size}x${size}`}
                 </button>
@@ -253,6 +266,7 @@ export function Toolbox({
         <button
           onClick={onExport}
           className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded text-sm font-medium transition-colors"
+          title="Export the final atlas as a PNG image"
         >
           <Download className="w-4 h-4" />
           Export PNG

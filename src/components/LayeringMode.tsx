@@ -165,7 +165,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
     <div className="flex-1 flex h-full bg-zinc-900 overflow-hidden">
       {/* Left Panel: Layer Stack & Properties */}
       <div className="w-80 flex flex-col border-r border-zinc-800 bg-zinc-950">
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+        <div className="p-4 border-b border-zinc-800 flex items-center justify-between" title="Manage the stack of texture layers">
           <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
             <LayersIcon className="w-4 h-4" />
             Layers
@@ -176,6 +176,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
           className="flex-1 overflow-y-auto p-2 space-y-1"
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
+          title="Layer stack (Top to Bottom). Drag textures here to add layers."
         >
           {layers.length === 0 ? (
             <div className="text-xs text-zinc-500 text-center mt-10 p-4 border-2 border-dashed border-zinc-800 rounded-lg">
@@ -190,10 +191,12 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
                   selectedLayerId === layer.id ? "bg-blue-900/30 border border-blue-500/50" : "hover:bg-zinc-900 border border-transparent"
                 )}
                 onClick={() => setSelectedLayerId(layer.id)}
+                title={`Select layer: ${layer.tile.name}`}
               >
                 <button 
                   className="text-zinc-500 hover:text-zinc-300"
                   onClick={(e) => { e.stopPropagation(); updateLayer(layer.id, { visible: !layer.visible }); }}
+                  title={layer.visible ? "Hide layer" : "Show layer"}
                 >
                   {layer.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                 </button>
@@ -212,6 +215,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
                     disabled={index === 0}
                     onClick={(e) => { e.stopPropagation(); moveLayer(index, -1); }}
                     className="text-zinc-500 hover:text-zinc-300 disabled:opacity-30"
+                    title="Move layer up"
                   >
                     <MoveUp className="w-3 h-3" />
                   </button>
@@ -219,6 +223,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
                     disabled={index === layers.length - 1}
                     onClick={(e) => { e.stopPropagation(); moveLayer(index, 1); }}
                     className="text-zinc-500 hover:text-zinc-300 disabled:opacity-30"
+                    title="Move layer down"
                   >
                     <MoveDown className="w-3 h-3" />
                   </button>
@@ -227,6 +232,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
                 <button 
                   className="text-zinc-500 hover:text-red-400 ml-1"
                   onClick={(e) => { e.stopPropagation(); removeLayer(layer.id); }}
+                  title="Remove layer"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -237,11 +243,11 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
 
         {/* Layer Properties */}
         {selectedLayer && (
-          <div className="p-4 border-t border-zinc-800 bg-zinc-900 space-y-4">
+          <div className="p-4 border-t border-zinc-800 bg-zinc-900 space-y-4" title={`Properties for layer: ${selectedLayer.tile.name}`}>
             <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Layer Properties</h3>
             
             <div className="space-y-2">
-              <label className="text-xs text-zinc-300 flex justify-between">
+              <label className="text-xs text-zinc-300 flex justify-between" title="Adjust the transparency of this layer">
                 <span>Opacity</span>
                 <span>{Math.round(selectedLayer.opacity * 100)}%</span>
               </label>
@@ -251,11 +257,12 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
                 value={selectedLayer.opacity}
                 onChange={(e) => updateLayer(selectedLayer.id, { opacity: parseFloat(e.target.value) })}
                 className="w-full accent-blue-500"
+                title="Slide to change layer opacity"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs text-zinc-300 flex justify-between items-center">
+              <label className="text-xs text-zinc-300 flex justify-between items-center" title="Remove a specific color from this layer (Chroma Key)">
                 <span>Transparent Color Key</span>
                 <input 
                   type="checkbox" 
@@ -264,6 +271,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
                     transparentColor: e.target.checked ? '#000000' : null 
                   })}
                   className="rounded border-zinc-700 bg-zinc-900 text-blue-500"
+                  title="Enable transparency color keying"
                 />
               </label>
               
@@ -274,15 +282,17 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
                     value={selectedLayer.transparentColor}
                     onChange={(e) => updateLayer(selectedLayer.id, { transparentColor: e.target.value })}
                     className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0"
+                    title="Choose the color to make transparent"
                   />
                   <div className="flex-1 space-y-1">
-                    <label className="text-[10px] text-zinc-500">Tolerance: {selectedLayer.tolerance}</label>
+                    <label className="text-[10px] text-zinc-500" title="Sensitivity for color matching">Tolerance: {selectedLayer.tolerance}</label>
                     <input 
                       type="range" 
                       min="0" max="255" step="1" 
                       value={selectedLayer.tolerance}
                       onChange={(e) => updateLayer(selectedLayer.id, { tolerance: parseInt(e.target.value) })}
                       className="w-full accent-blue-500"
+                      title="Adjust how closely colors must match to be made transparent"
                     />
                   </div>
                 </div>
@@ -298,6 +308,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
         ref={containerRef}
+        title="Composite Preview. Ctrl+Scroll to zoom."
       >
         {resultUrl ? (
           <img 
@@ -305,6 +316,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
             alt="Result" 
             className="max-w-full max-h-full object-contain shadow-2xl ring-1 ring-white/10 origin-center"
             style={{ transform: `scale(${zoom})` }}
+            title="Final layered result"
           />
         ) : (
           <div className="text-zinc-500 flex flex-col items-center gap-4">
@@ -318,6 +330,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport }: La
             <button
               onClick={handleExport}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded shadow-lg font-medium transition-colors"
+              title="Download the composite image as a PNG"
             >
               <Download className="w-4 h-4" />
               Export Layered Image

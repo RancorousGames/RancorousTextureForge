@@ -104,6 +104,7 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
       className="flex flex-col gap-1"
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => handleDrop(channel, e)}
+      title={`Channel: ${label}. Drag an asset here to assign.`}
     >
       <div className="flex items-center justify-between">
         <div className="text-[10px] font-bold text-zinc-500 uppercase">{label}</div>
@@ -111,6 +112,7 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
           value={m.sourceChannel}
           onChange={(e) => setMapping({ ...mapping, [channel]: { ...m, sourceChannel: e.target.value as any } })}
           className="bg-zinc-800 text-[10px] text-zinc-300 border-none rounded px-1 outline-none"
+          title={`Select which source channel (R, G, B, or A) to extract from the assigned texture`}
         >
           <option value="r">R</option>
           <option value="g">G</option>
@@ -121,10 +123,11 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
       <div className="aspect-square bg-zinc-950 border border-zinc-800 rounded-md flex items-center justify-center overflow-hidden relative group">
         {m.tile ? (
           <>
-            <img src={m.tile.url} alt={label} className="w-full h-full object-contain" />
+            <img src={m.tile.url} alt={label} className="w-full h-full object-contain" title={m.tile.name} />
             <button 
               className="absolute top-1 right-1 bg-red-500/80 text-white p-1 rounded opacity-0 group-hover:opacity-100"
               onClick={() => setMapping({ ...mapping, [channel]: { ...m, tile: null } })}
+              title="Clear this channel"
             >
               <Trash2 className="w-3 h-3" />
             </button>
@@ -141,6 +144,7 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
       className="flex flex-col gap-1"
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => handleDrop(channel, e)}
+      title={`Preview Slot: ${label}. Drag an asset here to preview it in the 3D scene.`}
     >
       <div className="flex items-center gap-2">
         <div className="text-[10px] font-bold text-zinc-500 uppercase">{label}</div>
@@ -149,16 +153,18 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
           checked={p.active} 
           onChange={(e) => setPbrSet({ ...pbrSet, [channel]: { ...p, active: e.target.checked } })}
           className="w-3 h-3 rounded bg-zinc-800 border-zinc-700 text-blue-500"
+          title={`Toggle visibility of the ${label} map in the preview`}
         />
       </div>
       <div className="aspect-square bg-zinc-950 border border-zinc-800 rounded-md flex items-center justify-center overflow-hidden relative group">
         {p.tile ? (
           <>
-            <img src={p.tile.url} alt={label} className="w-full h-full object-contain" />
+            <img src={p.tile.url} alt={label} className="w-full h-full object-contain" title={p.tile.name} />
             {channel !== 'orm' && (
               <button 
                 className="absolute top-1 right-1 bg-red-500/80 text-white p-1 rounded opacity-0 group-hover:opacity-100"
                 onClick={() => setPbrSet({ ...pbrSet, [channel]: { ...p, tile: null } })}
+                title="Clear this preview slot"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
@@ -174,14 +180,14 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
   return (
     <div className="flex-1 flex h-full bg-zinc-900 overflow-hidden">
       <div className="w-72 p-4 flex flex-col gap-4 border-r border-zinc-800 overflow-y-auto bg-zinc-950">
-        <div>
+        <div title="Composite RGBA channels from multiple textures">
           <h2 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
             <Layers className="w-4 h-4" />
             Channel Packer
           </h2>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3" title="Map source textures to RGBA channels">
           <PackerSlot label="Red" channel="r" m={mapping.r} />
           <PackerSlot label="Green" channel="g" m={mapping.g} />
           <PackerSlot label="Blue" channel="b" m={mapping.b} />
@@ -191,11 +197,12 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
         <button
           onClick={generatePackedTexture}
           className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded text-xs font-medium transition-colors"
+          title="Combine the assigned channel textures into a single output image"
         >
           Pack Texture
         </button>
 
-        <div className="pt-4 border-t border-zinc-800 space-y-3">
+        <div className="pt-4 border-t border-zinc-800 space-y-3" title="Preview the result in a PBR material">
           <h2 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">PBR Preview</h2>
           <div className="grid grid-cols-3 gap-2">
             <PBRSlot label="BC" channel="baseColor" p={pbrSet.baseColor} />
@@ -209,8 +216,9 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
               checked={useAlpha} 
               onChange={(e) => setUseAlpha(e.target.checked)}
               className="w-3 h-3 rounded bg-zinc-800 border-zinc-700 text-blue-500"
+              title="Use the packed alpha channel for material transparency"
             />
-            <label htmlFor="useAlpha" className="text-[10px] text-zinc-400">Use Alpha for Opacity</label>
+            <label htmlFor="useAlpha" className="text-[10px] text-zinc-400" title="Enable transparency testing in the 3D preview">Use Alpha for Opacity</label>
           </div>
         </div>
 
@@ -218,6 +226,7 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
           <button
             onClick={() => onExport(packedUrl, 'packed_texture.png')}
             className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white py-2 rounded text-xs font-medium transition-colors mt-auto"
+            title="Download the final channel-packed PNG"
           >
             <Download className="w-4 h-4" />
             Export Packed Texture

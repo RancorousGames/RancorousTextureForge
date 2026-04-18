@@ -360,18 +360,18 @@ export default function App() {
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-200 overflow-hidden">
       <header className="h-14 border-b border-zinc-800 bg-zinc-900 flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" title="Rancorous Texture Forge - Professional Texture Management">
             <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
               <LayoutTemplate className="w-5 h-5 text-white" />
             </div>
             <h1 className="font-semibold text-lg tracking-tight">TextureForge</h1>
           </div>
-          <div className="flex items-center bg-zinc-950 rounded-lg p-1 border border-zinc-800">
+          <div className="flex items-center bg-zinc-950 rounded-lg p-1 border border-zinc-800" title="Select application mode">
             {([
-              { id: 'atlas', icon: LayoutTemplate, label: 'Atlas' },
-              { id: 'adjust', icon: SlidersHorizontal, label: 'Adjust' },
-              { id: 'channel-pack', icon: Palette, label: 'Channel Pack' },
-              { id: 'layering', icon: Layers, label: 'Layering' },
+              { id: 'atlas', icon: LayoutTemplate, label: 'Atlas', tooltip: 'Atlas Layout Mode: Slice, pack, and arrange textures' },
+              { id: 'adjust', icon: SlidersHorizontal, label: 'Adjust', tooltip: 'Adjust Mode: Resample, hue-shift, and brightness correction' },
+              { id: 'channel-pack', icon: Palette, label: 'Channel Pack', tooltip: 'Channel Packer: Composite individual RGBA channels' },
+              { id: 'layering', icon: Layers, label: 'Layering', tooltip: 'Layering Mode: Composite multiple textures with transparency' },
             ] as const).map((m) => (
               <button
                 key={m.id}
@@ -380,6 +380,7 @@ export default function App() {
                   'px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-colors',
                   mode === m.id ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200'
                 )}
+                title={m.tooltip}
               >
                 <m.icon className="w-4 h-4" />
                 {m.label}
@@ -397,7 +398,7 @@ export default function App() {
         </div>
         <div className="flex items-center gap-3">
           <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={handleLoadFiles} />
-          <button onClick={handleOpenDirectory} className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium px-3 py-1.5 rounded transition-colors border border-zinc-700">
+          <button onClick={handleOpenDirectory} className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-sm font-medium px-3 py-1.5 rounded transition-colors border border-zinc-700" title="Load images or directories into the asset library">
             <FolderOpen className="w-4 h-4" />
             Load Assets
           </button>

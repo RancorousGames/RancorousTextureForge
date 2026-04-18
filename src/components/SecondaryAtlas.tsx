@@ -38,7 +38,7 @@ export function SecondaryAtlas({ tiles, activeTiles = [], onTileClick, onFilesDr
         isActive ? "border-blue-500/50 ring-1 ring-blue-500/30" : "border-zinc-800 hover:border-blue-500"
       )}
       onClick={() => onTileClick(tile)}
-      title={tile.name}
+      title={`${tile.name} (${tile.width}x${tile.height}). Drag into the atlas to use.`}
     >
       <div 
         className="w-full h-full p-2"
@@ -73,6 +73,7 @@ export function SecondaryAtlas({ tiles, activeTiles = [], onTileClick, onFilesDr
       className="w-80 h-full bg-zinc-900 border-l border-zinc-800 flex flex-col shrink-0"
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
+      title="Asset Browser: Drag and drop files here to load into the library"
     >
       <div className="p-4 border-b border-zinc-800 bg-zinc-950 space-y-3">
         <div className="flex items-center justify-between">
@@ -84,7 +85,7 @@ export function SecondaryAtlas({ tiles, activeTiles = [], onTileClick, onFilesDr
             <button 
               onClick={onClear}
               className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded transition-colors"
-              title="Clear Library"
+              title="Clear all assets from the library"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -99,6 +100,7 @@ export function SecondaryAtlas({ tiles, activeTiles = [], onTileClick, onFilesDr
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-zinc-900 border border-zinc-800 rounded pl-9 pr-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-700"
+            title="Filter assets by name"
           />
         </div>
       </div>

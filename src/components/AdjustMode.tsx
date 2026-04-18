@@ -147,41 +147,43 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
   return (
     <div className="flex-1 flex bg-zinc-900 overflow-hidden">
       <div className="w-80 p-6 border-r border-zinc-800 bg-zinc-950 space-y-6 overflow-y-auto">
-        <div className="flex items-center gap-2 pb-4 border-b border-zinc-800">
+        <div className="flex items-center gap-2 pb-4 border-b border-zinc-800" title="Adjust the selected texture properties">
           <SlidersHorizontal className="w-5 h-5 text-blue-500" />
           <h2 className="text-lg font-semibold text-zinc-100">Adjust Asset</h2>
         </div>
 
         <div className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-medium text-zinc-400">Asset Name</label>
+            <label className="text-xs font-medium text-zinc-400" title="Filename of the selected texture">Asset Name</label>
             <div className="text-sm text-zinc-200 truncate" title={selectedTile.name}>
               {selectedTile.name}
             </div>
           </div>
 
           <div className="space-y-2 pt-2 border-t border-zinc-800">
-            <label className="text-xs font-medium text-zinc-400 flex items-center gap-2">
+            <label className="text-xs font-medium text-zinc-400 flex items-center gap-2" title="Resample the texture to a new resolution">
               <Maximize2 className="w-3 h-3" />
               <span>Target Resolution</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500 uppercase">Width</label>
+                <label className="text-[10px] text-zinc-500 uppercase" title="Desired width in pixels">Width</label>
                 <select
                   value={targetW}
                   onChange={(e) => setTargetW(e.target.value === 'source' ? 'source' : Number(e.target.value))}
                   className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-[10px] text-zinc-200"
+                  title="Select target width"
                 >
                   {resolutions.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500 uppercase">Height</label>
+                <label className="text-[10px] text-zinc-500 uppercase" title="Desired height in pixels">Height</label>
                 <select
                   value={targetH}
                   onChange={(e) => setTargetH(e.target.value === 'source' ? 'source' : Number(e.target.value))}
                   className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-[10px] text-zinc-200"
+                  title="Select target height"
                 >
                   {resolutions.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
@@ -191,6 +193,7 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
               onClick={handleResize}
               disabled={isResizing}
               className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-1.5 rounded text-xs font-medium border border-zinc-700 transition-colors"
+              title="Apply the resolution change using high-quality resampling"
             >
               Apply Resample
             </button>
@@ -198,7 +201,7 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
           </div>
 
           <div className="space-y-2 pt-2 border-t border-zinc-800">
-            <label className="text-xs font-medium text-zinc-400 flex justify-between">
+            <label className="text-xs font-medium text-zinc-400 flex justify-between" title="Shift the colors of the texture along the hue spectrum">
               <span>Hue Shift</span>
               <span className="font-mono">{selectedTile.hue}°</span>
             </label>
@@ -209,11 +212,12 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
               value={selectedTile.hue}
               onChange={(e) => updateTile(selectedTile.id, { hue: Number(e.target.value) })}
               className="w-full accent-blue-500"
+              title="Drag to shift hue (0-360 degrees)"
             />
           </div>
 
           <div className="space-y-2 pt-2 border-t border-zinc-800">
-            <label className="text-xs font-medium text-zinc-400 flex justify-between">
+            <label className="text-xs font-medium text-zinc-400 flex justify-between" title="Adjust the overall brightness of the texture">
               <span>Brightness</span>
               <span className="font-mono">{selectedTile.brightness}%</span>
             </label>
@@ -224,12 +228,14 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
               value={selectedTile.brightness}
               onChange={(e) => updateTile(selectedTile.id, { brightness: Number(e.target.value) })}
               className="w-full accent-blue-500"
+              title="Drag to adjust brightness (0-300%)"
             />
           </div>
 
           <button
             onClick={handleExport}
             className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-md text-sm font-medium transition-colors mt-6"
+            title="Download the adjusted texture as a new PNG file"
           >
             <Download className="w-4 h-4" />
             Export Adjusted Texture

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { TextureTile, ChannelMapping, PBRSet } from '../types';
+import { TextureTile, ChannelMapping, PBRSet, VIRTUAL_MAIN_ATLAS_ID } from '../types';
 import { PBRPreview } from './PBRPreview';
 import { Download, Layers, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { generateId } from '../lib/canvas';
 
 interface ChannelPackerModeProps {
   availableTiles: TextureTile[];
@@ -11,9 +12,10 @@ interface ChannelPackerModeProps {
   pbrSet: PBRSet;
   setPbrSet: (pbrSet: PBRSet) => void;
   onExport: (url: string, filename: string) => void;
+  onGetSnapshot?: () => Promise<string>;
 }
 
-export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet, setPbrSet, onExport }: ChannelPackerModeProps) {
+export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet, setPbrSet, onExport, onGetSnapshot }: ChannelPackerModeProps) {
   const [useAlpha, setUseAlpha] = useState(false);
   const [packedUrl, setPackedUrl] = useState<string | null>(null);
 
@@ -27,11 +29,16 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
     }
   }, [mapping.r.tile, mapping.g.tile, mapping.b.tile, mapping.a.tile, mapping.r.sourceChannel, mapping.g.sourceChannel, mapping.b.sourceChannel, mapping.a.sourceChannel]);
 
-  const handleDrop = (channel: keyof ChannelMapping | keyof PBRSet, e: React.DragEvent) => {
+  const handleDrop = async (channel: keyof ChannelMapping | keyof PBRSet, e: React.DragEvent) => {
     e.preventDefault();
     const tileId = e.dataTransfer.getData('text/plain');
-    const tile = availableTiles.find(t => t.id === tileId);
+    let tile = availableTiles.find(t => t.id === tileId);
     if (!tile) return;
+
+    if (tile.id === VIRTUAL_MAIN_ATLAS_ID && onGetSnapshot) {
+      const url = await onGetSnapshot();
+      tile = { ...tile, url, id: generateId(), name: `Snapshot ${new Date().toLocaleTimeString()}` };
+    }
 
     if (['r', 'g', 'b', 'a'].includes(channel)) {
       setMapping({ ...mapping, [channel]: { ...mapping[channel as keyof ChannelMapping], tile } });

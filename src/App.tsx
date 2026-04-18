@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { TextureTile, AppMode, GridSettings, ChannelMapping, PBRSet, Layer, AppState } from './types';
+import { TextureTile, AppMode, GridSettings, ChannelMapping, PBRSet, Layer, AppState, VIRTUAL_MAIN_ATLAS_ID } from './types';
 import { MainAtlas } from './components/MainAtlas';
 import { SourceAtlas } from './components/SourceAtlas';
 import { SecondaryAtlas } from './components/SecondaryAtlas';
@@ -17,7 +17,7 @@ import { useAtlasOps } from './hooks/useAtlasOps';
 import { useAssetLibrary } from './hooks/useAssetLibrary';
 import { AddTilesCommand, PatchCommand } from './lib/Commands';
 import { tileRegistry } from './lib/TileRegistry';
-import { generateId } from './lib/canvas';
+import { generateId, renderTilesToCanvas } from './lib/canvas';
 
 const initialPackerMapping: ChannelMapping = {
   r: { tile: null, sourceChannel: 'r' },
@@ -190,6 +190,63 @@ export default function App() {
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
+  const virtualMainAtlasPreview = useMemo(() => {
+    // Generate a lightweight SVG preview of the current main atlas
+    const w = state.canvasWidth;
+    const h = state.canvasHeight;
+    const bgColor = state.gridSettings.clearColor;
+    const sourceTile = state.lastSourceTileId ? state.secondaryTiles.find(t => t.id === state.lastSourceTileId) : null;
+    
+    // We'll use a data URL for the SVG
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+        <rect width="${w}" height="${h}" fill="${bgColor}" />
+        ${sourceTile && state.atlasStatus !== 'baked' ? `
+          <image href="${sourceTile.sourceUrl || sourceTile.url}" width="${w}" height="${h}" preserveAspectRatio="none" />
+          ${state.clearedCells.map(key => {
+            const [cx, cy] = key.split(',').map(Number);
+            const sw = state.gridSettings.cellSize;
+            const sh = state.gridSettings.cellY || sw;
+            return `<rect x="${cx * sw}" y="${cy * sh}" width="${sw}" height="${sh}" fill="${bgColor}" />`;
+          }).join('')}
+        ` : ''}
+        ${state.mainTiles.map(t => {
+          const sX = t.scaleX ?? t.scale;
+          const sY = t.scaleY ?? t.scale;
+          return `
+            <g filter="hue-rotate(${t.hue}deg) brightness(${t.brightness}%)">
+              <image href="${t.url}" x="${t.x}" y="${t.y}" width="${t.width * sX}" height="${t.height * sY}" preserveAspectRatio="none" />
+            </g>
+          `;
+        }).join('')}
+      </svg>
+    `.replace(/\n/g, '').replace(/>\s+</g, '><');
+    
+    return `data:image/svg+xml;base64,${btoa(svg)}`;
+  }, [state.mainTiles, state.canvasWidth, state.canvasHeight, state.gridSettings, state.lastSourceTileId, state.secondaryTiles, state.clearedCells, state.atlasStatus]);
+
+  const handleGetMainAtlasSnapshot = useCallback(async () => {
+    const sourceTile = state.lastSourceTileId ? state.secondaryTiles.find(t => t.id === state.lastSourceTileId) : null;
+    const sw = state.gridSettings.cellSize;
+    const sh = state.gridSettings.cellY || sw;
+    
+    const canvas = await renderTilesToCanvas(
+      state.mainTiles,
+      state.canvasWidth,
+      state.canvasHeight,
+      state.gridSettings.clearColor,
+      {
+        sourceTile,
+        clearedCells: state.clearedCells,
+        cellW: sw,
+        cellH: sh,
+        stepX: sw,
+        stepY: sh
+      }
+    );
+    return canvas.toDataURL();
+  }, [state.mainTiles, state.canvasWidth, state.canvasHeight, state.gridSettings, state.lastSourceTileId, state.secondaryTiles, state.clearedCells]);
+
   const activeTiles = useMemo(() => {
     // Show the source atlas texture as one item rather than individual slices
     const sourceTile = state.lastSourceTileId
@@ -197,6 +254,14 @@ export default function App() {
       : null;
 
     const candidates: TextureTile[] = [
+      {
+        id: VIRTUAL_MAIN_ATLAS_ID,
+        name: 'Main Atlas (Canvas)',
+        url: '', // Will be handled specifically
+        width: state.canvasWidth,
+        height: state.canvasHeight,
+        x: 0, y: 0, hue: 0, brightness: 100, scale: 1
+      },
       ...(sourceTile ? [sourceTile] : []),
       ...state.modifiedTiles,
       ...state.layeringLayers.map(l => l.tile),
@@ -241,6 +306,13 @@ export default function App() {
   }, [set]);
 
   const handleAssetClick = useCallback(async (tile: TextureTile) => {
+    let effectiveTile = tile;
+    if (tile.id === VIRTUAL_MAIN_ATLAS_ID) {
+      const url = await handleGetMainAtlasSnapshot();
+      effectiveTile = { ...tile, url, id: generateId(), name: `Snapshot ${new Date().toLocaleTimeString()}` };
+      set(prev => ({ ...prev, modifiedTiles: [...prev.modifiedTiles, effectiveTile] }));
+    }
+
     if (mode === 'atlas') {
       const shouldSlice = state.gridSettings.mode === 'fixed';
       
@@ -249,8 +321,8 @@ export default function App() {
         // Set basic state first so UI updates canvas size
         set(prev => ({
           ...prev,
-          canvasWidth: tile.width, canvasHeight: tile.height,
-          lastSourceTileId: tile.id, clearedCells: [],
+          canvasWidth: effectiveTile.width, canvasHeight: effectiveTile.height,
+          lastSourceTileId: effectiveTile.id, clearedCells: [],
           mainTiles: [],
           atlasStatus: 'parametric'
         }));
@@ -259,11 +331,11 @@ export default function App() {
 
         // Trigger auto-detect for main grid using this tile
         // This will call onAutoDetectSettingsApplied, but we'll also slice here to be sure
-        const newMainSettings = await handleAutoDetectMainGrid(tile);
-        await handleAutoDetectSourceGrid(tile);
+        const newMainSettings = await handleAutoDetectMainGrid(effectiveTile);
+        await handleAutoDetectSourceGrid(effectiveTile);
         
         if (newMainSettings) {
-           const validated = checkGridDensity(tile.width, tile.height, newMainSettings.cellSize, newMainSettings.cellY || newMainSettings.cellSize);
+           const validated = checkGridDensity(effectiveTile.width, effectiveTile.height, newMainSettings.cellSize, newMainSettings.cellY || newMainSettings.cellSize);
            if (!validated) return;
            const finalSettings = { ...newMainSettings, cellSize: validated.cellSize, cellY: validated.cellY };
            
@@ -272,52 +344,46 @@ export default function App() {
              set(prev => ({ ...prev, gridSettings: finalSettings }));
            }
            
-           performGridSlice(tile, tile.width, tile.height, false, finalSettings);
+           performGridSlice(effectiveTile, effectiveTile.width, effectiveTile.height, false, finalSettings);
         }
         return;
       }
 
       set(prev => ({
         ...prev,
-        canvasWidth: tile.width, canvasHeight: tile.height,
-        mainTiles: shouldSlice ? [] : [{ ...tile, id: generateId(), x: 0, y: 0 }], 
-        lastSourceTileId: tile.id, clearedCells: [],
+        canvasWidth: effectiveTile.width, canvasHeight: effectiveTile.height,
+        mainTiles: shouldSlice ? [] : [{ ...effectiveTile, id: generateId(), x: 0, y: 0 }], 
+        lastSourceTileId: effectiveTile.id, clearedCells: [],
       }));
       setSelectedTileId(null);
       setSelectedCells([]);
       
       if (shouldSlice) {
-        performGridSlice(tile, tile.width, tile.height, false);
+        performGridSlice(effectiveTile, effectiveTile.width, effectiveTile.height, false);
       }
     } else if (mode === 'adjust') {
-      if (state.secondaryTiles.some(t => t.id === tile.id)) {
-        const existing = state.modifiedTiles.find(t => t.name === tile.name && t.file === tile.file);
-        if (existing) {
-          setSelectedTileId(existing.id);
-        } else {
-          const modified = { ...tile, id: generateId() };
-          set(prev => ({ ...prev, modifiedTiles: [...prev.modifiedTiles, modified] }));
-          setSelectedTileId(modified.id);
-        }
-      } else {
-        setSelectedTileId(tile.id);
-      }
+      setSelectedTileId(effectiveTile.id);
     } else if (mode === 'layering') {
       const newLayer: Layer = {
-        id: generateId(), tile: { ...tile },
+        id: generateId(), tile: { ...effectiveTile },
         opacity: 1, transparentColor: null, tolerance: 10, visible: true,
       };
       set(prev => ({ ...prev, layeringLayers: [newLayer, ...prev.layeringLayers] }));
     }
-  }, [mode, state.secondaryTiles, state.modifiedTiles, set, performGridSlice]);
+  }, [mode, state.secondaryTiles, state.modifiedTiles, state.autoDetectEnabled, state.gridSettings, handleGetMainAtlasSnapshot, handleAutoDetectMainGrid, handleAutoDetectSourceGrid, performGridSlice, set]);
 
   const handleMainAtlasDrop = useCallback((tileOrId: string | TextureTile, x: number, y: number) => {
-    const tile = typeof tileOrId === 'string'
-      ? [...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles].find(t => t.id === tileOrId)
-      : tileOrId;
+    let tile: TextureTile | undefined;
+    
+    if (typeof tileOrId === 'string') {
+      tile = [...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles, ...activeTiles].find(t => t.id === tileOrId);
+    } else {
+      tile = tileOrId;
+    }
+    
     if (!tile) return;
 
-    if (state.secondaryTiles.some(t => t.id === tile.id)) {
+    if (state.secondaryTiles.some(t => t.id === tile.id) || tile.id === VIRTUAL_MAIN_ATLAS_ID) {
       handleAssetClick(tile);
       return;
     }
@@ -656,8 +722,8 @@ export default function App() {
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
-              const tile = [...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]
-                .find(t => t.id === e.dataTransfer.getData('text/plain'));
+              const id = e.dataTransfer.getData('text/plain');
+              const tile = [...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles, ...activeTiles].find(t => t.id === id);
               if (tile) handleAssetClick(tile);
             }}
           >
@@ -673,23 +739,25 @@ export default function App() {
 
         {mode === 'channel-pack' && (
           <ChannelPackerMode
-            availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]}
+            availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles, ...activeTiles]}
             mapping={state.packerMapping}
             setMapping={(m) => set(prev => ({ ...prev, packerMapping: m }))}
             pbrSet={state.pbrSet}
             setPbrSet={(p) => set(prev => ({ ...prev, pbrSet: p }))}
             onExport={handleResultExport}
+            onGetSnapshot={handleGetMainAtlasSnapshot}
           />
         )}
 
         {mode === 'layering' && (
           <LayeringMode
-            availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]}
+            availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles, ...activeTiles]}
             layers={state.layeringLayers}
             setLayers={(l) => set(prev => ({ ...prev, layeringLayers: l }))}
             onExport={handleResultExport}
             canvasWidth={canvasWidth}
             canvasHeight={canvasHeight}
+            onGetSnapshot={handleGetMainAtlasSnapshot}
           />
         )}
 
@@ -699,6 +767,8 @@ export default function App() {
           onTileClick={handleAssetClick}
           onFilesDrop={addFilesToLibrary}
           onClear={handleClearLibrary}
+          onGetSnapshot={handleGetMainAtlasSnapshot}
+          virtualMainAtlasPreview={virtualMainAtlasPreview}
         />
       </div>
     </div>

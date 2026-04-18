@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { TextureTile } from '../types';
+import { TextureTile, VIRTUAL_MAIN_ATLAS_ID } from '../types';
 import { cn } from '../lib/utils';
-import { Sparkles, Search, Trash2 } from 'lucide-react';
+import { Sparkles, Search, Trash2, Layout } from 'lucide-react';
 
 interface SecondaryAtlasProps {
   tiles: TextureTile[];
@@ -9,9 +9,19 @@ interface SecondaryAtlasProps {
   onTileClick: (tile: TextureTile) => void;
   onFilesDrop?: (files: File[]) => void;
   onClear?: () => void;
+  onGetSnapshot?: () => Promise<string>;
+  virtualMainAtlasPreview?: string;
 }
 
-export function SecondaryAtlas({ tiles, activeTiles = [], onTileClick, onFilesDrop, onClear }: SecondaryAtlasProps) {
+export function SecondaryAtlas({ 
+  tiles, 
+  activeTiles = [], 
+  onTileClick, 
+  onFilesDrop, 
+  onClear,
+  onGetSnapshot,
+  virtualMainAtlasPreview
+}: SecondaryAtlasProps) {
   const [search, setSearch] = useState('');
 
   const handleDragStart = (e: React.DragEvent, tile: TextureTile) => {
@@ -29,44 +39,63 @@ export function SecondaryAtlas({ tiles, activeTiles = [], onTileClick, onFilesDr
   const filteredTiles = tiles.filter(t => t.name.toLowerCase().includes(search.toLowerCase()));
   const filteredActive = activeTiles.filter(t => t.name.toLowerCase().includes(search.toLowerCase()));
 
-  const TileItem = ({ tile, isActive = false }: { tile: TextureTile, isActive?: boolean }) => (
-    <div
-      draggable
-      onDragStart={(e) => handleDragStart(e, tile)}
-      className={cn(
-        "group relative aspect-square bg-zinc-950 border rounded-md overflow-hidden cursor-pointer transition-all checkerboard",
-        isActive ? "border-blue-500/50 ring-1 ring-blue-500/30" : "border-zinc-800 hover:border-blue-500"
-      )}
-      onClick={() => onTileClick(tile)}
-      title={`${tile.name} (${tile.width}x${tile.height}). Drag into the atlas to use.`}
-    >
-      <div 
-        className="w-full h-full p-2"
-        style={{
-          filter: `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`,
-          transform: `scale(${Math.min(1, tile.scale)})`
-        }}
+  const TileItem = ({ tile, isActive = false }: { tile: TextureTile, isActive?: boolean }) => {
+    const isVirtual = tile.id === VIRTUAL_MAIN_ATLAS_ID;
+    
+    return (
+      <div
+        draggable
+        onDragStart={(e) => handleDragStart(e, tile)}
+        className={cn(
+          "group relative aspect-square bg-zinc-950 border rounded-md overflow-hidden cursor-pointer transition-all checkerboard",
+          isActive ? "border-blue-500/50 ring-1 ring-blue-500/30" : "border-zinc-800 hover:border-blue-500"
+        )}
+        onClick={() => onTileClick(tile)}
+        title={isVirtual ? "Main Atlas Canvas (Live). Drag into tools to use current layout." : `${tile.name} (${tile.width}x${tile.height}). Drag into the atlas to use.`}
       >
-        <img
-          src={tile.url}
-          alt={tile.name}
-          className="w-full h-full object-contain"
-          draggable={false}
-        />
-      </div>
-      <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 text-[10px] text-zinc-300 truncate opacity-0 group-hover:opacity-100 transition-opacity">
-        {tile.name}
-      </div>
-      <div className="absolute top-1 left-1 bg-black/40 px-1 rounded text-[8px] text-zinc-400 font-mono">
-        {tile.width}x{tile.height}
-      </div>
-      {isActive && (
-        <div className="absolute top-1 right-1">
-          <Sparkles className="w-3 h-3 text-blue-400" />
+        <div 
+          className="w-full h-full p-2"
+          style={{
+            filter: `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`,
+            transform: `scale(${Math.min(1, tile.scale)})`
+          }}
+        >
+          {isVirtual ? (
+            virtualMainAtlasPreview ? (
+              <img
+                src={virtualMainAtlasPreview}
+                alt={tile.name}
+                className="w-full h-full object-contain"
+                draggable={false}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-zinc-900 rounded">
+                <Layout className="w-8 h-8 text-zinc-700" />
+              </div>
+            )
+          ) : (
+            <img
+              src={tile.url}
+              alt={tile.name}
+              className="w-full h-full object-contain"
+              draggable={false}
+            />
+          )}
         </div>
-      )}
-    </div>
-  );
+        <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 text-[10px] text-zinc-300 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+          {tile.name}
+        </div>
+        <div className="absolute top-1 left-1 bg-black/40 px-1 rounded text-[8px] text-zinc-400 font-mono">
+          {tile.width}x{tile.height}
+        </div>
+        {isActive && (
+          <div className="absolute top-1 right-1">
+            <Sparkles className="w-3 h-3 text-blue-400" />
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div 

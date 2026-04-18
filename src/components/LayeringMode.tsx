@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { TextureTile, Layer } from '../types';
+import { TextureTile, Layer, VIRTUAL_MAIN_ATLAS_ID } from '../types';
 import { Download, Layers as LayersIcon, Eye, EyeOff, Trash2, Plus, MoveUp, MoveDown } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { generateId } from '../lib/canvas';
 
 interface LayeringModeProps {
   availableTiles: TextureTile[];
@@ -10,6 +11,7 @@ interface LayeringModeProps {
   onExport: (url: string, filename: string) => void;
   canvasWidth: number;
   canvasHeight: number;
+  onGetSnapshot?: () => Promise<string>;
 }
 
 type ResizeCorner = 'tl' | 'tr' | 'bl' | 'br';
@@ -24,7 +26,7 @@ interface Interaction {
 
 const HANDLE_SCREEN_PX = 10;
 
-export function LayeringMode({ availableTiles, layers, setLayers, onExport, canvasWidth, canvasHeight }: LayeringModeProps) {
+export function LayeringMode({ availableTiles, layers, setLayers, onExport, canvasWidth, canvasHeight, onGetSnapshot }: LayeringModeProps) {
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -73,12 +75,19 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
     setZoom(Math.min(Math.max(0.1, Math.min(clientWidth / canvasWidth, clientHeight / canvasHeight) * 0.9), 10));
   }, [canvasWidth, canvasHeight]);
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
-    const tile = availableTiles.find(t => t.id === e.dataTransfer.getData('text/plain'));
+    const id = e.dataTransfer.getData('text/plain');
+    let tile = availableTiles.find(t => t.id === id);
     if (!tile) return;
+
+    if (tile.id === VIRTUAL_MAIN_ATLAS_ID && onGetSnapshot) {
+      const url = await onGetSnapshot();
+      tile = { ...tile, url, id: generateId(), name: `Snapshot ${new Date().toLocaleTimeString()}` };
+    }
+
     const newLayer: Layer = {
-      id: Math.random().toString(36).substring(2, 9),
+      id: generateId(),
       tile: { ...tile, x: 0, y: 0, scale: 1 },
       opacity: 1,
       transparentColor: null,

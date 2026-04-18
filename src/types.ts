@@ -1,3 +1,5 @@
+export const VIRTUAL_MAIN_ATLAS_ID = 'virtual-main-atlas';
+
 export interface TextureTile {
   id: string;
   file?: File;

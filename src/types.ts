@@ -81,6 +81,7 @@ export interface AppState {
   adjustSettings: AdjustSettings;
   lastSourceTileId: string | null;
   clearedCells: string[];
+  autoDetectEnabled: boolean;
 }
 
 

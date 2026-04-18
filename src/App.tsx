@@ -66,6 +66,7 @@ const getInitialState = (): AppState => {
     adjustSettings: { targetW: 'source', targetH: 'source' },
     lastSourceTileId: null,
     clearedCells: [],
+    autoDetectEnabled: false,
   };
 
   try {
@@ -77,6 +78,7 @@ const getInitialState = (): AppState => {
         gridSettings: { ...baseState.gridSettings, ...config.gridSettings },
         sourceGridSettings: { ...baseState.sourceGridSettings, ...config.sourceGridSettings },
         adjustSettings: { ...baseState.adjustSettings, ...config.adjustSettings },
+        autoDetectEnabled: config.autoDetectEnabled ?? false,
       };
     }
   } catch (e) {
@@ -221,6 +223,30 @@ export default function App() {
     if (mode === 'atlas') {
       const shouldSlice = state.gridSettings.mode === 'fixed';
       
+      // If auto-detect is enabled, we detect settings first then slice
+      if (state.autoDetectEnabled && shouldSlice) {
+        // Set basic state first so UI updates canvas size
+        set(prev => ({
+          ...prev,
+          canvasWidth: tile.width, canvasHeight: tile.height,
+          lastSourceTileId: tile.id, clearedCells: [],
+          mainTiles: [],
+          atlasStatus: 'parametric'
+        }));
+        setSelectedTileId(null);
+        setSelectedCells([]);
+
+        // Trigger auto-detect for main grid using this tile
+        // This will call onAutoDetectSettingsApplied, but we'll also slice here to be sure
+        const newMainSettings = await handleAutoDetectMainGrid(tile);
+        await handleAutoDetectSourceGrid(tile);
+        
+        if (newMainSettings) {
+           performGridSlice(tile, tile.width, tile.height, false, newMainSettings);
+        }
+        return;
+      }
+
       set(prev => ({
         ...prev,
         canvasWidth: tile.width, canvasHeight: tile.height,
@@ -310,8 +336,9 @@ export default function App() {
       gridSettings: state.gridSettings,
       sourceGridSettings: state.sourceGridSettings,
       adjustSettings: state.adjustSettings,
+      autoDetectEnabled: state.autoDetectEnabled,
     }));
-  }, [state.gridSettings, state.sourceGridSettings, state.adjustSettings]);
+  }, [state.gridSettings, state.sourceGridSettings, state.adjustSettings, state.autoDetectEnabled]);
 
   useEffect(() => {
     localStorage.setItem('forge_mode', mode);
@@ -472,6 +499,8 @@ export default function App() {
               }}
               atlasSwapMode={state.atlasSwapMode}
               setAtlasSwapMode={(val) => set(prev => ({ ...prev, atlasSwapMode: val }))}
+              autoDetectEnabled={state.autoDetectEnabled}
+              onAutoDetectEnabledChange={(enabled) => set(prev => ({ ...prev, autoDetectEnabled: enabled }))}
             />
             <div className="flex-1 flex overflow-hidden" ref={splitPaneRef}>
               <div style={{ flex: canvasWidth > 0 ? splitRatio : 1 }} className="flex overflow-hidden">
@@ -556,6 +585,8 @@ export default function App() {
                       mainGridSettings={state.gridSettings}
                       canvasWidth={canvasWidth}
                       canvasHeight={canvasHeight}
+                      autoDetectEnabled={state.autoDetectEnabled}
+                      onAutoDetectEnabledChange={(enabled) => set(prev => ({ ...prev, autoDetectEnabled: enabled }))}
                     />
                   </div>
                 </>

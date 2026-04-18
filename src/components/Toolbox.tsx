@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TextureTile, GridSettings, GridMode } from '../types';
+import { cn } from '../lib/utils';
 import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus, Box } from 'lucide-react';
 
 interface ToolboxProps {
@@ -15,22 +16,26 @@ interface ToolboxProps {
   onGridSettingsChange: (settings: GridSettings) => void;
   atlasSwapMode: boolean;
   setAtlasSwapMode: (val: boolean) => void;
-}
+  autoDetectEnabled: boolean;
+  onAutoDetectEnabledChange: (enabled: boolean) => void;
+  }
 
-export function Toolbox({ 
-  selectedTile, 
-  updateTile, 
-  onPack, 
+  export function Toolbox({
+  selectedTile,
+  updateTile,
+  onPack,
   onPackElements,
-  onNewAtlas, 
+  onNewAtlas,
   onFixGrid,
   onAutoDetect,
   onExport,
   gridSettings,
   onGridSettingsChange,
   atlasSwapMode,
-  setAtlasSwapMode
-}: ToolboxProps) {
+  setAtlasSwapMode,
+  autoDetectEnabled,
+  onAutoDetectEnabledChange
+  }: ToolboxProps) {
   const [localClearColor, setLocalClearColor] = useState(gridSettings.clearColor);
 
   useEffect(() => {
@@ -45,15 +50,28 @@ export function Toolbox({
           <Grid3X3 className="w-4 h-4 text-zinc-400" />
           <h2 className="text-sm font-semibold text-zinc-200">Grid Settings</h2>
         </div>
-        <button
-          onClick={onAutoDetect}
-          className="p-1.5 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-blue-400 transition-colors border border-zinc-800"
-          title="Auto Detect Grid Settings"
-        >
-          <Wand2 className="w-3.5 h-3.5" />
-        </button>
-      </div>
-      
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onAutoDetectEnabledChange(!autoDetectEnabled)}
+            className={cn(
+              "p-1.5 rounded transition-colors border",
+              autoDetectEnabled 
+                ? "bg-blue-600/20 border-blue-500/50 text-blue-400" 
+                : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-400"
+            )}
+            title={autoDetectEnabled ? "Auto-detect is ENABLED" : "Auto-detect is DISABLED"}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={onAutoDetect}
+            className="p-1.5 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-blue-400 transition-colors border border-zinc-800"
+            title="Auto Detect Grid Settings Now"
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>      
       <div className="p-4 space-y-4 border-b border-zinc-800 overflow-y-auto flex-1">
         <div className="space-y-1">
           <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="Choose the layout logic for the atlas">Mode</label>

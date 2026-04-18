@@ -10,15 +10,11 @@ export function useAutoDetect(
   set: (v: AppState | ((p: AppState) => AppState)) => void,
   onSettingsDetected?: (gs: GridSettings) => void
 ) {
-  const handleAutoDetectMainGrid = useCallback(async () => {
+  const handleAutoDetectMainGrid = useCallback(async (tile?: TextureTile) => {
     let imageData: ImageData | null = null;
 
-    const sharedSourceUrls = Array.from(new Set(
-      state.mainTiles.map(t => t.sourceUrl).filter((u): u is string => Boolean(u))
-    ));
-
-    if (sharedSourceUrls.length === 1) {
-      const img = await loadImage(sharedSourceUrls[0]).catch(() => null);
+    if (tile) {
+      const img = await loadImage(tile.sourceUrl || tile.url).catch(() => null);
       if (img) {
         const realW = img.naturalWidth || img.width;
         const realH = img.naturalHeight || img.height;
@@ -29,6 +25,28 @@ export function useAutoDetect(
           ctx.imageSmoothingEnabled = false;
           ctx.drawImage(img, 0, 0, realW, realH);
           imageData = ctx.getImageData(0, 0, realW, realH);
+        }
+      }
+    }
+
+    if (!imageData) {
+      const sharedSourceUrls = Array.from(new Set(
+        state.mainTiles.map(t => t.sourceUrl).filter((u): u is string => Boolean(u))
+      ));
+
+      if (sharedSourceUrls.length === 1) {
+        const img = await loadImage(sharedSourceUrls[0]).catch(() => null);
+        if (img) {
+          const realW = img.naturalWidth || img.width;
+          const realH = img.naturalHeight || img.height;
+          const sourceCanvas = document.createElement('canvas');
+          sourceCanvas.width = realW; sourceCanvas.height = realH;
+          const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+          if (ctx) {
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, 0, 0, realW, realH);
+            imageData = ctx.getImageData(0, 0, realW, realH);
+          }
         }
       }
     }
@@ -58,6 +76,7 @@ export function useAutoDetect(
     console.log(`[AutoDetect] Applying Main Grid settings: Cell=${cellSize}, Pad=${padding}, Color=${detectedClearColor}`);
     set(prev => ({ ...prev, gridSettings: newSettings }));
     onSettingsDetected?.(newSettings);
+    return newSettings;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.mainTiles, state.gridSettings, canvasWidth, canvasHeight, set, onSettingsDetected]);
 
@@ -84,16 +103,19 @@ export function useAutoDetect(
       imageData, detectedClearColor, tolerance
     );
 
+    const newSettings: GridSettings = {
+      ...state.sourceGridSettings,
+      clearColor: detectedClearColor,
+      cellSize, cellY: cellSize,
+      padding, keepSquare: true,
+    };
+
     console.log(`[AutoDetect] Applying Source Grid settings: Cell=${cellSize}, Pad=${padding}, Color=${detectedClearColor}`);
     set(prev => ({
       ...prev,
-      sourceGridSettings: {
-        ...prev.sourceGridSettings,
-        clearColor: detectedClearColor,
-        cellSize, cellY: cellSize,
-        padding, keepSquare: true,
-      },
+      sourceGridSettings: newSettings,
     }));
+    return newSettings;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.sourceGridSettings, set]);
 

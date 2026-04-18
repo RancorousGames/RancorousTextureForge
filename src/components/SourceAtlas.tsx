@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { TextureTile, GridSettings } from '../types';
 import { AtlasCanvas } from './AtlasCanvas';
-import { Image as ImageIcon, Plus, Wand2, LayoutTemplate } from 'lucide-react';
+import { Image as ImageIcon, Plus, Wand2, LayoutTemplate, RefreshCw } from 'lucide-react';
 import { hexToRgb, findIslands, cn } from '../lib/utils';
 import { GridGeometry } from '../lib/GridGeometry';
 
@@ -16,6 +16,8 @@ interface SourceAtlasProps {
   mainGridSettings: GridSettings;
   canvasWidth: number;
   canvasHeight: number;
+  autoDetectEnabled: boolean;
+  onAutoDetectEnabledChange: (enabled: boolean) => void;
 }
 
 export function SourceAtlas({ 
@@ -28,7 +30,9 @@ export function SourceAtlas({
   onSourceCellRightClick,
   mainGridSettings,
   canvasWidth: targetCanvasW,
-  canvasHeight: targetCanvasH
+  canvasHeight: targetCanvasH,
+  autoDetectEnabled,
+  onAutoDetectEnabledChange
 }: SourceAtlasProps) {
 
   const [sourceTile, setSourceTile] = useState<TextureTile | null>(null);
@@ -39,7 +43,11 @@ export function SourceAtlas({
   const handleDrop = (tileId: string) => {
     const tile = availableTiles.find(t => t.id === tileId);
     if (tile) {
-      setSourceTile({ ...tile, id: 'source' });
+      const newTile = { ...tile, id: 'source' };
+      setSourceTile(newTile);
+      if (autoDetectEnabled) {
+        onAutoDetectGrid(newTile);
+      }
     }
   };
 
@@ -112,7 +120,7 @@ export function SourceAtlas({
     const img = new Image();
     img.onload = () => {
       console.log(`[Forge] Source image loaded: ${img.width}x${img.height}`);
-      setSourceTile({
+      const newTile: TextureTile = {
         id: 'source',
         url,
         name: file.name,
@@ -123,9 +131,14 @@ export function SourceAtlas({
         hue: 0,
         brightness: 100,
         scale: 1,
-      });
+      };
+      setSourceTile(newTile);
       setCustomSelection(null);
       setMenuPos(null);
+
+      if (autoDetectEnabled) {
+        onAutoDetectGrid(newTile);
+      }
     };
     img.src = url;
   };
@@ -347,20 +360,34 @@ export function SourceAtlas({
             <Plus className="w-3.5 h-3.5" />
           </button>
 
-          <button
-            disabled={!sourceTile}
-            onClick={() => sourceTile && onAutoDetectGrid(sourceTile)}
-            className={cn(
-              "flex items-center gap-2 text-xs font-medium px-2 py-1 rounded transition-colors border",
-              sourceTile 
-                ? "bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border-blue-500/30" 
-                : "bg-zinc-800/50 text-zinc-600 border-zinc-800 opacity-50 cursor-not-allowed"
-            )}
-            title="Automatically detect grid size and padding from the current source image"
-          >
-            <Wand2 className="w-3.5 h-3.5" />
-            <span>Auto Detect</span>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onAutoDetectEnabledChange(!autoDetectEnabled)}
+              className={cn(
+                "p-1.5 rounded transition-colors border",
+                autoDetectEnabled 
+                  ? "bg-blue-600/20 border-blue-500/50 text-blue-400" 
+                  : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-400"
+              )}
+              title={autoDetectEnabled ? "Auto-detect is ENABLED" : "Auto-detect is DISABLED"}
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+            <button
+              disabled={!sourceTile}
+              onClick={() => sourceTile && onAutoDetectGrid(sourceTile)}
+              className={cn(
+                "flex items-center gap-2 text-xs font-medium px-2 py-1 rounded transition-colors border",
+                sourceTile 
+                  ? "bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border-blue-500/30" 
+                  : "bg-zinc-800/50 text-zinc-600 border-zinc-800 opacity-50 cursor-not-allowed"
+              )}
+              title="Auto Detect Grid Settings Now"
+            >
+              <Wand2 className="w-3.5 h-3.5" />
+              <span>Auto Detect</span>
+            </button>
+          </div>
 
           <button
             disabled={!sourceTile}

@@ -42,11 +42,13 @@ export function useGridSlice(
     const sliceCtx = sliceCanvas.getContext('2d', { willReadFrequently: true });
     if (!sliceCtx) return;
 
-    // Sample key color from top-left pixel of source to detect background
+    // Sample key color from bottom-right pixel of source to detect background
     const checkCanvas = document.createElement('canvas');
     checkCanvas.width = 1; checkCanvas.height = 1;
     const checkCtx = checkCanvas.getContext('2d')!;
-    checkCtx.drawImage(img, 0, 0, 1, 1, 0, 0, 1, 1);
+    const realW = img.naturalWidth || img.width;
+    const realH = img.naturalHeight || img.height;
+    checkCtx.drawImage(img, realW - 1, realH - 1, 1, 1, 0, 0, 1, 1);
     const keyData = checkCtx.getImageData(0, 0, 1, 1).data;
     const keyColor = { r: keyData[0], g: keyData[1], b: keyData[2], a: keyData[3] };
     const permClear = hexToRgb(gs.clearColor);

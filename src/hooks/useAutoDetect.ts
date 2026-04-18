@@ -40,7 +40,8 @@ export function useAutoDetect(
       imageData = canvas.getContext('2d')!.getImageData(0, 0, canvasWidth, canvasHeight);
     }
 
-    const [r, g, b] = [imageData.data[0], imageData.data[1], imageData.data[2]];
+    const lastIdx = (imageData.width * imageData.height - 1) * 4;
+    const [r, g, b] = [imageData.data[lastIdx], imageData.data[lastIdx + 1], imageData.data[lastIdx + 2]];
     const detectedClearColor = rgbToHex(r, g, b);
     const tolerance = state.gridSettings.clearTolerance ?? 10;
 
@@ -72,7 +73,8 @@ export function useAutoDetect(
     ctx.drawImage(img, 0, 0, realW, realH);
     const imageData = ctx.getImageData(0, 0, realW, realH);
 
-    const [r, g, b] = [imageData.data[0], imageData.data[1], imageData.data[2]];
+    const lastIdx = (imageData.width * imageData.height - 1) * 4;
+    const [r, g, b] = [imageData.data[lastIdx], imageData.data[lastIdx + 1], imageData.data[lastIdx + 2]];
     const detectedClearColor = rgbToHex(r, g, b);
     const { cellSize, padding } = detectSettingsFromImage(
       imageData, detectedClearColor, state.sourceGridSettings.clearTolerance ?? 10

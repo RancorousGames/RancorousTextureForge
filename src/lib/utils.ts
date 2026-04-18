@@ -124,41 +124,61 @@ export function detectSettingsFromImage(
 
   const sizes = islands.map(i => Math.max(i.w, i.h));
   const rawSize = getMedian(sizes);
-
-  // Determine Padding by looking at gaps between islands
-  const hGaps: number[] = [];
-  const vGaps: number[] = [];
-  
-  // X-Gaps (Vertical gutters)
-  const sortedX = [...islands].sort((a, b) => a.x - b.x);
-  for (let i = 0; i < sortedX.length - 1; i++) {
-    const a = sortedX[i], b = sortedX[i+1];
-    const yOverlap = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
-    if (yOverlap > 0) {
-      const gap = b.x - (a.x + a.w);
-      if (gap >= 0 && gap < rawSize) hGaps.push(gap);
-    }
-  }
-
-  // Y-Gaps (Horizontal gutters)
-  const sortedY = [...islands].sort((a, b) => a.y - b.y);
-  for (let i = 0; i < sortedY.length - 1; i++) {
-    const a = sortedY[i], b = sortedY[i+1];
-    const xOverlap = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
-    if (xOverlap > 0) {
-      const gap = b.y - (a.y + a.h);
-      if (gap >= 0 && gap < rawSize) vGaps.push(gap);
-    }
-  }
-
-  const hGap = getMedian(hGaps);
-  const vGap = getMedian(vGaps);
-  const detectedGap = Math.max(hGap, vGap);
+  console.log(`[AutoDetect] Islands found: ${islands.length}, rawSize (median): ${rawSize}`);
 
   const p2s = [32, 64, 128, 256, 512, 1024];
   const nearestP2 = p2s.reduce((prev, curr) => Math.abs(curr - rawSize) < Math.abs(prev - rawSize) ? curr : prev);
   let finalSize = Math.round(rawSize / 4) * 4;
-  if (Math.abs(nearestP2 - rawSize) / nearestP2 <= 0.15) finalSize = nearestP2;
+  if (Math.abs(nearestP2 - rawSize) / nearestP2 <= 0.02) {
+    console.log(`[AutoDetect] Snapping cell size ${finalSize} -> ${nearestP2}`);
+    finalSize = nearestP2;
+  }
 
-  return { cellSize: finalSize, padding: Math.round(detectedGap / 2) };
+  // New Simplified Gap Detection
+  const minX = Math.min(...islands.map(i => i.x));
+  const minY = Math.min(...islands.map(i => i.y));
+  const maxX = Math.max(...islands.map(i => i.x + i.w));
+  const maxY = Math.max(...islands.map(i => i.y + i.h));
+  const bbW = maxX - minX;
+  const bbH = maxY - minY;
+
+  const numX = Math.max(1, Math.floor(bbW / (finalSize * 1.01)));
+  const numY = Math.max(1, Math.floor(bbH / (finalSize * 1.01)));
+
+  const totalGapX = bbW - (numX * finalSize);
+  const totalGapY = bbH - (numY * finalSize);
+  
+  const paddingX = numX > 1 ? (totalGapX / (numX - 1)) / 2 : 0;
+  const paddingY = numY > 1 ? (totalGapY / (numY - 1)) / 2 : 0;
+
+  console.log(`[AutoDetect] BB: min(${minX},${minY}) max(${maxX},${maxY}) size(${bbW}x${bbH})`);
+  console.log(`[AutoDetect] Formula X: (${bbW} - (${numX} * ${finalSize})) / (${numX} - 1) / 2 = ${paddingX.toFixed(3)}`);
+  console.log(`[AutoDetect] Formula Y: (${bbH} - (${numY} * ${finalSize})) / (${numY} - 1) / 2 = ${paddingY.toFixed(3)}`);
+  console.log(`[AutoDetect] numX: ${numX}, numY: ${numY}`);
+
+  const targetPadding = finalSize * 0.03;
+  const distX = Math.abs(paddingX - targetPadding);
+  const distY = Math.abs(paddingY - targetPadding);
+  const rawPadding = distX <= distY ? paddingX : paddingY;
+  
+  console.log(`[AutoDetect] targetPadding (3%): ${targetPadding.toFixed(3)}, picking: ${distX <= distY ? 'X' : 'Y'}`);
+
+  let detectedPadding = Math.round(rawPadding);
+  
+  // Snap padding to P2 if within 1px of the RAW float value
+  const paddingP2s = [0, 1, 2, 4, 8, 16, 32, 64];
+  const nearestPaddingP2 = paddingP2s.reduce((prev, curr) => {
+    const distPrev = Math.abs(prev - rawPadding);
+    const distCurr = Math.abs(curr - rawPadding);
+    // Use <= to prefer the larger P2 in case of an exact tie
+    return distCurr <= distPrev ? curr : prev;
+  });
+  
+  if (Math.abs(rawPadding - nearestPaddingP2) <= 1.0) {
+    console.log(`[AutoDetect] Snapping raw padding ${rawPadding.toFixed(3)} -> ${nearestPaddingP2}`);
+    detectedPadding = nearestPaddingP2;
+  }
+
+  console.log(`[AutoDetect] Final Result -> Cell: ${finalSize}, Padding: ${detectedPadding}`);
+  return { cellSize: finalSize, padding: detectedPadding };
 }

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { DeferredNumberInput } from './DeferredNumberInput';
-import { TextureTile, GridSettings, GridMode } from '../types';
+import { TextureAsset, GridSettings, GridMode } from '../types';
 import { cn } from '../lib/utils';
 import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus, Box } from 'lucide-react';
 
 interface ToolboxProps {
-  selectedTile: TextureTile | null;
-  updateTile: (updates: Partial<TextureTile>) => void;
+  selectedAsset: TextureAsset | null;
+  updateAsset: (updates: Partial<TextureAsset>) => void;
   onPack: () => void;
   onPackElements: () => void;
   onNewAtlas: (size: number) => void;
@@ -22,8 +22,8 @@ interface ToolboxProps {
   }
 
   export function Toolbox({
-  selectedTile,
-  updateTile,
+  selectedAsset,
+  updateAsset,
   onPack,
   onPackElements,
   onNewAtlas,
@@ -132,9 +132,9 @@ interface ToolboxProps {
             checked={atlasSwapMode}
             onChange={(e) => setAtlasSwapMode(e.target.checked)}
             className="rounded border-zinc-700 bg-zinc-950 text-blue-500"
-            title="Toggle tile swapping behavior during drag-and-drop"
+            title="Toggle entry swapping behavior during drag-and-drop"
           />
-          <label htmlFor="swapMode" className="text-xs text-zinc-400" title="When enabled, dragging a tile onto another will swap their positions">Swap Tiles on Drag</label>
+          <label htmlFor="swapMode" className="text-xs text-zinc-400" title="When enabled, dragging an entry onto another will swap their positions">Swap Entries on Drag</label>
         </div>
 
         {gridSettings.mode === 'fixed' && (
@@ -200,7 +200,7 @@ interface ToolboxProps {
         )}
 
         <div className="space-y-2">
-          <label className="text-[10px] text-zinc-500" title="The base color of the atlas. Used for clearing tiles (R-Click) and as the key color for detecting islands in images.">Background Color</label>
+          <label className="text-[10px] text-zinc-500" title="The base color of the atlas. Used for clearing entries (R-Click) and as the key color for detecting islands in images.">Background Color</label>
           <div className="flex items-center gap-2">
             <input
               type="color"

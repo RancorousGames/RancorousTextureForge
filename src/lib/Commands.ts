@@ -1,4 +1,4 @@
-import { AppState, TextureTile, AtlasStatus } from '../types';
+import { AppState, TextureAsset, AtlasStatus } from '../types';
 
 export interface Command {
   execute(state: AppState): AppState;
@@ -22,7 +22,7 @@ export class PatchCommand implements Command {
 
 export class MoveTileCommand implements Command {
   constructor(
-    private tileId: string,
+    private entryId: string,
     private oldPos: { x: number, y: number },
     private newPos: { x: number, y: number }
   ) {}
@@ -30,61 +30,61 @@ export class MoveTileCommand implements Command {
   execute(state: AppState): AppState {
     return {
       ...state,
-      mainTiles: state.mainTiles.map(t => t.id === this.tileId ? { ...t, x: this.newPos.x, y: this.newPos.y } : t)
+      atlasEntries: state.atlasEntries.map(e => e.id === this.entryId ? { ...e, x: this.newPos.x, y: this.newPos.y } : e)
     };
   }
 
   undo(state: AppState): AppState {
     return {
       ...state,
-      mainTiles: state.mainTiles.map(t => t.id === this.tileId ? { ...t, x: this.oldPos.x, y: this.oldPos.y } : t)
+      atlasEntries: state.atlasEntries.map(e => e.id === this.entryId ? { ...e, x: this.oldPos.x, y: this.oldPos.y } : e)
     };
   }
 }
 
 export class AddTilesCommand implements Command {
-  constructor(private newTiles: TextureTile[], private replacedTiles: TextureTile[]) {}
+  constructor(private newEntries: TextureAsset[], private replacedEntries: TextureAsset[]) {}
 
   execute(state: AppState): AppState {
-    const idsToRemove = new Set(this.replacedTiles.map(t => t.id));
+    const idsToRemove = new Set(this.replacedEntries.map(e => e.id));
     return {
       ...state,
-      mainTiles: [...state.mainTiles.filter(t => !idsToRemove.has(t.id)), ...this.newTiles]
+      atlasEntries: [...state.atlasEntries.filter(e => !idsToRemove.has(e.id)), ...this.newEntries]
     };
   }
 
   undo(state: AppState): AppState {
-    const idsToRemove = new Set(this.newTiles.map(t => t.id));
+    const idsToRemove = new Set(this.newEntries.map(e => e.id));
     return {
       ...state,
-      mainTiles: [...state.mainTiles.filter(t => !idsToRemove.has(t.id)), ...this.replacedTiles]
+      atlasEntries: [...state.atlasEntries.filter(e => !idsToRemove.has(e.id)), ...this.replacedEntries]
     };
   }
 }
 
 export class RemoveTilesCommand implements Command {
-  constructor(private removedTiles: TextureTile[]) {}
+  constructor(private removedEntries: TextureAsset[]) {}
 
   execute(state: AppState): AppState {
-    const idsToRemove = new Set(this.removedTiles.map(t => t.id));
+    const idsToRemove = new Set(this.removedEntries.map(e => e.id));
     return {
       ...state,
-      mainTiles: state.mainTiles.filter(t => !idsToRemove.has(t.id))
+      atlasEntries: state.atlasEntries.filter(e => !idsToRemove.has(e.id))
     };
   }
 
   undo(state: AppState): AppState {
     return {
       ...state,
-      mainTiles: [...state.mainTiles, ...this.removedTiles]
+      atlasEntries: [...state.atlasEntries, ...this.removedEntries]
     };
   }
 }
 
 export class SetMainTilesCommand implements Command {
   constructor(
-    private oldTiles: TextureTile[],
-    private newTiles: TextureTile[],
+    private oldEntries: TextureAsset[],
+    private newEntries: TextureAsset[],
     private oldStatus?: AtlasStatus,
     private newStatus?: AtlasStatus
   ) {}
@@ -92,7 +92,7 @@ export class SetMainTilesCommand implements Command {
   execute(state: AppState): AppState {
     return { 
       ...state, 
-      mainTiles: this.newTiles,
+      atlasEntries: this.newEntries,
       atlasStatus: this.newStatus ?? state.atlasStatus
     };
   }
@@ -100,7 +100,7 @@ export class SetMainTilesCommand implements Command {
   undo(state: AppState): AppState {
     return { 
       ...state, 
-      mainTiles: this.oldTiles,
+      atlasEntries: this.oldEntries,
       atlasStatus: this.oldStatus ?? state.atlasStatus
     };
   }
@@ -133,7 +133,7 @@ export class ClearCellCommand implements Command {
 
 export class MaterializeCommand implements Command {
   constructor(
-    private newTile: TextureTile,
+    private newEntry: TextureAsset,
     private cellKey: string,
     private oldStatus: AtlasStatus
   ) {}
@@ -142,7 +142,7 @@ export class MaterializeCommand implements Command {
     const alreadyCleared = state.clearedCells.includes(this.cellKey);
     return {
       ...state,
-      mainTiles: [...state.mainTiles, this.newTile],
+      atlasEntries: [...state.atlasEntries, this.newEntry],
       clearedCells: alreadyCleared ? state.clearedCells : [...state.clearedCells, this.cellKey],
       atlasStatus: 'modified'
     };
@@ -151,7 +151,7 @@ export class MaterializeCommand implements Command {
   undo(state: AppState): AppState {
     return {
       ...state,
-      mainTiles: state.mainTiles.filter(t => t.id !== this.newTile.id),
+      atlasEntries: state.atlasEntries.filter(e => e.id !== this.newEntry.id),
       clearedCells: state.clearedCells.filter(k => k !== this.cellKey),
       atlasStatus: this.oldStatus
     };

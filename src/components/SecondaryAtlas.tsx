@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { TextureTile, VIRTUAL_MAIN_ATLAS_ID } from '../types';
+import { TextureAsset, VIRTUAL_MAIN_ATLAS_ID } from '../types';
 import { cn } from '../lib/utils';
 import { Sparkles, Search, Trash2, Layout } from 'lucide-react';
 
 interface SecondaryAtlasProps {
-  tiles: TextureTile[];
-  activeTiles?: TextureTile[];
-  onTileClick: (tile: TextureTile) => void;
+  assets: TextureAsset[];
+  activeAssets?: TextureAsset[];
+  onAssetClick: (asset: TextureAsset) => void;
   onFilesDrop?: (files: File[]) => void;
   onClear?: () => void;
   onGetSnapshot?: () => Promise<string>;
@@ -14,9 +14,9 @@ interface SecondaryAtlasProps {
 }
 
 export function SecondaryAtlas({ 
-  tiles, 
-  activeTiles = [], 
-  onTileClick, 
+  assets, 
+  activeAssets = [], 
+  onAssetClick, 
   onFilesDrop, 
   onClear,
   onGetSnapshot,
@@ -24,8 +24,8 @@ export function SecondaryAtlas({
 }: SecondaryAtlasProps) {
   const [search, setSearch] = useState('');
 
-  const handleDragStart = (e: React.DragEvent, tile: TextureTile) => {
-    e.dataTransfer.setData('text/plain', tile.id);
+  const handleDragStart = (e: React.DragEvent, asset: TextureAsset) => {
+    e.dataTransfer.setData('text/plain', asset.id);
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -36,35 +36,35 @@ export function SecondaryAtlas({
     }
   };
 
-  const filteredTiles = tiles.filter(t => t.name.toLowerCase().includes(search.toLowerCase()));
-  const filteredActive = activeTiles.filter(t => t.name.toLowerCase().includes(search.toLowerCase()));
+  const filteredAssets = assets.filter(t => t.name.toLowerCase().includes(search.toLowerCase()));
+  const filteredActive = activeAssets.filter(t => t.name.toLowerCase().includes(search.toLowerCase()));
 
-  const TileItem = ({ tile, isActive = false }: { tile: TextureTile, isActive?: boolean }) => {
-    const isVirtual = tile.id === VIRTUAL_MAIN_ATLAS_ID;
+  const AssetItem = ({ asset, isActive = false }: { asset: TextureAsset, isActive?: boolean }) => {
+    const isVirtual = asset.id === VIRTUAL_MAIN_ATLAS_ID;
     
     return (
       <div
         draggable
-        onDragStart={(e) => handleDragStart(e, tile)}
+        onDragStart={(e) => handleDragStart(e, asset)}
         className={cn(
           "group relative aspect-square bg-zinc-950 border rounded-md overflow-hidden cursor-pointer transition-all checkerboard",
           isActive ? "border-blue-500/50 ring-1 ring-blue-500/30" : "border-zinc-800 hover:border-blue-500"
         )}
-        onClick={() => onTileClick(tile)}
-        title={isVirtual ? "Main Atlas Canvas (Live). Drag into tools to use current layout." : `${tile.name} (${tile.width}x${tile.height}). Drag into the atlas to use.`}
+        onClick={() => onAssetClick(asset)}
+        title={isVirtual ? "Main Atlas Canvas (Live). Drag into tools to use current layout." : `${asset.name} (${asset.width}x${asset.height}). Drag into the atlas to use.`}
       >
         <div 
           className="w-full h-full p-2"
           style={{
-            filter: `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`,
-            transform: `scale(${Math.min(1, tile.scale)})`
+            filter: `hue-rotate(${asset.hue}deg) brightness(${asset.brightness}%)`,
+            transform: `scale(${Math.min(1, asset.scale)})`
           }}
         >
           {isVirtual ? (
             virtualMainAtlasPreview ? (
               <img
                 src={virtualMainAtlasPreview}
-                alt={tile.name}
+                alt={asset.name}
                 className="w-full h-full object-contain"
                 draggable={false}
               />
@@ -75,18 +75,18 @@ export function SecondaryAtlas({
             )
           ) : (
             <img
-              src={tile.url}
-              alt={tile.name}
+              src={asset.url}
+              alt={asset.name}
               className="w-full h-full object-contain"
               draggable={false}
             />
           )}
         </div>
         <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 text-[10px] text-zinc-300 truncate opacity-0 group-hover:opacity-100 transition-opacity">
-          {tile.name}
+          {asset.name}
         </div>
         <div className="absolute top-1 left-1 bg-black/40 px-1 rounded text-[8px] text-zinc-400 font-mono">
-          {tile.width}x{tile.height}
+          {asset.width}x{asset.height}
         </div>
         {isActive && (
           <div className="absolute top-1 right-1">
@@ -110,7 +110,7 @@ export function SecondaryAtlas({
             <h2 className="text-sm font-semibold text-zinc-200">Asset Browser</h2>
             <p className="text-xs text-zinc-500 mt-1">Drag files here to load</p>
           </div>
-          {onClear && tiles.length > 0 && (
+          {onClear && assets.length > 0 && (
             <button 
               onClick={onClear}
               className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded transition-colors"
@@ -143,8 +143,8 @@ export function SecondaryAtlas({
               Active / Modified
             </h3>
             <div className="grid grid-cols-2 gap-3">
-              {filteredActive.map((tile) => (
-                <TileItem key={`active-${tile.id}`} tile={tile} isActive />
+              {filteredActive.map((asset) => (
+                <AssetItem key={`active-${asset.id}`} asset={asset} isActive />
               ))}
             </div>
           </div>
@@ -155,18 +155,18 @@ export function SecondaryAtlas({
           <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
             Library
           </h3>
-          {tiles.length === 0 ? (
+          {assets.length === 0 ? (
             <div className="text-center text-zinc-500 text-sm py-10">
               No assets loaded.
             </div>
-          ) : filteredTiles.length === 0 ? (
+          ) : filteredAssets.length === 0 ? (
             <div className="text-center text-zinc-500 text-sm py-10">
               No assets match your search.
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              {filteredTiles.map((tile) => (
-                <TileItem key={tile.id} tile={tile} />
+              {filteredAssets.map((asset) => (
+                <AssetItem key={asset.id} asset={asset} />
               ))}
             </div>
           )}

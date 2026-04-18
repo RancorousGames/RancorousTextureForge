@@ -1,4 +1,4 @@
-import { TextureTile } from '../types';
+import { TextureAsset } from '../types';
 
 export function generateId(): string {
   return Math.random().toString(36).substring(2, 9);
@@ -13,14 +13,14 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-export async function renderTilesToCanvas(
-  tiles: TextureTile[],
+export async function renderEntriesToCanvas(
+  entries: TextureAsset[],
   width: number,
   height: number,
   bgColor: string,
   opts: { 
     willReadFrequently?: boolean, 
-    sourceTile?: TextureTile | null,
+    sourceAsset?: TextureAsset | null,
     clearedCells?: string[],
     cellW?: number,
     cellH?: number,
@@ -37,9 +37,9 @@ export async function renderTilesToCanvas(
   ctx.fillStyle = bgColor;
   ctx.fillRect(0, 0, width, height);
 
-  // 1. Draw source tile if present
-  if (opts.sourceTile) {
-    const srcImg = await loadImage(opts.sourceTile.sourceUrl || opts.sourceTile.url);
+  // 1. Draw source asset if present
+  if (opts.sourceAsset) {
+    const srcImg = await loadImage(opts.sourceAsset.sourceUrl || opts.sourceAsset.url);
     
     ctx.save();
     // If we have holes, we use a temporary canvas to apply them
@@ -63,19 +63,19 @@ export async function renderTilesToCanvas(
     ctx.restore();
   }
 
-  // 2. Draw normal tiles
-  const images = await Promise.all(tiles.map(t => loadImage(t.url)));
+  // 2. Draw normal entries
+  const images = await Promise.all(entries.map(t => loadImage(t.url)));
 
-  for (let i = 0; i < tiles.length; i++) {
-    const tile = tiles[i];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
     const img = images[i];
-    const dw = tile.width * (tile.scaleX ?? tile.scale);
-    const dh = tile.height * (tile.scaleY ?? tile.scale);
+    const dw = entry.width * (entry.scaleX ?? entry.scale);
+    const dh = entry.height * (entry.scaleY ?? entry.scale);
 
     ctx.save();
-    ctx.translate(tile.x, tile.y);
-    if (tile.hue !== 0 || tile.brightness !== 100) {
-      ctx.filter = `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`;
+    ctx.translate(entry.x, entry.y);
+    if (entry.hue !== 0 || entry.brightness !== 100) {
+      ctx.filter = `hue-rotate(${entry.hue}deg) brightness(${entry.brightness}%)`;
     }
     ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, dw, dh);
     ctx.restore();
@@ -83,4 +83,6 @@ export async function renderTilesToCanvas(
 
   return canvas;
 }
+
+export const renderTilesToCanvas = renderEntriesToCanvas; // Alias for backward compatibility
 

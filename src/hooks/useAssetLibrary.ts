@@ -1,9 +1,9 @@
 import { useCallback, RefObject } from 'react';
-import { AppState, TextureTile } from '../types';
+import { AppState, TextureAsset } from '../types';
 import { tileRegistry } from '../lib/TileRegistry';
 import { generateId } from '../lib/canvas';
 
-function createTileFromFile(file: File, url: string, img: HTMLImageElement): TextureTile {
+function createAssetFromFile(file: File, url: string, img: HTMLImageElement): TextureAsset {
   return {
     id: generateId(),
     file,
@@ -23,54 +23,54 @@ export function useAssetLibrary(
   fileInputRef: RefObject<HTMLInputElement>
 ) {
   const addFilesToLibrary = useCallback(async (files: File[]) => {
-    const newTiles: TextureTile[] = [];
+    const newAssets: TextureAsset[] = [];
     for (const file of files) {
       if (!file.type.startsWith('image/')) continue;
-      if (state.secondaryTiles.some(t => t.name === file.name)) continue;
-      const tile = await new Promise<TextureTile>(resolve => {
+      if (state.libraryAssets.some(a => a.name === file.name)) continue;
+      const asset = await new Promise<TextureAsset>(resolve => {
         const url = URL.createObjectURL(file);
         const img = new Image();
         img.onload = () => {
-          const t = createTileFromFile(file, url, img);
-          tileRegistry.register(t);
-          resolve(t);
+          const a = createAssetFromFile(file, url, img);
+          tileRegistry.register(a);
+          resolve(a);
         };
         img.src = url;
       });
-      newTiles.push(tile);
+      newAssets.push(asset);
     }
-    set(prev => ({ ...prev, secondaryTiles: [...prev.secondaryTiles, ...newTiles] }));
+    set(prev => ({ ...prev, libraryAssets: [...prev.libraryAssets, ...newAssets] }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.secondaryTiles, set]);
+  }, [state.libraryAssets, set]);
 
   const handleOpenDirectory = useCallback(async () => {
     try {
       // @ts-ignore — File System Access API, not yet in TS lib
       const dirHandle = await window.showDirectoryPicker();
-      const newTiles: TextureTile[] = [];
+      const newAssets: TextureAsset[] = [];
       // @ts-ignore
       for await (const entry of dirHandle.values()) {
         if (entry.kind !== 'file' || !entry.name.match(/\.(png|jpe?g|webp)$/i)) continue;
-        if (state.secondaryTiles.some(t => t.name === entry.name)) continue;
+        if (state.libraryAssets.some(a => a.name === entry.name)) continue;
         const file = await entry.getFile();
-        const tile = await new Promise<TextureTile>(resolve => {
+        const asset = await new Promise<TextureAsset>(resolve => {
           const url = URL.createObjectURL(file);
           const img = new Image();
           img.onload = () => {
-            const t = createTileFromFile(file, url, img);
-            tileRegistry.register(t);
-            resolve(t);
+            const a = createAssetFromFile(file, url, img);
+            tileRegistry.register(a);
+            resolve(a);
           };
           img.src = url;
         });
-        newTiles.push(tile);
+        newAssets.push(asset);
       }
-      set(prev => ({ ...prev, secondaryTiles: [...prev.secondaryTiles, ...newTiles] }));
+      set(prev => ({ ...prev, libraryAssets: [...prev.libraryAssets, ...newAssets] }));
     } catch {
       fileInputRef.current?.click();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.secondaryTiles, set, fileInputRef]);
+  }, [state.libraryAssets, set, fileInputRef]);
 
   const handleLoadFiles = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -80,7 +80,7 @@ export function useAssetLibrary(
 
   const handleClearLibrary = useCallback(() => {
     if (confirm('Are you sure you want to clear all loaded assets?')) {
-      set(prev => ({ ...prev, secondaryTiles: [] }));
+      set(prev => ({ ...prev, libraryAssets: [] }));
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }, [set, fileInputRef]);

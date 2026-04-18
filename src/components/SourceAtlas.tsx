@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { TextureTile, GridSettings } from '../types';
+import { TextureAsset, GridSettings } from '../types';
 import { AtlasCanvas } from './AtlasCanvas';
 import { DeferredNumberInput } from './DeferredNumberInput';
 import { Image as ImageIcon, Plus, Wand2, LayoutTemplate, RefreshCw } from 'lucide-react';
@@ -7,13 +7,13 @@ import { hexToRgb, findIslands, cn } from '../lib/utils';
 import { GridGeometry } from '../lib/GridGeometry';
 
 interface SourceAtlasProps {
-  onAddTile: (tile: TextureTile) => void;
+  onAddAsset: (asset: TextureAsset) => void;
   gridSettings: GridSettings;
   onGridSettingsChange: (settings: GridSettings) => void;
-  onAutoDetectGrid: (sourceTile: TextureTile) => void;
-  availableTiles: TextureTile[];
-  onSourceCellClick: (x: number, y: number, w: number, h: number, scx: number, scy: number, sourceTile: TextureTile) => void;
-  onSourceCellRightClick?: (x: number, y: number, w: number, h: number, scx: number, scy: number, sourceTile: TextureTile) => void;
+  onAutoDetectGrid: (sourceAsset: TextureAsset) => void;
+  availableAssets: TextureAsset[];
+  onSourceCellClick: (x: number, y: number, w: number, h: number, scx: number, scy: number, sourceAsset: TextureAsset) => void;
+  onSourceCellRightClick?: (x: number, y: number, w: number, h: number, scx: number, scy: number, sourceAsset: TextureAsset) => void;
   mainGridSettings: GridSettings;
   canvasWidth: number;
   canvasHeight: number;
@@ -22,11 +22,11 @@ interface SourceAtlasProps {
 }
 
 export function SourceAtlas({ 
-  onAddTile, 
+  onAddAsset, 
   gridSettings, 
   onGridSettingsChange, 
   onAutoDetectGrid,
-  availableTiles, 
+  availableAssets, 
   onSourceCellClick, 
   onSourceCellRightClick,
   mainGridSettings,
@@ -36,31 +36,31 @@ export function SourceAtlas({
   onAutoDetectEnabledChange
 }: SourceAtlasProps) {
 
-  const [sourceTile, setSourceTile] = useState<TextureTile | null>(null);
+  const [sourceAsset, setSourceAsset] = useState<TextureAsset | null>(null);
   const [customSelection, setCustomSelection] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
   const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleDrop = (tileId: string) => {
-    const tile = availableTiles.find(t => t.id === tileId);
-    if (tile) {
-      const newTile = { ...tile, id: 'source' };
-      setSourceTile(newTile);
+  const handleDrop = (assetId: string) => {
+    const asset = availableAssets.find(t => t.id === assetId);
+    if (asset) {
+      const newAsset = { ...asset, id: 'source' };
+      setSourceAsset(newAsset);
       if (autoDetectEnabled) {
-        onAutoDetectGrid(newTile);
+        onAutoDetectGrid(newAsset);
       }
     }
   };
 
   const handleExtractIslands = async () => {
-    if (!sourceTile) return;
+    if (!sourceAsset) return;
 
     const img = new Image();
-    await new Promise(resolve => { img.onload = resolve; img.src = sourceTile.url; });
+    await new Promise(resolve => { img.onload = resolve; img.src = sourceAsset.url; });
 
     const canvas = document.createElement('canvas');
-    canvas.width = sourceTile.width;
-    canvas.height = sourceTile.height;
+    canvas.width = sourceAsset.width;
+    canvas.height = sourceAsset.height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
     ctx.drawImage(img, 0, 0);
@@ -78,19 +78,19 @@ export function SourceAtlas({
       return;
     }
 
-    const geo = new GridGeometry(gridSettings, sourceTile.width, sourceTile.height);
+    const geo = new GridGeometry(gridSettings, sourceAsset.width, sourceAsset.height);
     if (geo.padding === 0) {
       console.log(`[FixGrid] Aborting: Cell padding is 0. FixGrid requires non-zero padding to align islands.`);
       return;
     }
 
-    console.log(`[FixGrid] Algorithm Start: Image ${sourceTile.width}x${sourceTile.height}`);
+    console.log(`[FixGrid] Algorithm Start: Image ${sourceAsset.width}x${sourceAsset.height}`);
     console.log(`[FixGrid] Found ${islands.length} raw islands using tolerance ${gridSettings.clearTolerance}`);
     console.log(`[FixGrid] Geometry Config: CellSize=${geo.cellW}x${geo.cellH}, Padding=${geo.padding}, Step=${geo.stepX}x${geo.stepY}`);
 
     const outCanvas = document.createElement('canvas');
-    outCanvas.width = sourceTile.width;
-    outCanvas.height = sourceTile.height;
+    outCanvas.width = sourceAsset.width;
+    outCanvas.height = sourceAsset.height;
     const outCtx = outCanvas.getContext('2d');
     if (!outCtx) return;
 
@@ -118,7 +118,7 @@ export function SourceAtlas({
     });
 
     console.log(`[FixGrid] Finished processing ${islands.length} islands.`);
-    setSourceTile({ ...sourceTile, url: outCanvas.toDataURL() });
+    setSourceAsset({ ...sourceAsset, url: outCanvas.toDataURL() });
   };
 
   const handleLoadSource = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,7 +130,7 @@ export function SourceAtlas({
     const img = new Image();
     img.onload = () => {
       console.log(`[Forge] Source image loaded: ${img.width}x${img.height}`);
-      const newTile: TextureTile = {
+      const newAsset: TextureAsset = {
         id: 'source',
         url,
         name: file.name,
@@ -142,26 +142,26 @@ export function SourceAtlas({
         brightness: 100,
         scale: 1,
       };
-      setSourceTile(newTile);
+      setSourceAsset(newAsset);
       setCustomSelection(null);
       setMenuPos(null);
 
       if (autoDetectEnabled) {
-        onAutoDetectGrid(newTile);
+        onAutoDetectGrid(newAsset);
       }
     };
     img.src = url;
   };
 
   const handleCellClick = (x: number, y: number, width: number, height: number, cx: number, cy: number) => {
-    if (!sourceTile) return;
-    onSourceCellClick(x, y, width, height, cx, cy, sourceTile);
+    if (!sourceAsset) return;
+    onSourceCellClick(x, y, width, height, cx, cy, sourceAsset);
   };
 
   const handleCellRightClick = (x: number, y: number, width: number, height: number, cx: number, cy: number) => {
-    if (!sourceTile) return;
+    if (!sourceAsset) return;
     if (onSourceCellRightClick) {
-      onSourceCellRightClick(x, y, width, height, cx, cy, sourceTile);
+      onSourceCellRightClick(x, y, width, height, cx, cy, sourceAsset);
     }
   };
 
@@ -172,10 +172,10 @@ export function SourceAtlas({
   };
 
   const addSelection = async (detectIsland: boolean) => {
-    if (!customSelection || !sourceTile) return;
+    if (!customSelection || !sourceAsset) return;
 
     const img = new Image();
-    await new Promise(resolve => { img.onload = resolve; img.src = sourceTile.url; });
+    await new Promise(resolve => { img.onload = resolve; img.src = sourceAsset.url; });
 
     let sx = customSelection.x, sy = customSelection.y, sw = customSelection.w, sh = customSelection.h;
     
@@ -276,7 +276,7 @@ export function SourceAtlas({
       finalCtx.imageSmoothingEnabled = false; 
       finalCtx.drawImage(cropCanvas, 0, 0, sw, sh, 0, 0, targetW, targetH);
       
-      onAddTile({
+      onAddAsset({
         id: Math.random().toString(36).substring(2, 9),
         url: finalCanvas.toDataURL(),
         sourceUrl: finalCanvas.toDataURL(),
@@ -364,11 +364,11 @@ export function SourceAtlas({
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
             <button
-              disabled={!sourceTile}
-              onClick={() => sourceTile && onAutoDetectGrid(sourceTile)}
+              disabled={!sourceAsset}
+              onClick={() => sourceAsset && onAutoDetectGrid(sourceAsset)}
               className={cn(
                 "flex items-center gap-2 text-xs font-medium px-2 py-1 rounded transition-colors border",
-                sourceTile 
+                sourceAsset 
                   ? "bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border-blue-500/30" 
                   : "bg-zinc-800/50 text-zinc-600 border-zinc-800 opacity-50 cursor-not-allowed"
               )}
@@ -380,11 +380,11 @@ export function SourceAtlas({
           </div>
 
           <button
-            disabled={!sourceTile}
+            disabled={!sourceAsset}
             onClick={handleExtractIslands}
             className={cn(
               "flex items-center gap-2 text-xs font-medium px-2 py-1 rounded transition-colors border",
-              sourceTile 
+              sourceAsset 
                 ? "bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border-amber-500/30" 
                 : "bg-zinc-800/50 text-zinc-600 border-zinc-800 opacity-50 cursor-not-allowed"
             )}
@@ -398,16 +398,16 @@ export function SourceAtlas({
       </div>
 
       <div className="flex-1 relative overflow-hidden" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handleDrop(e.dataTransfer.getData('text/plain')); }}>
-        {sourceTile ? (
+        {sourceAsset ? (
           <AtlasCanvas
-            tiles={[sourceTile]}
-            onSelectTile={() => {}}
+            entries={[sourceAsset]}
+            onSelectEntry={() => {}}
             gridSettings={gridSettings}
             onCellClick={handleCellClick}
             onCellRightClick={handleCellRightClick}
             onDrop={handleDrop}
-            canvasWidth={sourceTile.width}
-            canvasHeight={sourceTile.height}
+            canvasWidth={sourceAsset.width}
+            canvasHeight={sourceAsset.height}
             customSelection={customSelection}
             onCustomSelectionChange={handleCustomSelection}
             uniqueId="source"

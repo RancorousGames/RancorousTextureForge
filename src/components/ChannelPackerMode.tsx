@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { TextureTile, ChannelMapping, PBRSet, VIRTUAL_MAIN_ATLAS_ID } from '../types';
+import { TextureAsset, ChannelMapping, PBRSet, VIRTUAL_MAIN_ATLAS_ID } from '../types';
 import { PBRPreview } from './PBRPreview';
 import { Download, Layers, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { generateId } from '../lib/canvas';
 
 interface ChannelPackerModeProps {
-  availableTiles: TextureTile[];
+  availableAssets: TextureAsset[];
   mapping: ChannelMapping;
   setMapping: (mapping: ChannelMapping) => void;
   pbrSet: PBRSet;
@@ -15,52 +15,52 @@ interface ChannelPackerModeProps {
   onGetSnapshot?: () => Promise<string>;
 }
 
-export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet, setPbrSet, onExport, onGetSnapshot }: ChannelPackerModeProps) {
+export function ChannelPackerMode({ availableAssets, mapping, setMapping, pbrSet, setPbrSet, onExport, onGetSnapshot }: ChannelPackerModeProps) {
   const [useAlpha, setUseAlpha] = useState(false);
   const [packedUrl, setPackedUrl] = useState<string | null>(null);
 
   // Auto-pack when mapping changes
   React.useEffect(() => {
-    const hasTiles = [mapping.r.tile, mapping.g.tile, mapping.b.tile, mapping.a.tile].some(Boolean);
-    if (hasTiles) {
+    const hasAssets = [mapping.r.asset, mapping.g.asset, mapping.b.asset, mapping.a.asset].some(Boolean);
+    if (hasAssets) {
       generatePackedTexture();
     } else {
       setPackedUrl(null);
     }
-  }, [mapping.r.tile, mapping.g.tile, mapping.b.tile, mapping.a.tile, mapping.r.sourceChannel, mapping.g.sourceChannel, mapping.b.sourceChannel, mapping.a.sourceChannel]);
+  }, [mapping.r.asset, mapping.g.asset, mapping.b.asset, mapping.a.asset, mapping.r.sourceChannel, mapping.g.sourceChannel, mapping.b.sourceChannel, mapping.a.sourceChannel]);
 
   const handleDrop = async (channel: keyof ChannelMapping | keyof PBRSet, e: React.DragEvent) => {
     e.preventDefault();
-    const tileId = e.dataTransfer.getData('text/plain');
-    let tile = availableTiles.find(t => t.id === tileId);
-    if (!tile) return;
+    const assetId = e.dataTransfer.getData('text/plain');
+    let asset = availableAssets.find(t => t.id === assetId);
+    if (!asset) return;
 
-    if (tile.id === VIRTUAL_MAIN_ATLAS_ID && onGetSnapshot) {
+    if (asset.id === VIRTUAL_MAIN_ATLAS_ID && onGetSnapshot) {
       const url = await onGetSnapshot();
-      tile = { ...tile, url, id: generateId(), name: `Snapshot ${new Date().toLocaleTimeString()}` };
+      asset = { ...asset, url, id: generateId(), name: `Snapshot ${new Date().toLocaleTimeString()}` };
     }
 
     if (['r', 'g', 'b', 'a'].includes(channel)) {
-      setMapping({ ...mapping, [channel]: { ...mapping[channel as keyof ChannelMapping], tile } });
+      setMapping({ ...mapping, [channel]: { ...mapping[channel as keyof ChannelMapping], asset } });
     } else {
-      setPbrSet({ ...pbrSet, [channel]: { ...pbrSet[channel as keyof PBRSet], tile } });
+      setPbrSet({ ...pbrSet, [channel]: { ...pbrSet[channel as keyof PBRSet], asset } });
     }
   };
 
   const generatePackedTexture = async () => {
     const canvas = document.createElement('canvas');
-    const tiles = [mapping.r.tile, mapping.g.tile, mapping.b.tile, mapping.a.tile].filter(Boolean) as TextureTile[];
-    if (tiles.length === 0) return;
+    const assets = [mapping.r.asset, mapping.g.asset, mapping.b.asset, mapping.a.asset].filter(Boolean) as TextureAsset[];
+    if (assets.length === 0) return;
 
-    const width = Math.max(...tiles.map(t => t.width));
-    const height = Math.max(...tiles.map(t => t.height));
+    const width = Math.max(...assets.map(t => t.width));
+    const height = Math.max(...assets.map(t => t.height));
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    const getChannelData = async (m: { tile: TextureTile | null; sourceChannel: 'r' | 'g' | 'b' | 'a' }, defaultVal: number) => {
-      if (!m.tile) return new Uint8ClampedArray(width * height).fill(defaultVal);
+    const getChannelData = async (m: { asset: TextureAsset | null; sourceChannel: 'r' | 'g' | 'b' | 'a' }, defaultVal: number) => {
+      if (!m.asset) return new Uint8ClampedArray(width * height).fill(defaultVal);
       
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = width;
@@ -69,7 +69,7 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
       if (!tempCtx) return new Uint8ClampedArray(width * height);
 
       const img = new Image();
-      img.src = m.tile.url;
+      img.src = m.asset.url;
       await new Promise(resolve => { img.onload = resolve; });
       tempCtx.drawImage(img, 0, 0, width, height);
       
@@ -103,10 +103,10 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
     setPackedUrl(url);
     
     // Auto-assign to ORM preview
-    setPbrSet({ ...pbrSet, orm: { ...pbrSet.orm, tile: { id: 'packed', url, name: 'Packed ORM', width, height, x:0, y:0, hue:0, brightness:100, scale:1 } } });
+    setPbrSet({ ...pbrSet, orm: { ...pbrSet.orm, asset: { id: 'packed', url, name: 'Packed ORM', width, height, x:0, y:0, hue:0, brightness:100, scale:1 } } });
   };
 
-  const PackerSlot = ({ label, channel, m }: { label: string, channel: keyof ChannelMapping, m: { tile: TextureTile | null; sourceChannel: 'r' | 'g' | 'b' | 'a' } }) => (
+  const PackerSlot = ({ label, channel, m }: { label: string, channel: keyof ChannelMapping, m: { asset: TextureAsset | null; sourceChannel: 'r' | 'g' | 'b' | 'a' } }) => (
     <div 
       className="flex flex-col gap-1"
       onDragOver={(e) => e.preventDefault()}
@@ -128,12 +128,12 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
         </select>
       </div>
       <div className="aspect-square bg-zinc-950 border border-zinc-800 rounded-md flex items-center justify-center overflow-hidden relative group">
-        {m.tile ? (
+        {m.asset ? (
           <>
-            <img src={m.tile.url} alt={label} className="w-full h-full object-contain" title={m.tile.name} />
+            <img src={m.asset.url} alt={label} className="w-full h-full object-contain" title={m.asset.name} />
             <button 
               className="absolute top-1 right-1 bg-red-500/80 text-white p-1 rounded opacity-0 group-hover:opacity-100"
-              onClick={() => setMapping({ ...mapping, [channel]: { ...m, tile: null } })}
+              onClick={() => setMapping({ ...mapping, [channel]: { ...m, asset: null } })}
               title="Clear this channel"
             >
               <Trash2 className="w-3 h-3" />
@@ -146,7 +146,7 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
     </div>
   );
 
-  const PBRSlot = ({ label, channel, p }: { label: string, channel: keyof PBRSet, p: { tile: TextureTile | null, active: boolean } }) => (
+  const PBRSlot = ({ label, channel, p }: { label: string, channel: keyof PBRSet, p: { asset: TextureAsset | null, active: boolean } }) => (
     <div 
       className="flex flex-col gap-1"
       onDragOver={(e) => e.preventDefault()}
@@ -164,13 +164,13 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
         />
       </div>
       <div className="aspect-square bg-zinc-950 border border-zinc-800 rounded-md flex items-center justify-center overflow-hidden relative group">
-        {p.tile ? (
+        {p.asset ? (
           <>
-            <img src={p.tile.url} alt={label} className="w-full h-full object-contain" title={p.tile.name} />
+            <img src={p.asset.url} alt={label} className="w-full h-full object-contain" title={p.asset.name} />
             {channel !== 'orm' && (
               <button 
                 className="absolute top-1 right-1 bg-red-500/80 text-white p-1 rounded opacity-0 group-hover:opacity-100"
-                onClick={() => setPbrSet({ ...pbrSet, [channel]: { ...p, tile: null } })}
+                onClick={() => setPbrSet({ ...pbrSet, [channel]: { ...p, asset: null } })}
                 title="Clear this preview slot"
               >
                 <Trash2 className="w-3 h-3" />
@@ -263,9 +263,9 @@ export function ChannelPackerMode({ availableTiles, mapping, setMapping, pbrSet,
 
           <div className="flex-1 flex flex-col bg-zinc-950">
             <PBRPreview 
-              baseColor={pbrSet.baseColor.tile ? { url: pbrSet.baseColor.tile.url, active: pbrSet.baseColor.active } : undefined}
-              normal={pbrSet.normal.tile ? { url: pbrSet.normal.tile.url, active: pbrSet.normal.active } : undefined}
-              orm={pbrSet.orm.tile ? { url: pbrSet.orm.tile.url, active: pbrSet.orm.active } : undefined}
+              baseColor={pbrSet.baseColor.asset ? { url: pbrSet.baseColor.asset.url, active: pbrSet.baseColor.active } : undefined}
+              normal={pbrSet.normal.asset ? { url: pbrSet.normal.asset.url, active: pbrSet.normal.active } : undefined}
+              orm={pbrSet.orm.asset ? { url: pbrSet.orm.asset.url, active: pbrSet.orm.active } : undefined}
               opacityInBaseColor={useAlpha}
             />
           </div>

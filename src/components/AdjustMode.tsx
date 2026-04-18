@@ -1,5 +1,5 @@
 import React from 'react';
-import { TextureTile } from '../types';
+import { TextureAsset } from '../types';
 import { SlidersHorizontal, Download, Maximize2 } from 'lucide-react';
 import Pica from 'pica';
 import { cn } from '../lib/utils';
@@ -7,14 +7,14 @@ import { cn } from '../lib/utils';
 const pica = Pica();
 
 interface AdjustModeProps {
-  selectedTile: TextureTile | undefined;
-  updateTile: (id: string, updates: Partial<TextureTile>) => void;
+  selectedAsset: TextureAsset | undefined;
+  updateAsset: (id: string, updates: Partial<TextureAsset>) => void;
   onExport: (url: string, filename: string) => void;
   adjustSettings: { targetW: number | 'source'; targetH: number | 'source' };
   onAdjustSettingsChange: (settings: { targetW: number | 'source'; targetH: number | 'source' }) => void;
 }
 
-export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings, onAdjustSettingsChange }: AdjustModeProps) {
+export function AdjustMode({ selectedAsset, updateAsset, onExport, adjustSettings, onAdjustSettingsChange }: AdjustModeProps) {
   const [zoom, setZoom] = React.useState(1);
   const [isResizing, setIsResizing] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -40,7 +40,7 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
   const setTargetH = (h: number | 'source') => onAdjustSettingsChange({ ...adjustSettings, targetH: h });
 
   const handleResize = async () => {
-    if (!selectedTile) return;
+    if (!selectedAsset) return;
     setIsResizing(true);
     
     try {
@@ -49,7 +49,7 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
         img.onload = resolve;
         img.onerror = reject;
         // Use sourceUrl for high-quality resampling if available
-        img.src = selectedTile.sourceUrl || selectedTile.url;
+        img.src = selectedAsset.sourceUrl || selectedAsset.url;
       });
 
       const finalW = targetW === 'source' ? img.width : targetW;
@@ -69,7 +69,7 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
       await pica.resize(fromCanvas, toCanvas);
       
       const newUrl = toCanvas.toDataURL();
-      updateTile(selectedTile.id, { 
+      updateAsset(selectedAsset.id, { 
         url: newUrl, 
         width: finalW, 
         height: finalH,
@@ -83,11 +83,11 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
   };
 
   React.useEffect(() => {
-    if (selectedTile) {
+    if (selectedAsset) {
       setTargetW('source');
       setTargetH('source');
     }
-  }, [selectedTile?.id]);
+  }, [selectedAsset?.id]);
 
   React.useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
@@ -107,16 +107,16 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
 
   // Auto-zoom to fit
   React.useEffect(() => {
-    if (selectedTile && containerRef.current) {
+    if (selectedAsset && containerRef.current) {
       const parent = containerRef.current;
       const pRect = parent.getBoundingClientRect();
-      const scale = Math.min(pRect.width / selectedTile.width, pRect.height / selectedTile.height) * 0.8;
+      const scale = Math.min(pRect.width / selectedAsset.width, pRect.height / selectedAsset.height) * 0.8;
       setZoom(scale);
     }
-  }, [selectedTile?.id]);
+  }, [selectedAsset?.id]);
 
   const handleExport = () => {
-    if (!selectedTile) return;
+    if (!selectedAsset) return;
     
     const canvas = document.createElement('canvas');
     const img = new Image();
@@ -126,13 +126,13 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       
-      ctx.filter = `hue-rotate(${selectedTile.hue}deg) brightness(${selectedTile.brightness}%)`;
+      ctx.filter = `hue-rotate(${selectedAsset.hue}deg) brightness(${selectedAsset.brightness}%)`;
       ctx.drawImage(img, 0, 0);
-      onExport(canvas.toDataURL(), `adjusted_${selectedTile.name}`);
+      onExport(canvas.toDataURL(), `adjusted_${selectedAsset.name}`);
     };
-    img.src = selectedTile.url;
+    img.src = selectedAsset.url;
   };
-  if (!selectedTile) {
+  if (!selectedAsset) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-zinc-950 text-zinc-500 gap-4">
         <SlidersHorizontal className="w-12 h-12 opacity-20" />
@@ -155,8 +155,8 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
         <div className="space-y-4">
           <div className="space-y-1">
             <label className="text-xs font-medium text-zinc-400" title="Filename of the selected texture">Asset Name</label>
-            <div className="text-sm text-zinc-200 truncate" title={selectedTile.name}>
-              {selectedTile.name}
+            <div className="text-sm text-zinc-200 truncate" title={selectedAsset.name}>
+              {selectedAsset.name}
             </div>
           </div>
 
@@ -203,14 +203,14 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
           <div className="space-y-2 pt-2 border-t border-zinc-800">
             <label className="text-xs font-medium text-zinc-400 flex justify-between" title="Shift the colors of the texture along the hue spectrum">
               <span>Hue Shift</span>
-              <span className="font-mono">{selectedTile.hue}°</span>
+              <span className="font-mono">{selectedAsset.hue}°</span>
             </label>
             <input
               type="range"
               min="0"
               max="360"
-              value={selectedTile.hue}
-              onChange={(e) => updateTile(selectedTile.id, { hue: Number(e.target.value) })}
+              value={selectedAsset.hue}
+              onChange={(e) => updateAsset(selectedAsset.id, { hue: Number(e.target.value) })}
               className="w-full accent-blue-500"
               title="Drag to shift hue (0-360 degrees)"
             />
@@ -219,14 +219,14 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
           <div className="space-y-2 pt-2 border-t border-zinc-800">
             <label className="text-xs font-medium text-zinc-400 flex justify-between" title="Adjust the overall brightness of the texture">
               <span>Brightness</span>
-              <span className="font-mono">{selectedTile.brightness}%</span>
+              <span className="font-mono">{selectedAsset.brightness}%</span>
             </label>
             <input
               type="range"
               min="0"
               max="300"
-              value={selectedTile.brightness}
-              onChange={(e) => updateTile(selectedTile.id, { brightness: Number(e.target.value) })}
+              value={selectedAsset.brightness}
+              onChange={(e) => updateAsset(selectedAsset.id, { brightness: Number(e.target.value) })}
               className="w-full accent-blue-500"
               title="Drag to adjust brightness (0-300%)"
             />
@@ -247,12 +247,12 @@ export function AdjustMode({ selectedTile, updateTile, onExport, adjustSettings,
         <div 
           className="shadow-2xl ring-1 ring-white/10 transition-all duration-200 origin-center"
           style={{
-            transform: `scale(${selectedTile.scale * zoom})`,
-            filter: `hue-rotate(${selectedTile.hue}deg) brightness(${selectedTile.brightness}%)`,
+            transform: `scale(${selectedAsset.scale * zoom})`,
+            filter: `hue-rotate(${selectedAsset.hue}deg) brightness(${selectedAsset.brightness}%)`,
           }}
         >
           <img 
-            src={selectedTile.url} 
+            src={selectedAsset.url} 
             alt="Preview" 
             className="object-contain"
           />

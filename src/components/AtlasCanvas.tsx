@@ -1,18 +1,18 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { TextureTile, GridSettings, AtlasStatus } from '../types';
+import { TextureAsset, GridSettings, AtlasStatus } from '../types';
 import { cn, hexToRgb } from '../lib/utils';
 import { GridGeometry } from '../lib/GridGeometry';
 import { InteractionState, DefaultInteractionStrategy } from '../lib/Interactions';
 
 interface AtlasCanvasProps {
-  tiles: TextureTile[];
-  onTilesChange?: (tiles: TextureTile[]) => void;
-  onSelectTile: (id: string | null) => void;
-  onRemoveTile?: (tile: TextureTile) => void;
+  entries: TextureAsset[];
+  onEntriesChange?: (entries: TextureAsset[]) => void;
+  onSelectEntry: (id: string | null) => void;
+  onRemoveEntry?: (entry: TextureAsset) => void;
   gridSettings: GridSettings;
   onCellClick?: (x: number, y: number, width: number, height: number, cx: number, cy: number) => void;
   onCellRightClick?: (x: number, y: number, width: number, height: number, cx: number, cy: number) => void;
-  onDrop?: (tileId: string, x: number, y: number) => void;
+  onDrop?: (assetId: string, x: number, y: number) => void;
   className?: string;
   canvasWidth?: number;
   canvasHeight?: number;
@@ -23,17 +23,17 @@ interface AtlasCanvasProps {
   onMaterialize?: (cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number }) => void;
   atlasSwapMode?: boolean;
   tooltip?: string;
-  sourceTile?: TextureTile | null;
+  sourceAsset?: TextureAsset | null;
   clearedCells?: string[];
   atlasStatus?: AtlasStatus;
   uniqueId?: string;
 }
 
 export function AtlasCanvas({
-  tiles,
-  onTilesChange,
-  onSelectTile,
-  onRemoveTile,
+  entries,
+  onEntriesChange,
+  onSelectEntry,
+  onRemoveEntry,
   gridSettings,
   onCellClick,
   onCellRightClick,
@@ -48,7 +48,7 @@ export function AtlasCanvas({
   onMaterialize,
   atlasSwapMode = false,
   tooltip,
-  sourceTile,
+  sourceAsset,
   clearedCells = [],
   atlasStatus = 'parametric',
   uniqueId = 'atlas',
@@ -115,7 +115,7 @@ export function AtlasCanvas({
     const pos = getPointerPos(e);
     if (!pos) return;
 
-    const result = strategy.onPointerDown(e, pos, tiles, { onTilesChange, onMaterialize });
+    const result = strategy.onPointerDown(e, pos, entries, { onEntriesChange, onMaterialize });
     setInteractionState(prev => ({ ...prev, ...result.state }));
     
     if (e.target instanceof HTMLElement) {
@@ -127,7 +127,7 @@ export function AtlasCanvas({
     const pos = getPointerPos(e);
     if (!pos) return;
     
-    const result = strategy.onPointerMove(e, pos, interactionState, tiles, { onCustomSelectionChange, onSelectedCellsChange, selectedCells });
+    const result = strategy.onPointerMove(e, pos, interactionState, entries, { onCustomSelectionChange, onSelectedCellsChange, selectedCells });
     setInteractionState(prev => ({ ...prev, ...result.state }));
 
     if (result.onCustomSelectionChange && onCustomSelectionChange) {
@@ -142,13 +142,13 @@ export function AtlasCanvas({
     const pos = getPointerPos(e);
     if (!pos) return;
 
-    const result = strategy.onPointerUp(e, pos, interactionState, tiles, {
+    const result = strategy.onPointerUp(e, pos, interactionState, entries, {
       selectedCells,
       onSelectedCellsChange,
       onCellClick,
       onCellRightClick,
-      onTilesChange,
-      onRemoveTile,
+      onEntriesChange,
+      onRemoveEntry,
       onCustomSelectionChange,
       atlasSwapMode,
       onMaterialize
@@ -163,7 +163,7 @@ export function AtlasCanvas({
     if (result.onMaterialize && onMaterialize) {
       onMaterialize(result.onMaterialize.cx, result.onMaterialize.cy, result.onMaterialize.reason, result.onMaterialize.draggingPos);
     }
-    if (result.onTilesChange && onTilesChange) onTilesChange(result.onTilesChange);
+    if (result.onEntriesChange && onEntriesChange) onEntriesChange(result.onEntriesChange);
     if (result.onSelectedCellsChange && onSelectedCellsChange) onSelectedCellsChange(result.onSelectedCellsChange);
     if (result.onCellClick && onCellClick) {
       const c = result.onCellClick;
@@ -173,7 +173,7 @@ export function AtlasCanvas({
       const c = result.onCellRightClick;
       onCellRightClick(c.x, c.y, c.w, c.h, c.cx, c.cy);
     }
-    if (result.onRemoveTile && onRemoveTile) onRemoveTile(result.onRemoveTile);
+    if (result.onRemoveEntry && onRemoveEntry) onRemoveEntry(result.onRemoveEntry);
 
     if (e.target instanceof HTMLElement) {
       try { e.target.releasePointerCapture(e.pointerId); } catch(err) {}
@@ -220,11 +220,11 @@ export function AtlasCanvas({
         <div className="absolute inset-0 pointer-events-none z-0" style={{ backgroundColor: gridSettings.clearColor }} />
         
         {/* Background Source Image with Holes */}
-        {sourceTile && atlasStatus !== 'baked' && (
+        {sourceAsset && atlasStatus !== 'baked' && (
           <div className="absolute inset-0 pointer-events-none z-[1]">
             <svg width={canvasWidth} height={canvasHeight} className="absolute inset-0 w-full h-full">
               <defs>
-                <mask id={`mask-${uniqueId}-${sourceTile.id.replace(/[^a-zA-Z0-9]/g, '_')}`} x="0" y="0" width={canvasWidth} height={canvasHeight}>
+                <mask id={`mask-${uniqueId}-${sourceAsset.id.replace(/[^a-zA-Z0-9]/g, '_')}`} x="0" y="0" width={canvasWidth} height={canvasHeight}>
                   <rect x="0" y="0" width={canvasWidth} height={canvasHeight} fill="white" />
                   {clearedCells.map(key => {
                     const [cx, cy] = key.split(',').map(Number);
@@ -234,10 +234,10 @@ export function AtlasCanvas({
                 </mask>
               </defs>
               <image 
-                href={sourceTile.sourceUrl || sourceTile.url} 
+                href={sourceAsset.sourceUrl || sourceAsset.url} 
                 width={canvasWidth} 
                 height={canvasHeight} 
-                mask={`url(#mask-${uniqueId}-${sourceTile.id.replace(/[^a-zA-Z0-9]/g, '_')})`}
+                mask={`url(#mask-${uniqueId}-${sourceAsset.id.replace(/[^a-zA-Z0-9]/g, '_')})`}
                 preserveAspectRatio="none"
               />
             </svg>
@@ -245,31 +245,31 @@ export function AtlasCanvas({
         )}
 
         {renderGrid()}
-        {tiles.map(tile => {
-          const sX = tile.scaleX ?? tile.scale;
-          const sY = tile.scaleY ?? tile.scale;
-          const isDragging = interactionState.draggingId === tile.id;
-          const x = isDragging && interactionState.draggingPos ? interactionState.draggingPos.x : tile.x;
-          const y = isDragging && interactionState.draggingPos ? interactionState.draggingPos.y : tile.y;
+        {entries.map(entry => {
+          const sX = entry.scaleX ?? entry.scale;
+          const sY = entry.scaleY ?? entry.scale;
+          const isDragging = interactionState.draggingId === entry.id;
+          const x = isDragging && interactionState.draggingPos ? interactionState.draggingPos.x : entry.x;
+          const y = isDragging && interactionState.draggingPos ? interactionState.draggingPos.y : entry.y;
           
           return (
             <div 
-              key={tile.id} 
+              key={entry.id} 
               className="absolute select-none pointer-events-none" 
               style={{ 
                 left: x, 
                 top: y, 
-                width: tile.width * sX, 
-                height: tile.height * sY, 
-                filter: `hue-rotate(${tile.hue}deg) brightness(${tile.brightness}%)`, 
+                width: entry.width * sX, 
+                height: entry.height * sY, 
+                filter: `hue-rotate(${entry.hue}deg) brightness(${entry.brightness}%)`, 
                 zIndex: isDragging ? 50 : 5, 
                 opacity: isDragging ? 0.8 : 1 
               }}
-              title={`${tile.name} (${tile.width}x${tile.height})`}
+              title={`${entry.name} (${entry.width}x${entry.height})`}
             >
               <img 
-                src={tile.url} 
-                alt={tile.name} 
+                src={entry.url} 
+                alt={entry.name} 
                 className="w-full h-full object-fill" 
                 draggable={false} 
               />

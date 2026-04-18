@@ -1,10 +1,10 @@
-import { TextureTile, GridSettings } from '../types';
+import { TextureAsset, GridSettings } from '../types';
 import { useMemo } from 'react';
 import { GridGeometry } from '../lib/GridGeometry';
 
 interface AtlasState {
-  tiles: TextureTile[];
-  setTiles: (tiles: TextureTile[] | ((prev: TextureTile[]) => TextureTile[])) => void;
+  entries: TextureAsset[];
+  setEntries: (entries: TextureAsset[] | ((prev: TextureAsset[]) => TextureAsset[])) => void;
 }
 
 export function useAtlas(

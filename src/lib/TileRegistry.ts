@@ -1,17 +1,17 @@
-import { TextureTile } from '../types';
+import { TextureAsset } from '../types';
 
-class TileRegistry {
-  private registry = new Map<string, TextureTile>();
+class AssetRegistry {
+  private registry = new Map<string, TextureAsset>();
 
-  register(tile: TextureTile) {
-    this.registry.set(tile.id, tile);
+  register(asset: TextureAsset) {
+    this.registry.set(asset.id, asset);
   }
 
-  registerMany(tiles: TextureTile[]) {
-    tiles.forEach(t => this.register(t));
+  registerMany(assets: TextureAsset[]) {
+    assets.forEach(t => this.register(t));
   }
 
-  get(id: string): TextureTile | undefined {
+  get(id: string): TextureAsset | undefined {
     return this.registry.get(id);
   }
 
@@ -20,4 +20,5 @@ class TileRegistry {
   }
 }
 
-export const tileRegistry = new TileRegistry();
+export const assetRegistry = new AssetRegistry();
+export const tileRegistry = assetRegistry; // Alias for backward compatibility if needed, though we should update callers

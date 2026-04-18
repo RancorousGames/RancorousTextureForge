@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { AppState, TextureTile } from '../types';
+import { AppState, TextureAsset } from '../types';
 import { GridGeometry } from '../lib/GridGeometry';
 import { hexToRgb, findIslands } from '../lib/utils';
 import { renderTilesToCanvas, loadImage, generateId } from '../lib/canvas';
@@ -18,39 +18,39 @@ export function useAtlasOps(
   const packAtlas = useCallback(() => {
     let currentX = 0, currentY = 0, rowHeight = 0;
     const padding = 2;
-    const sorted = [...state.mainTiles].sort((a, b) => (b.height * b.scale) - (a.height * a.scale));
+    const sorted = [...state.atlasEntries].sort((a, b) => (b.height * (b.scaleY ?? b.scale)) - (a.height * (a.scaleY ?? a.scale)));
     
-    console.log(`[PackAtlas] Starting pack of ${sorted.length} tiles. CanvasWidth: ${canvasWidth}`);
+    console.log(`[PackAtlas] Starting pack of ${sorted.length} entries. CanvasWidth: ${canvasWidth}`);
 
-    const packed = sorted.map((tile, i) => {
-      const sw = tile.width * tile.scale;
-      const sh = tile.height * tile.scale;
+    const packed = sorted.map((entry, i) => {
+      const sw = entry.width * (entry.scaleX ?? entry.scale);
+      const sh = entry.height * (entry.scaleY ?? entry.scale);
       if (currentX + sw > canvasWidth) { 
         console.log(`[PackAtlas] Row full. Moving from X:${currentX.toFixed(1)} to X:0, Y:${(currentY + rowHeight + padding).toFixed(1)}`);
         currentX = 0; currentY += rowHeight + padding; rowHeight = 0; 
       }
-      const result = { ...tile, x: currentX, y: currentY };
+      const result = { ...entry, x: currentX, y: currentY };
       if (i < 5 || i === sorted.length - 1) {
-        console.log(`[PackAtlas] Tile #${i} ('${tile.name}'): size ${sw}x${sh} -> placed at ${currentX},${currentY}`);
+        console.log(`[PackAtlas] Entry #${i} ('${entry.name}'): size ${sw}x${sh} -> placed at ${currentX},${currentY}`);
       }
       rowHeight = Math.max(rowHeight, sh);
       currentX += sw + padding;
       return result;
     });
     console.log(`[PackAtlas] Complete.`);
-    executeCommand(new SetMainTilesCommand(state.mainTiles, packed));
-  }, [state.mainTiles, canvasWidth, executeCommand]);
+    executeCommand(new SetMainTilesCommand(state.atlasEntries, packed));
+  }, [state.atlasEntries, canvasWidth, executeCommand]);
 
   const fixGrid = useCallback(async () => {
-    const sourceTileObj = [...state.secondaryTiles, ...state.modifiedTiles]
-      .find(t => t.id === state.lastSourceTileId);
-    if (!sourceTileObj) return;
+    const sourceAssetObj = [...state.libraryAssets, ...state.modifiedAssets]
+      .find(t => t.id === state.lastSourceAssetId);
+    if (!sourceAssetObj) return;
 
     if (state.atlasStatus === 'modified' || state.atlasStatus === 'baked') {
       if (!confirm('Fix Grid will revert the atlas to the source image. Manual changes will be lost. Continue?')) return;
     }
 
-    const img = await loadImage(sourceTileObj.url);
+    const img = await loadImage(sourceAssetObj.url);
     const canvas = document.createElement('canvas');
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
@@ -81,7 +81,7 @@ export function useAtlasOps(
 
     console.log(`[FixGrid] Found ${finalIslands.length} islands. Using Geometry: Cell=${geo.cellW}x${geo.cellH}, Pad=${geo.padding}, Step=${geo.stepX}x${geo.stepY}`);
 
-    const newTiles: TextureTile[] = finalIslands.map((isl, i) => {
+    const newEntries: TextureAsset[] = finalIslands.map((isl, i) => {
       const centerX = isl.x + isl.w / 2;
       const centerY = isl.y + isl.h / 2;
 
@@ -116,15 +116,15 @@ export function useAtlasOps(
       };
     });
 
-    console.log(`[FixGrid] Complete. Generated ${newTiles.length} fixed tiles.`);
-    executeCommand(new SetMainTilesCommand(state.mainTiles, newTiles, state.atlasStatus, 'baked'));
-  }, [state.secondaryTiles, state.modifiedTiles, state.lastSourceTileId, state.atlasStatus, state.gridSettings.clearColor, state.gridSettings.clearTolerance, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand]);
+    console.log(`[FixGrid] Complete. Generated ${newEntries.length} fixed entries.`);
+    executeCommand(new SetMainTilesCommand(state.atlasEntries, newEntries, state.atlasStatus, 'baked'));
+  }, [state.libraryAssets, state.modifiedAssets, state.lastSourceAssetId, state.atlasStatus, state.gridSettings.clearColor, state.gridSettings.clearTolerance, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand]);
 
   const packElements = useCallback(async () => {
-    if (state.mainTiles.length === 0) return;
+    if (state.atlasEntries.length === 0) return;
 
     const canvas = await renderTilesToCanvas(
-      state.mainTiles, canvasWidth, canvasHeight,
+      state.atlasEntries, canvasWidth, canvasHeight,
       state.gridSettings.clearColor, { willReadFrequently: true }
     );
     const { data } = canvas.getContext('2d')!.getImageData(0, 0, canvasWidth, canvasHeight);
@@ -197,7 +197,7 @@ export function useAtlasOps(
       }
     }
 
-    const nextTiles: TextureTile[] = packItems.map((item, idx) => {
+    const nextEntries: TextureAsset[] = packItems.map((item, idx) => {
       const isl = islands[item.i];
       const blobCanvas = document.createElement('canvas');
       blobCanvas.width = isl.w; blobCanvas.height = isl.h;
@@ -216,18 +216,18 @@ export function useAtlasOps(
     });
 
     console.log(`[PackElements] Complete.`);
-    executeCommand(new SetMainTilesCommand(state.mainTiles, nextTiles, state.atlasStatus, 'baked'));
-  }, [state.mainTiles, state.gridSettings, state.atlasStatus, canvasWidth, canvasHeight, executeCommand]);
+    executeCommand(new SetMainTilesCommand(state.atlasEntries, nextEntries, state.atlasStatus, 'baked'));
+  }, [state.atlasEntries, state.gridSettings, state.atlasStatus, canvasWidth, canvasHeight, executeCommand]);
 
   const exportAtlas = useCallback(async () => {
     const canvas = await renderTilesToCanvas(
-      state.mainTiles, canvasWidth, canvasHeight, state.gridSettings.clearColor
+      state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings.clearColor
     );
     const link = document.createElement('a');
     link.href = canvas.toDataURL('image/png');
     link.download = `${state.textureName || 'atlas'}.png`;
     link.click();
-  }, [state.mainTiles, state.gridSettings.clearColor, state.textureName, canvasWidth, canvasHeight]);
+  }, [state.atlasEntries, state.gridSettings.clearColor, state.textureName, canvasWidth, canvasHeight]);
 
   const createNewAtlas = useCallback((width: number, height?: number) => {
     let finalW = width, finalH = height ?? width;
@@ -245,7 +245,7 @@ export function useAtlasOps(
     set(prev => ({
       ...prev,
       canvasWidth: finalW, canvasHeight: finalH,
-      mainTiles: [], atlasSwapMode: false,
+      atlasEntries: [], atlasSwapMode: false,
       atlasStatus: 'parametric',
       clearedCells: [],
     }));

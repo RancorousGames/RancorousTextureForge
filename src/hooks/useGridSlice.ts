@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { AppState, TextureTile } from '../types';
+import { AppState, TextureAsset } from '../types';
 import { Command, AddTilesCommand, SetMainTilesCommand, PatchCommand, MaterializeCommand, ClearCellCommand, RemoveTilesCommand } from '../lib/Commands';
 import { GridGeometry } from '../lib/GridGeometry';
 import { tileRegistry } from '../lib/TileRegistry';
@@ -24,7 +24,7 @@ export function useGridSlice(
   gridSettingsRef.current = state.gridSettings;
 
   const performGridSlice = useCallback(async (
-    sourceTile: TextureTile,
+    sourceAsset: TextureAsset,
     width: number,
     height: number,
     skipHistory = false,
@@ -32,7 +32,7 @@ export function useGridSlice(
   ) => {
     const gen = ++sliceGenRef.current;
 
-    const imgUrl = sourceTile.sourceUrl || sourceTile.url;
+    const imgUrl = sourceAsset.sourceUrl || sourceAsset.url;
     const img = await loadImage(imgUrl);
 
     // A newer slice was requested while we were loading — discard this result.
@@ -78,7 +78,7 @@ export function useGridSlice(
              Math.abs(b - keyColor.b) <= tolerance;
     };
 
-    const newTiles: TextureTile[] = [];
+    const newEntries: TextureAsset[] = [];
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         sliceCtx.clearRect(0, 0, cellW, cellH);
@@ -96,7 +96,7 @@ export function useGridSlice(
         }
 
         if (hasContent) {
-          newTiles.push({
+          newEntries.push({
             id: generateId(),
             url: sliceCanvas.toDataURL(),
             sourceUrl: imgUrl,
@@ -109,22 +109,22 @@ export function useGridSlice(
       }
     }
 
-    if (newTiles.length === 0) return;
-    tileRegistry.registerMany(newTiles);
+    if (newEntries.length === 0) return;
+    tileRegistry.registerMany(newEntries);
 
     if (skipHistory) {
-      set(prev => ({ ...prev, mainTiles: newTiles, clearedCells: [], atlasStatus: 'parametric' }));
+      set(prev => ({ ...prev, atlasEntries: newEntries, clearedCells: [], atlasStatus: 'parametric' }));
     } else {
       executeCommand([
-        new SetMainTilesCommand(state.mainTiles, newTiles, state.atlasStatus, 'parametric'),
+        new SetMainTilesCommand(state.atlasEntries, newEntries, state.atlasStatus, 'parametric'),
         new PatchCommand(
-          { lastSourceTileId: sourceTile.id, clearedCells: [] },
-          { lastSourceTileId: state.lastSourceTileId, clearedCells: state.clearedCells }
+          { lastSourceAssetId: sourceAsset.id, clearedCells: [] },
+          { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
         ),
       ]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.mainTiles, state.lastSourceTileId, state.clearedCells, state.atlasStatus, executeCommand, set]);
+  }, [state.atlasEntries, state.lastSourceAssetId, state.clearedCells, state.atlasStatus, executeCommand, set]);
 
   const handleMaterialize = useCallback(async (
     cx: number,
@@ -132,9 +132,9 @@ export function useGridSlice(
     reason: 'move' | 'clear',
     draggingPos?: { x: number; y: number }
   ) => {
-    const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles]
-      .find(t => t.id === state.lastSourceTileId);
-    if (!sourceTile) return;
+    const sourceAsset = [...state.libraryAssets, ...state.modifiedAssets]
+      .find(t => t.id === state.lastSourceAssetId);
+    if (!sourceAsset) return;
 
     const geo = new GridGeometry(state.gridSettings, canvasWidth, canvasHeight);
     const cellPos = geo.getPosFromCell(cx, cy);
@@ -144,54 +144,54 @@ export function useGridSlice(
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const img = await loadImage(sourceTile.sourceUrl || sourceTile.url);
+    const img = await loadImage(sourceAsset.sourceUrl || sourceAsset.url);
     ctx.drawImage(img, cellPos.x, cellPos.y, geo.cellW, geo.cellH, 0, 0, geo.cellW, geo.cellH);
 
-    const newTile: TextureTile = {
+    const newEntry: TextureAsset = {
       id: generateId(),
       url: canvas.toDataURL(),
-      sourceUrl: sourceTile.sourceUrl || sourceTile.url,
+      sourceUrl: sourceAsset.sourceUrl || sourceAsset.url,
       name: `JIT_${cx}_${cy}`,
       width: geo.cellW, height: geo.cellH,
       x: draggingPos ? draggingPos.x : cellPos.x,
       y: draggingPos ? draggingPos.y : cellPos.y,
       hue: 0, brightness: 100, scale: 1, isCrop: true,
     };
-    tileRegistry.register(newTile);
+    tileRegistry.register(newEntry);
     const key = `${cx},${cy}`;
 
-    // Clean up: find if there is an existing tile at the target location and remove it
+    // Clean up: find if there is an existing entry at the target location and remove it
     // so that materialize-to-move doesn't just "copy" on top of existing work.
     const { cx: tcx, cy: tcy } = draggingPos 
        ? geo.getCellAtPos(draggingPos.x + geo.cellW / 2, draggingPos.y + geo.cellH / 2)
        : { cx, cy };
     
-    const existingTile = state.mainTiles.find(t => 
+    const existingEntry = state.atlasEntries.find(t => 
       geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, tcx, tcy)
     );
 
     if (reason === 'clear') {
       executeCommand(new ClearCellCommand(key, state.atlasStatus));
     } else {
-      if (existingTile) {
+      if (existingEntry) {
         executeCommand([
-           new RemoveTilesCommand([existingTile]),
-           new MaterializeCommand(newTile, key, state.atlasStatus)
+           new RemoveTilesCommand([existingEntry]),
+           new MaterializeCommand(newEntry, key, state.atlasStatus)
         ]);
       } else {
-        executeCommand(new MaterializeCommand(newTile, key, state.atlasStatus));
+        executeCommand(new MaterializeCommand(newEntry, key, state.atlasStatus));
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.secondaryTiles, state.modifiedTiles, state.mainTiles, state.lastSourceTileId, state.gridSettings,
+  }, [state.libraryAssets, state.modifiedAssets, state.atlasEntries, state.lastSourceAssetId, state.gridSettings,
       state.atlasStatus, canvasWidth, canvasHeight, executeCommand]);
 
   const handleSourceCellClick = useCallback(async (
     _x: number, _y: number, _w: number, _h: number,
     scx: number, scy: number,
-    sourceTile: TextureTile
+    sourceAsset: TextureAsset
   ) => {
-    const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceTile.width, sourceTile.height);
+    const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceAsset.width, sourceAsset.height);
     const canvas = document.createElement('canvas');
     canvas.width = mainAtlasGeo.cellW; canvas.height = mainAtlasGeo.cellH;
     const ctx = canvas.getContext('2d');
@@ -203,7 +203,7 @@ export function useGridSlice(
     let foundEmpty = false;
 
     if (selectedCells.length === 0) {
-      console.log(`[Forge] Auto-Fill Start. MainTiles Count: ${state.mainTiles.length}`);
+      console.log(`[Forge] Auto-Fill Start. AtlasEntries Count: ${state.atlasEntries.length}`);
       console.log(`[Forge] Grid Config: Canvas ${mainAtlasGeo.canvasW}x${mainAtlasGeo.canvasH}, Cell ${mainAtlasGeo.cellW}x${mainAtlasGeo.cellH}, Step ${mainAtlasGeo.stepX}x${mainAtlasGeo.stepY}`);
       console.log(`[Forge] Computed Grid: ${mainAtlasGeo.cols} cols x ${mainAtlasGeo.rows} rows`);
 
@@ -213,9 +213,9 @@ export function useGridSlice(
 
       outer: for (let r = 0; r < mainAtlasGeo.rows; r++) {
         for (let c = 0; c < mainAtlasGeo.cols; c++) {
-          const occupied = state.mainTiles.some(t => {
+          const occupied = state.atlasEntries.some(t => {
             const isIn = mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r);
-            if (isIn) console.log(`[Forge] Cell (${c},${r}) is occupied by tile: ${t.id} (${t.name}) at x:${t.x}, y:${t.y}`);
+            if (isIn) console.log(`[Forge] Cell (${c},${r}) is occupied by entry: ${t.id} (${t.name}) at x:${t.x}, y:${t.y}`);
             return isIn;
           });
 
@@ -234,7 +234,7 @@ export function useGridSlice(
       }
     }
 
-    const img = await loadImage(sourceTile.url);
+    const img = await loadImage(sourceAsset.url);
 
     const createCrop = (cx: number, cy: number): string => {
       ctx.clearRect(0, 0, mainAtlasGeo.cellW, mainAtlasGeo.cellH);
@@ -251,8 +251,8 @@ export function useGridSlice(
         if (cy < minCY) minCY = cy;
       }
 
-      const newTiles: TextureTile[] = [];
-      const replacedTiles: TextureTile[] = [];
+      const newEntries: TextureAsset[] = [];
+      const replacedEntries: TextureAsset[] = [];
       for (const key of selectedCells) {
         const [dcx, dcy] = key.split(',').map(Number);
         const sourceCX = scx + (dcx - minCX);
@@ -260,84 +260,84 @@ export function useGridSlice(
         if (sourceCX >= sourceGeo.cols || sourceCY >= sourceGeo.rows) continue;
 
         const { x: dX, y: dY } = mainAtlasGeo.getPosFromCell(dcx, dcy);
-        replacedTiles.push(...state.mainTiles.filter(t =>
+        replacedEntries.push(...state.atlasEntries.filter(t =>
           mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)
         ));
-        const newTile: TextureTile = {
+        const newEntry: TextureAsset = {
           id: generateId(), url: createCrop(sourceCX, sourceCY),
-          name: `${sourceTile.name}_crop_${sourceCX}_${sourceCY}`,
+          name: `${sourceAsset.name}_crop_${sourceCX}_${sourceCY}`,
           width: mainAtlasGeo.cellW, height: mainAtlasGeo.cellH,
           x: dX, y: dY, hue: 0, brightness: 100, scale: 1,
         };
-        tileRegistry.register(newTile);
-        newTiles.push(newTile);
+        tileRegistry.register(newEntry);
+        newEntries.push(newEntry);
       }
       executeCommand([
-        new AddTilesCommand(newTiles, replacedTiles),
-        new PatchCommand({ lastSourceTileId: null }, { lastSourceTileId: state.lastSourceTileId }),
+        new AddTilesCommand(newEntries, replacedEntries),
+        new PatchCommand({ lastSourceAssetId: null }, { lastSourceAssetId: state.lastSourceAssetId }),
       ]);
     } else {
-      const newTile: TextureTile = {
+      const newEntry: TextureAsset = {
         id: generateId(), url: createCrop(scx, scy),
-        name: `${sourceTile.name}_crop_${scx}_${scy}`,
+        name: `${sourceAsset.name}_crop_${scx}_${scy}`,
         width: mainAtlasGeo.cellW, height: mainAtlasGeo.cellH,
         x: destX, y: destY, hue: 0, brightness: 100, scale: 1, isCrop: true,
       };
-      tileRegistry.register(newTile);
+      tileRegistry.register(newEntry);
       const { cx: tcx, cy: tcy } = mainAtlasGeo.getCellAtPos(destX, destY);
-      const replacedTiles = state.mainTiles.filter(t =>
+      const replacedEntries = state.atlasEntries.filter(t =>
         mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, tcx, tcy)
       );
       executeCommand([
-        new AddTilesCommand([newTile], replacedTiles),
-        new PatchCommand({ lastSourceTileId: null }, { lastSourceTileId: state.lastSourceTileId }),
+        new AddTilesCommand([newEntry], replacedEntries),
+        new PatchCommand({ lastSourceAssetId: null }, { lastSourceAssetId: state.lastSourceAssetId }),
       ]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.sourceGridSettings, state.mainTiles, state.lastSourceTileId,
+  }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId,
       mainAtlasGeo, selectedCells, executeCommand]);
 
   const handleSourceCellRightClick = useCallback(async (
     _x: number, _y: number, _w: number, _h: number,
     scx: number, scy: number,
-    sourceTile: TextureTile
+    sourceAsset: TextureAsset
   ) => {
     if (selectedCells.length === 0) return;
-    const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceTile.width, sourceTile.height);
+    const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceAsset.width, sourceAsset.height);
 
     const canvas = document.createElement('canvas');
     canvas.width = mainAtlasGeo.cellW; canvas.height = mainAtlasGeo.cellH;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const img = await loadImage(sourceTile.url);
+    const img = await loadImage(sourceAsset.url);
     const { x: sx, y: sy } = sourceGeo.getPosFromCell(scx, scy);
     ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, mainAtlasGeo.cellW, mainAtlasGeo.cellH);
     const croppedUrl = canvas.toDataURL();
 
-    const newTiles: TextureTile[] = [];
-    const replacedTiles: TextureTile[] = [];
+    const newEntries: TextureAsset[] = [];
+    const replacedEntries: TextureAsset[] = [];
     for (const key of selectedCells) {
       const [dcx, dcy] = key.split(',').map(Number);
       const { x: destX, y: destY } = mainAtlasGeo.getPosFromCell(dcx, dcy);
-      replacedTiles.push(...state.mainTiles.filter(t =>
+      replacedEntries.push(...state.atlasEntries.filter(t =>
         mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)
       ));
-      const newTile: TextureTile = {
+      const newEntry: TextureAsset = {
         id: generateId(), url: croppedUrl,
-        name: `${sourceTile.name}_fill_${scx}_${scy}`,
+        name: `${sourceAsset.name}_fill_${scx}_${scy}`,
         width: mainAtlasGeo.cellW, height: mainAtlasGeo.cellH,
         x: destX, y: destY, hue: 0, brightness: 100, scale: 1, isCrop: true,
       };
-      tileRegistry.register(newTile);
-      newTiles.push(newTile);
+      tileRegistry.register(newEntry);
+      newEntries.push(newEntry);
     }
     executeCommand([
-      new AddTilesCommand(newTiles, replacedTiles),
-      new PatchCommand({ lastSourceTileId: null }, { lastSourceTileId: state.lastSourceTileId }),
+      new AddTilesCommand(newEntries, replacedEntries),
+      new PatchCommand({ lastSourceAssetId: null }, { lastSourceAssetId: state.lastSourceAssetId }),
     ]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.sourceGridSettings, state.mainTiles, state.lastSourceTileId,
+  }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId,
       mainAtlasGeo, selectedCells, executeCommand]);
 
   return { performGridSlice, handleMaterialize, handleSourceCellClick, handleSourceCellRightClick };

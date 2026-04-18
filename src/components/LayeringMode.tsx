@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { TextureTile, Layer, VIRTUAL_MAIN_ATLAS_ID } from '../types';
+import { TextureAsset, Layer, VIRTUAL_MAIN_ATLAS_ID } from '../types';
 import { Download, Layers as LayersIcon, Eye, EyeOff, Trash2, Plus, MoveUp, MoveDown } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { generateId } from '../lib/canvas';
 
 interface LayeringModeProps {
-  availableTiles: TextureTile[];
+  availableAssets: TextureAsset[];
   layers: Layer[];
   setLayers: (layers: Layer[]) => void;
   onExport: (url: string, filename: string) => void;
@@ -19,14 +19,14 @@ type ResizeCorner = 'tl' | 'tr' | 'bl' | 'br';
 interface Interaction {
   type: 'move' | 'resize' | null;
   startMouse: { x: number; y: number };
-  startTile: { x: number; y: number; scale: number };
+  startAsset: { x: number; y: number; scale: number };
   corner: ResizeCorner | null;
   fixedPoint: { x: number; y: number } | null;
 }
 
 const HANDLE_SCREEN_PX = 10;
 
-export function LayeringMode({ availableTiles, layers, setLayers, onExport, canvasWidth, canvasHeight, onGetSnapshot }: LayeringModeProps) {
+export function LayeringMode({ availableAssets, layers, setLayers, onExport, canvasWidth, canvasHeight, onGetSnapshot }: LayeringModeProps) {
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -38,7 +38,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
   const [interaction, setInteraction] = useState<Interaction>({
     type: null,
     startMouse: { x: 0, y: 0 },
-    startTile: { x: 0, y: 0, scale: 1 },
+    startAsset: { x: 0, y: 0, scale: 1 },
     corner: null,
     fixedPoint: null,
   });
@@ -78,17 +78,17 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     const id = e.dataTransfer.getData('text/plain');
-    let tile = availableTiles.find(t => t.id === id);
-    if (!tile) return;
+    let asset = availableAssets.find(t => t.id === id);
+    if (!asset) return;
 
-    if (tile.id === VIRTUAL_MAIN_ATLAS_ID && onGetSnapshot) {
+    if (asset.id === VIRTUAL_MAIN_ATLAS_ID && onGetSnapshot) {
       const url = await onGetSnapshot();
-      tile = { ...tile, url, id: generateId(), name: `Snapshot ${new Date().toLocaleTimeString()}` };
+      asset = { ...asset, url, id: generateId(), name: `Snapshot ${new Date().toLocaleTimeString()}` };
     }
 
     const newLayer: Layer = {
       id: generateId(),
-      tile: { ...tile, x: 0, y: 0, scale: 1 },
+      asset: { ...asset, x: 0, y: 0, scale: 1 },
       opacity: 1,
       transparentColor: null,
       tolerance: 10,
@@ -101,8 +101,8 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
   const updateLayer = (id: string, updates: Partial<Layer>) =>
     setLayers(layers.map(l => l.id === id ? { ...l, ...updates } : l));
 
-  const updateLayerTile = (id: string, updates: Partial<TextureTile>) =>
-    setLayers(layers.map(l => l.id === id ? { ...l, tile: { ...l.tile, ...updates } } : l));
+  const updateLayerAsset = (id: string, updates: Partial<TextureAsset>) =>
+    setLayers(layers.map(l => l.id === id ? { ...l, asset: { ...l.asset, ...updates } } : l));
 
   const moveLayer = (index: number, direction: -1 | 1) => {
     const next = [...layers];
@@ -133,8 +133,8 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
       }
 
       // Logic: Use the maximum width and height found among all layers (ignoring global canvasWidth/Height)
-      const w = Math.max(...layers.map(l => l.tile.width * l.tile.scale));
-      const h = Math.max(...layers.map(l => l.tile.height * l.tile.scale));
+      const w = Math.max(...layers.map(l => l.asset.width * l.asset.scale));
+      const h = Math.max(...layers.map(l => l.asset.height * l.asset.scale));
 
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, w);
@@ -144,10 +144,10 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
 
       for (const layer of [...layers].reverse()) {
         if (!layer.visible) continue;
-        const img = await getCachedImage(layer.tile.url);
-        const { tile } = layer;
-        const tw = Math.max(1, tile.width * tile.scale);
-        const th = Math.max(1, tile.height * tile.scale);
+        const img = await getCachedImage(layer.asset.url);
+        const { asset } = layer;
+        const tw = Math.max(1, asset.width * asset.scale);
+        const th = Math.max(1, asset.height * asset.scale);
         if (layer.transparentColor) {
           const tmp = document.createElement('canvas');
           tmp.width = tw; tmp.height = th;
@@ -168,10 +168,10 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
           }
           tmpCtx.putImageData(imgData, 0, 0);
           ctx.globalAlpha = layer.opacity;
-          ctx.drawImage(tmp, tile.x, tile.y);
+          ctx.drawImage(tmp, asset.x, asset.y);
         } else {
           ctx.globalAlpha = layer.opacity;
-          ctx.drawImage(img, tile.x, tile.y, tw, th);
+          ctx.drawImage(img, asset.x, asset.y, tw, th);
         }
         ctx.globalAlpha = 1;
       }
@@ -183,7 +183,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
   // Hit-test corner handles of the given layer. Returns corner name or null.
   const getCornerHit = (pos: { x: number; y: number }, layer: Layer): ResizeCorner | null => {
     const hs = HANDLE_SCREEN_PX / zoom;
-    const { x, y, width, height, scale } = layer.tile;
+    const { x, y, width, height, scale } = layer.asset;
     const w = width * scale;
     const h = height * scale;
     const corners: [ResizeCorner, number, number][] = [
@@ -195,10 +195,10 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
     return null;
   };
 
-  const getFixedPoint = (corner: ResizeCorner, tile: TextureTile) => {
-    const w = tile.width * tile.scale;
-    const h = tile.height * tile.scale;
-    return { tl: { x: tile.x + w, y: tile.y + h }, tr: { x: tile.x, y: tile.y + h }, bl: { x: tile.x + w, y: tile.y }, br: { x: tile.x, y: tile.y } }[corner];
+  const getFixedPoint = (corner: ResizeCorner, asset: TextureAsset) => {
+    const w = asset.width * asset.scale;
+    const h = asset.height * asset.scale;
+    return { tl: { x: asset.x + w, y: asset.y + h }, tr: { x: asset.x, y: asset.y + h }, bl: { x: asset.x + w, y: asset.y }, br: { x: asset.x, y: asset.y } }[corner];
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -215,9 +215,9 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
           setInteraction({
             type: 'resize',
             startMouse: pos,
-            startTile: { x: sel.tile.x, y: sel.tile.y, scale: sel.tile.scale },
+            startAsset: { x: sel.asset.x, y: sel.asset.y, scale: sel.asset.scale },
             corner,
-            fixedPoint: getFixedPoint(corner, sel.tile),
+            fixedPoint: getFixedPoint(corner, sel.asset),
           });
           e.currentTarget.setPointerCapture(e.pointerId);
           return;
@@ -228,7 +228,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
     // Layer body hit test
     const hit = layers.find(layer => {
       if (!layer.visible) return false;
-      const { x, y, width, height, scale } = layer.tile;
+      const { x, y, width, height, scale } = layer.asset;
       return pos.x >= x && pos.x <= x + width * scale && pos.y >= y && pos.y <= y + height * scale;
     });
 
@@ -237,7 +237,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
       setInteraction({
         type: 'move',
         startMouse: pos,
-        startTile: { x: hit.tile.x, y: hit.tile.y, scale: hit.tile.scale },
+        startAsset: { x: hit.asset.x, y: hit.asset.y, scale: hit.asset.scale },
         corner: null,
         fixedPoint: null,
       });
@@ -255,33 +255,33 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
     if (!layer) return;
 
     if (interaction.type === 'move') {
-      updateLayerTile(selectedLayerId, {
-        x: interaction.startTile.x + (pos.x - interaction.startMouse.x),
-        y: interaction.startTile.y + (pos.y - interaction.startMouse.y),
+      updateLayerAsset(selectedLayerId, {
+        x: interaction.startAsset.x + (pos.x - interaction.startMouse.x),
+        y: interaction.startAsset.y + (pos.y - interaction.startMouse.y),
       });
     } else if (interaction.type === 'resize' && interaction.fixedPoint && interaction.corner) {
       const { x: fx, y: fy } = interaction.fixedPoint;
       const dx = pos.x - fx;
       const dy = pos.y - fy;
-      const { tile } = layer;
-      const origScaledDiag = Math.sqrt((tile.width * interaction.startTile.scale) ** 2 + (tile.height * interaction.startTile.scale) ** 2);
-      const newScale = Math.max(0.05, (Math.sqrt(dx * dx + dy * dy) / origScaledDiag) * interaction.startTile.scale);
+      const { asset } = layer;
+      const origScaledDiag = Math.sqrt((asset.width * interaction.startAsset.scale) ** 2 + (asset.height * interaction.startAsset.scale) ** 2);
+      const newScale = Math.max(0.05, (Math.sqrt(dx * dx + dy * dy) / origScaledDiag) * interaction.startAsset.scale);
       let newX = fx, newY = fy;
-      if (interaction.corner === 'tl') { newX = fx - tile.width * newScale; newY = fy - tile.height * newScale; }
-      else if (interaction.corner === 'tr') { newX = fx; newY = fy - tile.height * newScale; }
-      else if (interaction.corner === 'bl') { newX = fx - tile.width * newScale; newY = fy; }
-      updateLayerTile(selectedLayerId, { x: newX, y: newY, scale: newScale });
+      if (interaction.corner === 'tl') { newX = fx - asset.width * newScale; newY = fy - asset.height * newScale; }
+      else if (interaction.corner === 'tr') { newX = fx; newY = fy - asset.height * newScale; }
+      else if (interaction.corner === 'bl') { newX = fx - asset.width * newScale; newY = fy; }
+      updateLayerAsset(selectedLayerId, { x: newX, y: newY, scale: newScale });
     }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
-    setInteraction({ type: null, startMouse: { x: 0, y: 0 }, startTile: { x: 0, y: 0, scale: 1 }, corner: null, fixedPoint: null });
+    setInteraction({ type: null, startMouse: { x: 0, y: 0 }, startAsset: { x: 0, y: 0, scale: 1 }, corner: null, fixedPoint: null });
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
   };
 
   const selectedLayer = layers.find(l => l.id === selectedLayerId);
-  const effectiveWidth = Math.max(...layers.map(l => l.tile.width * l.tile.scale), 1024);
-  const effectiveHeight = Math.max(...layers.map(l => l.tile.height * l.tile.scale), 1024);
+  const effectiveWidth = Math.max(...layers.map(l => l.asset.width * l.asset.scale), 1024);
+  const effectiveHeight = Math.max(...layers.map(l => l.asset.height * l.asset.scale), 1024);
 
   const cornerPositions: Record<ResizeCorner, React.CSSProperties> = {
     tl: { top: 0, left: 0, transform: `translate(-50%, -50%) scale(${1 / zoom})` },
@@ -330,10 +330,10 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
                   {layer.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                 </button>
                 <div className="w-8 h-8 bg-zinc-950 rounded overflow-hidden checkerboard shrink-0">
-                  <img src={layer.tile.url} alt="layer" className="w-full h-full object-contain" />
+                  <img src={layer.asset.url} alt="layer" className="w-full h-full object-contain" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-zinc-200 truncate">{layer.tile.name}</div>
+                  <div className="text-xs text-zinc-200 truncate">{layer.asset.name}</div>
                   <div className="text-[10px] text-zinc-500">{Math.round(layer.opacity * 100)}% opacity</div>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -357,7 +357,7 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Layer Properties</h3>
               <div className="text-[10px] text-zinc-500 font-mono">
-                {Math.round(selectedLayer.tile.x)},{Math.round(selectedLayer.tile.y)} @ {Math.round(selectedLayer.tile.scale * 100)}%
+                {Math.round(selectedLayer.asset.x)},{Math.round(selectedLayer.asset.y)} @ {Math.round(selectedLayer.asset.scale * 100)}%
               </div>
             </div>
             <div className="space-y-2">
@@ -429,10 +429,10 @@ export function LayeringMode({ availableTiles, layers, setLayers, onExport, canv
               <div
                 className="absolute pointer-events-none"
                 style={{
-                  left: selectedLayer.tile.x,
-                  top: selectedLayer.tile.y,
-                  width: selectedLayer.tile.width * selectedLayer.tile.scale,
-                  height: selectedLayer.tile.height * selectedLayer.tile.scale,
+                  left: selectedLayer.asset.x,
+                  top: selectedLayer.asset.y,
+                  width: selectedLayer.asset.width * selectedLayer.asset.scale,
+                  height: selectedLayer.asset.height * selectedLayer.asset.scale,
                 }}
               >
                 <div className="absolute inset-0 border border-dashed border-white/60" />

@@ -1,6 +1,6 @@
 export const VIRTUAL_MAIN_ATLAS_ID = 'virtual-main-atlas';
 
-export interface TextureTile {
+export interface TextureAsset {
   id: string;
   file?: File;
   url: string;
@@ -39,7 +39,7 @@ export interface GridSettings {
 
 export interface Layer {
   id: string;
-  tile: TextureTile;
+  asset: TextureAsset;
   opacity: number;
   transparentColor: string | null; // hex color like #ff00ff
   tolerance: number; // 0-255
@@ -48,16 +48,16 @@ export interface Layer {
 
 
 export interface ChannelMapping {
-  r: { tile: TextureTile | null; sourceChannel: 'r' | 'g' | 'b' | 'a' };
-  g: { tile: TextureTile | null; sourceChannel: 'r' | 'g' | 'b' | 'a' };
-  b: { tile: TextureTile | null; sourceChannel: 'r' | 'g' | 'b' | 'a' };
-  a: { tile: TextureTile | null; sourceChannel: 'r' | 'g' | 'b' | 'a' };
+  r: { asset: TextureAsset | null; sourceChannel: 'r' | 'g' | 'b' | 'a' };
+  g: { asset: TextureAsset | null; sourceChannel: 'r' | 'g' | 'b' | 'a' };
+  b: { asset: TextureAsset | null; sourceChannel: 'r' | 'g' | 'b' | 'a' };
+  a: { asset: TextureAsset | null; sourceChannel: 'r' | 'g' | 'b' | 'a' };
 }
 
 export interface PBRSet {
-  baseColor: { tile: TextureTile | null; active: boolean };
-  normal: { tile: TextureTile | null; active: boolean };
-  orm: { tile: TextureTile | null; active: boolean };
+  baseColor: { asset: TextureAsset | null; active: boolean };
+  normal: { asset: TextureAsset | null; active: boolean };
+  orm: { asset: TextureAsset | null; active: boolean };
 }
 
 export interface AdjustSettings {
@@ -68,9 +68,9 @@ export interface AdjustSettings {
 export type AtlasStatus = 'parametric' | 'modified' | 'baked';
 
 export interface AppState {
-  mainTiles: TextureTile[];
-  secondaryTiles: TextureTile[];
-  modifiedTiles: TextureTile[];
+  atlasEntries: TextureAsset[];
+  libraryAssets: TextureAsset[];
+  modifiedAssets: TextureAsset[];
   gridSettings: GridSettings;
   sourceGridSettings: GridSettings;
   packerMapping: ChannelMapping;
@@ -81,7 +81,7 @@ export interface AppState {
   canvasWidth: number;
   canvasHeight: number;
   adjustSettings: AdjustSettings;
-  lastSourceTileId: string | null;
+  lastSourceAssetId: string | null;
   clearedCells: string[];
   autoDetectEnabled: boolean;
   textureName: string;

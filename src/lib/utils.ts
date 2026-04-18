@@ -26,6 +26,7 @@ export interface RGBA {
 }
 
 export function detectBackgroundColor(imageData: ImageData, tolerance: number = 10): RGBA {
+  const startTime = performance.now();
   const { width, height, data } = imageData;
   
   const getPixel = (x: number, y: number): RGBA => {
@@ -76,7 +77,7 @@ export function detectBackgroundColor(imageData: ImageData, tolerance: number = 
   // Majority consensus (>= 3 out of 4)
   const majorityGroup = groups.find(g => g.count >= 3);
   if (majorityGroup) {
-    console.log(`[detectBackgroundColor] Majority consensus found: rgba(${majorityGroup.color.r},${majorityGroup.color.g},${majorityGroup.color.b},${majorityGroup.color.a}) (${majorityGroup.count}/4 corners)`);
+    console.log(`[detectBackgroundColor] Majority consensus found: rgba(${majorityGroup.color.r},${majorityGroup.color.g},${majorityGroup.color.b},${majorityGroup.color.a}) (${majorityGroup.count}/4 corners). Time: ${(performance.now() - startTime).toFixed(2)}ms`);
     return majorityGroup.color;
   }
 
@@ -104,7 +105,7 @@ export function detectBackgroundColor(imageData: ImageData, tolerance: number = 
   }
 
   const resultColor = corners[maxIdx];
-  console.log(`[detectBackgroundColor] Diagonal scan chose corner ${maxIdx}: rgba(${resultColor.r},${resultColor.g},${resultColor.b},${resultColor.a})`);
+  console.log(`[detectBackgroundColor] Diagonal scan chose corner ${maxIdx}: rgba(${resultColor.r},${resultColor.g},${resultColor.b},${resultColor.a}). Total Time: ${(performance.now() - startTime).toFixed(2)}ms`);
   return resultColor;
 }
 
@@ -114,6 +115,7 @@ export function findIslands(
   tolerance: number,
   useMedianFilter: boolean = true
 ): { x: number; y: number; w: number; h: number }[] {
+  const startTime = performance.now();
   const { width, height, data } = imageData;
   const clearColor = hexToRgb(clearColorHex);
   const visited = new Uint8Array(width * height);
@@ -130,6 +132,7 @@ export function findIslands(
   };
 
   // 1. Reachable Background pass (Flood-fill from borders)
+  const step1Start = performance.now();
   const bgQueue: [number, number][] = [];
   const seedBorder = (x: number, y: number) => {
     const idx = y * width + x;
@@ -149,11 +152,12 @@ export function findIslands(
     }
   }
 
-  console.log(`[findIslands] Step 1: Background flood-fill complete. Marked ${bgQueue.length} pixels as reachable background.`);
+  console.log(`[findIslands] Step 1: Background flood-fill complete. Marked ${bgQueue.length} pixels as reachable background. Time: ${(performance.now() - step1Start).toFixed(2)}ms`);
 
   const isNotBg = (x: number, y: number) => reachable[y * width + x] === 0;
 
   // 2. Island detection
+  const step2Start = performance.now();
   const rawIslands: { x: number; y: number; w: number; h: number }[] = [];
   const scanStep = 4;
   for (let sy = 0; sy < height; sy += scanStep) {
@@ -180,9 +184,10 @@ export function findIslands(
     }
   }
 
-  console.log(`[findIslands] Step 2: Found ${rawIslands.length} raw foreground clusters.`);
+  console.log(`[findIslands] Step 2: Found ${rawIslands.length} raw foreground clusters. Time: ${(performance.now() - step2Start).toFixed(2)}ms`);
 
   // 3. Containment Filter
+  const step3Start = performance.now();
   const filtered = rawIslands
     .sort((a, b) => (b.w * b.h) - (a.w * a.h))
     .filter((inner, idx, arr) => {
@@ -193,17 +198,20 @@ export function findIslands(
       return true;
     });
 
-  console.log(`[findIslands] Step 3: Containment filter reduced ${rawIslands.length} -> ${filtered.length} islands.`);
+  console.log(`[findIslands] Step 3: Containment filter reduced ${rawIslands.length} -> ${filtered.length} islands. Time: ${(performance.now() - step3Start).toFixed(2)}ms`);
 
   // 4. Median Filter
   if (useMedianFilter && filtered.length > 0) {
+    const step4Start = performance.now();
     const areas = filtered.map(isl => isl.w * isl.h).sort((a, b) => a - b);
     const medianArea = areas[Math.floor(areas.length / 2)];
     const result = filtered.filter(isl => (isl.w * isl.h) >= (medianArea * 0.5));
-    console.log(`[findIslands] Step 4: Median area filter (${medianArea}px). Reduced ${filtered.length} -> ${result.length} islands.`);
+    console.log(`[findIslands] Step 4: Median area filter (${medianArea}px). Reduced ${filtered.length} -> ${result.length} islands. Time: ${(performance.now() - step4Start).toFixed(2)}ms`);
+    console.log(`[findIslands] Total Time: ${(performance.now() - startTime).toFixed(2)}ms`);
     return result;
   }
 
+  console.log(`[findIslands] Total Time: ${(performance.now() - startTime).toFixed(2)}ms`);
   return filtered;
 }
 
@@ -213,6 +221,7 @@ export function detectSettingsFromImage(
   tolerance: number,
   useMedianFilter: boolean = true
 ): { cellSize: number; padding: number } {
+  const startTime = performance.now();
   const islands = findIslands(imageData, clearColorHex, tolerance, useMedianFilter);
   if (islands.length === 0) return { cellSize: 128, padding: 0 };
 
@@ -289,6 +298,23 @@ export function detectSettingsFromImage(
     console.log(`[AutoDetect] Padding Snapping: Keeping rounded ${detectedPadding}`);
   }
 
-  console.log(`[AutoDetect] FINAL RESULT -> Cell: ${finalSize}, Padding: ${detectedPadding}`);
+  console.log(`[AutoDetect] FINAL RESULT -> Cell: ${finalSize}, Padding: ${detectedPadding}. Total Time: ${(performance.now() - startTime).toFixed(2)}ms`);
   return { cellSize: finalSize, padding: detectedPadding };
+}
+
+export function checkGridDensity(
+  imageWidth: number,
+  imageHeight: number,
+  cellWidth: number,
+  cellHeight: number
+): boolean {
+  const maxRatio = 30;
+  const ratioX = imageWidth / cellWidth;
+  const ratioY = imageHeight / cellHeight;
+
+  if (ratioX > maxRatio || ratioY > maxRatio) {
+    const message = `The current grid settings result in a very high density (${Math.max(ratioX, ratioY).toFixed(1)} cells across). This might be slow to process and render. Do you want to continue?`;
+    return confirm(message);
+  }
+  return true;
 }

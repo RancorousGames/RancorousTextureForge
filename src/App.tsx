@@ -8,7 +8,7 @@ import { ChannelPackerMode } from './components/ChannelPackerMode';
 import { LayeringMode } from './components/LayeringMode';
 import { AdjustMode } from './components/AdjustMode';
 import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon, ExternalLink } from 'lucide-react';
-import { cn } from './lib/utils';
+import { cn, checkGridDensity } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
 import { useAtlas } from './hooks/useAtlas';
 import { useGridSlice } from './hooks/useGridSlice';
@@ -120,6 +120,8 @@ export default function App() {
     const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles]
       .find(t => t.id === state.lastSourceTileId);
     if (sourceTile && gs.mode === 'fixed') {
+      if (!checkGridDensity(sourceTile.width, sourceTile.height, gs.cellSize, gs.cellY || gs.cellSize)) return;
+      
       set(prev => ({ ...prev, mainTiles: [], clearedCells: [], atlasStatus: 'parametric' }));
       performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true, gs);
     }
@@ -242,6 +244,7 @@ export default function App() {
         await handleAutoDetectSourceGrid(tile);
         
         if (newMainSettings) {
+           if (!checkGridDensity(tile.width, tile.height, newMainSettings.cellSize, newMainSettings.cellY || newMainSettings.cellSize)) return;
            performGridSlice(tile, tile.width, tile.height, false, newMainSettings);
         }
         return;
@@ -491,6 +494,8 @@ export default function App() {
                 // If we have a source tile and are in a grid mode, re-slice.
                 const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
                 if (sourceTile && gs.mode === 'fixed') {
+                   if (!checkGridDensity(sourceTile.width, sourceTile.height, gs.cellSize, gs.cellY || gs.cellSize)) return;
+                   
                    set(prev => ({ ...prev, gridSettings: gs, mainTiles: [], clearedCells: [], atlasStatus: 'parametric' }));
                    performGridSlice(sourceTile, state.canvasWidth, state.canvasHeight, true);
                 } else {
@@ -577,7 +582,11 @@ export default function App() {
                     <SourceAtlas
                       onAddTile={(tile) => handleMainAtlasDrop(tile, 0, 0)}
                       gridSettings={state.sourceGridSettings}
-                      onGridSettingsChange={(gs) => set(prev => ({ ...prev, sourceGridSettings: gs }))}
+                      onGridSettingsChange={(gs) => {
+                        const sourceTile = [...state.secondaryTiles, ...state.modifiedTiles].find(t => t.id === state.lastSourceTileId);
+                        if (sourceTile && !checkGridDensity(sourceTile.width, sourceTile.height, gs.cellSize, gs.cellY || gs.cellSize)) return;
+                        set(prev => ({ ...prev, sourceGridSettings: gs }));
+                      }}
                       onAutoDetectGrid={handleAutoDetectSourceGrid}
                       availableTiles={[...state.secondaryTiles, ...state.modifiedTiles, ...state.mainTiles]}
                       onSourceCellClick={handleSourceCellClick}

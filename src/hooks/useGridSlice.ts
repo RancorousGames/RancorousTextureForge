@@ -197,6 +197,43 @@ export function useGridSlice(
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Pick destination BEFORE await to minimize race conditions
+    let destX = mainAtlasGeo.padding;
+    let destY = mainAtlasGeo.padding;
+    let foundEmpty = false;
+
+    if (selectedCells.length === 0) {
+      console.log(`[Forge] Auto-Fill Start. MainTiles Count: ${state.mainTiles.length}`);
+      console.log(`[Forge] Grid Config: Canvas ${mainAtlasGeo.canvasW}x${mainAtlasGeo.canvasH}, Cell ${mainAtlasGeo.cellW}x${mainAtlasGeo.cellH}, Step ${mainAtlasGeo.stepX}x${mainAtlasGeo.stepY}`);
+      console.log(`[Forge] Computed Grid: ${mainAtlasGeo.cols} cols x ${mainAtlasGeo.rows} rows`);
+
+      if (mainAtlasGeo.cols <= 0 || mainAtlasGeo.rows <= 0) {
+        console.error(`[Forge] INVALID GRID DIMENSIONS! Search cannot proceed.`);
+      }
+
+      outer: for (let r = 0; r < mainAtlasGeo.rows; r++) {
+        for (let c = 0; c < mainAtlasGeo.cols; c++) {
+          const occupied = state.mainTiles.some(t => {
+            const isIn = mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r);
+            if (isIn) console.log(`[Forge] Cell (${c},${r}) is occupied by tile: ${t.id} (${t.name}) at x:${t.x}, y:${t.y}`);
+            return isIn;
+          });
+
+          if (!occupied) {
+            const pos = mainAtlasGeo.getPosFromCell(c, r);
+            destX = pos.x;
+            destY = pos.y;
+            foundEmpty = true;
+            console.log(`[Forge] Auto-Fill: Found empty cell at (${c},${r}) -> pos(${destX},${destY})`);
+            break outer;
+          }
+        }
+      }
+      if (!foundEmpty) {
+        console.warn(`[Forge] Auto-Fill: No empty cells found! Checked all ${mainAtlasGeo.cols * mainAtlasGeo.rows} cells. Falling back to (${destX},${destY})`);
+      }
+    }
+
     const img = await loadImage(sourceTile.url);
 
     const createCrop = (cx: number, cy: number): string => {
@@ -222,7 +259,7 @@ export function useGridSlice(
         const sourceCY = scy + (dcy - minCY);
         if (sourceCX >= sourceGeo.cols || sourceCY >= sourceGeo.rows) continue;
 
-        const { x: destX, y: destY } = mainAtlasGeo.getPosFromCell(dcx, dcy);
+        const { x: dX, y: dY } = mainAtlasGeo.getPosFromCell(dcx, dcy);
         replacedTiles.push(...state.mainTiles.filter(t =>
           mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)
         ));
@@ -230,7 +267,7 @@ export function useGridSlice(
           id: generateId(), url: createCrop(sourceCX, sourceCY),
           name: `${sourceTile.name}_crop_${sourceCX}_${sourceCY}`,
           width: mainAtlasGeo.cellW, height: mainAtlasGeo.cellH,
-          x: destX, y: destY, hue: 0, brightness: 100, scale: 1,
+          x: dX, y: dY, hue: 0, brightness: 100, scale: 1,
         };
         tileRegistry.register(newTile);
         newTiles.push(newTile);
@@ -240,16 +277,6 @@ export function useGridSlice(
         new PatchCommand({ lastSourceTileId: null }, { lastSourceTileId: state.lastSourceTileId }),
       ]);
     } else {
-      // Find first empty cell to place the crop
-      let destX = 0, destY = 0;
-      outer: for (let r = 0; r < mainAtlasGeo.rows; r++) {
-        for (let c = 0; c < mainAtlasGeo.cols; c++) {
-          if (!state.mainTiles.some(t => mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r))) {
-            ({ x: destX, y: destY } = mainAtlasGeo.getPosFromCell(c, r));
-            break outer;
-          }
-        }
-      }
       const newTile: TextureTile = {
         id: generateId(), url: createCrop(scx, scy),
         name: `${sourceTile.name}_crop_${scx}_${scy}`,

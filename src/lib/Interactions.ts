@@ -14,7 +14,7 @@ export interface InteractionResult {
   state: Partial<InteractionState>;
   onTilesChange?: TextureTile[];
   onSelectedCellsChange?: string[];
-  onCustomSelectionChange?: any;
+  onCustomSelectionChange?: { rect: { x: number, y: number, w: number, h: number } | null, screenPos?: { x: number, y: number } };
   onCellClick?: { x: number, y: number, w: number, h: number, cx: number, cy: number };
   onCellRightClick?: { x: number, y: number, w: number, h: number, cx: number, cy: number };
   onRemoveTile?: TextureTile;
@@ -24,8 +24,8 @@ export interface InteractionResult {
 export abstract class InteractionStrategy {
   constructor(protected geo: GridGeometry) {}
 
-  abstract onPointerDown(e: React.PointerEvent, pos: { x: number, y: number }, tiles: TextureTile[]): Partial<InteractionState>;
-  abstract onPointerMove(e: React.PointerEvent, pos: { x: number, y: number }, state: InteractionState, tiles: TextureTile[]): Partial<InteractionState>;
+  abstract onPointerDown(e: React.PointerEvent, pos: { x: number, y: number }, tiles: TextureTile[], props: any): InteractionResult;
+  abstract onPointerMove(e: React.PointerEvent, pos: { x: number, y: number }, state: InteractionState, tiles: TextureTile[], props: any): InteractionResult;
   abstract onPointerUp(e: React.PointerEvent, pos: { x: number, y: number }, state: InteractionState, tiles: TextureTile[], props: any): InteractionResult;
 }
 
@@ -34,13 +34,13 @@ export class DefaultInteractionStrategy extends InteractionStrategy {
   private dragStartMouse: { x: number, y: number } | null = null;
   private dragStartCanvas: { x: number, y: number } | null = null;
 
-  onPointerDown(e: React.PointerEvent, pos: { x: number, y: number }, tiles: TextureTile[]): Partial<InteractionState> {
+  onPointerDown(e: React.PointerEvent, pos: { x: number, y: number }, tiles: TextureTile[], props: any): InteractionResult {
     const { cx, cy } = this.geo.getCellAtPos(pos.x, pos.y);
     this.dragStartMouse = { x: e.clientX, y: e.clientY };
     this.dragStartCanvas = { x: pos.x, y: pos.y };
 
     if (e.button === 0) { // Left Click
-      return { isSelecting: true, selectionStart: { x: cx, y: cy } };
+      return { state: { isSelecting: true, selectionStart: { x: pos.x, y: pos.y } } };
     } 
     else if (e.button === 2) { // Right Click
       let tile: TextureTile | undefined;
@@ -55,24 +55,33 @@ export class DefaultInteractionStrategy extends InteractionStrategy {
       }
 
       if (tile) {
-        return { draggingId: tile.id, dragOffset: { x: pos.x - tile.x, y: pos.y - tile.y, originalX: tile.x, originalY: tile.y } };
+        // Only allow dragging if we have somewhere to commit the changes (Main Atlas)
+        if (props.onTilesChange || props.onMaterialize) {
+          return { state: { draggingId: tile.id, dragOffset: { x: pos.x - tile.x, y: pos.y - tile.y, originalX: tile.x, originalY: tile.y } } };
+        }
       } else if (this.geo.settings.mode !== 'packing') {
-        // Only allow virtual drag in grid modes
-        const cellPos = this.geo.getPosFromCell(cx, cy);
-        return { 
-          draggingId: `virtual-${cx}-${cy}`, 
-          dragOffset: { x: pos.x - cellPos.x, y: pos.y - cellPos.y, originalX: cellPos.x, originalY: cellPos.y } 
-        };
+        // Only allow virtual drag in grid modes AND if we can materialize
+        if (props.onMaterialize) {
+          const cellPos = this.geo.getPosFromCell(cx, cy);
+          return { 
+            state: { 
+              draggingId: `virtual-${cx}-${cy}`, 
+              dragOffset: { x: pos.x - cellPos.x, y: pos.y - cellPos.y, originalX: cellPos.x, originalY: cellPos.y } 
+            }
+          };
+        }
       }
     }
-    return {};
+    return { state: {} };
   }
 
-  onPointerMove(e: React.PointerEvent, pos: { x: number, y: number }, state: InteractionState, tiles: TextureTile[]): Partial<InteractionState> {
+  onPointerMove(e: React.PointerEvent, pos: { x: number, y: number }, state: InteractionState, tiles: TextureTile[], props: any): InteractionResult {
     const { cx, cy } = this.geo.getCellAtPos(pos.x, pos.y);
-    const updates: Partial<InteractionState> = { hoveredCell: { cx, cy } };
+    const result: InteractionResult = {
+      state: { hoveredCell: { cx, cy } }
+    };
 
-    if (!this.dragStartCanvas || !this.dragStartMouse) return updates;
+    if (!this.dragStartCanvas || !this.dragStartMouse) return result;
 
     const dist = Math.sqrt(Math.pow(e.clientX - this.dragStartMouse.x, 2) + Math.pow(e.clientY - this.dragStartMouse.y, 2));
 
@@ -83,10 +92,31 @@ export class DefaultInteractionStrategy extends InteractionStrategy {
         const snapped = this.geo.snap(nx + this.geo.cellW / 2, ny + this.geo.cellH / 2);
         nx = snapped.x; ny = snapped.y;
       }
-      updates.draggingPos = { x: nx, y: ny };
+      result.state.draggingPos = { x: nx, y: ny };
+    }
+    else if (state.isSelecting && dist > this.MOVE_THRESHOLD && props.onCustomSelectionChange) {
+      const rect = {
+        x: Math.min(state.selectionStart!.x, pos.x),
+        y: Math.min(state.selectionStart!.y, pos.y),
+        w: Math.abs(pos.x - state.selectionStart!.x),
+        h: Math.abs(pos.y - state.selectionStart!.y)
+      };
+      result.onCustomSelectionChange = { rect };
+    }
+    else if (state.isSelecting && dist > this.MOVE_THRESHOLD && props.onSelectedCellsChange) {
+      const startCell = this.geo.getCellAtPos(state.selectionStart!.x, state.selectionStart!.y);
+      const minCx = Math.min(startCell.cx, cx);
+      const maxCx = Math.max(startCell.cx, cx);
+      const minCy = Math.min(startCell.cy, cy);
+      const maxCy = Math.max(startCell.cy, cy);
+      const cells: string[] = [];
+      for (let x = minCx; x <= maxCx; x++)
+        for (let y = minCy; y <= maxCy; y++)
+          cells.push(`${x},${y}`);
+      result.onSelectedCellsChange = cells;
     }
 
-    return updates;
+    return result;
   }
 
   onPointerUp(e: React.PointerEvent, pos: { x: number, y: number }, state: InteractionState, tiles: TextureTile[], props: any): InteractionResult {
@@ -97,7 +127,13 @@ export class DefaultInteractionStrategy extends InteractionStrategy {
 
     if (e.button === 0) { // Left Button
       if (state.isSelecting && props.onCustomSelectionChange && dist > this.MOVE_THRESHOLD) {
-        // Custom selection logic
+        const rect = {
+          x: Math.min(state.selectionStart!.x, pos.x),
+          y: Math.min(state.selectionStart!.y, pos.y),
+          w: Math.abs(pos.x - state.selectionStart!.x),
+          h: Math.abs(pos.y - state.selectionStart!.y)
+        };
+        result.onCustomSelectionChange = { rect, screenPos: { x: e.clientX, y: e.clientY } };
       }
       else if (dist <= this.MOVE_THRESHOLD) {
         const cellPos = this.geo.getPosFromCell(cx, cy);

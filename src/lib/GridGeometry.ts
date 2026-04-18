@@ -51,9 +51,11 @@ export class GridGeometry {
    * Returns true if the given tile's center falls within the specified cell.
    */
   public isTileInCell(tileX: number, tileY: number, tileW: number, tileH: number, scale: number, cx: number, cy: number): boolean {
+    const EPSILON = 0.01;
     const centerX = tileX + (tileW * scale) / 2;
     const centerY = tileY + (tileH * scale) / 2;
-    const tileCell = this.getCellAtPos(centerX - this.padding, centerY - this.padding);
+    // Offset by epsilon to avoid edge-case floor flips
+    const tileCell = this.getCellAtPos(centerX - this.padding + EPSILON, centerY - this.padding + EPSILON);
     return tileCell.cx === cx && tileCell.cy === cy;
   }
 

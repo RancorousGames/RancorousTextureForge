@@ -115,8 +115,8 @@ export function AtlasCanvas({
     const pos = getPointerPos(e);
     if (!pos) return;
 
-    const updates = strategy.onPointerDown(e, pos, tiles);
-    setInteractionState(prev => ({ ...prev, ...updates }));
+    const result = strategy.onPointerDown(e, pos, tiles, { onTilesChange, onMaterialize });
+    setInteractionState(prev => ({ ...prev, ...result.state }));
     
     if (e.target instanceof HTMLElement) {
       try { e.target.setPointerCapture(e.pointerId); } catch(err) {}
@@ -127,8 +127,15 @@ export function AtlasCanvas({
     const pos = getPointerPos(e);
     if (!pos) return;
     
-    const updates = strategy.onPointerMove(e, pos, interactionState, tiles);
-    setInteractionState(prev => ({ ...prev, ...updates }));
+    const result = strategy.onPointerMove(e, pos, interactionState, tiles, { onCustomSelectionChange, onSelectedCellsChange, selectedCells });
+    setInteractionState(prev => ({ ...prev, ...result.state }));
+
+    if (result.onCustomSelectionChange && onCustomSelectionChange) {
+      onCustomSelectionChange(result.onCustomSelectionChange.rect, result.onCustomSelectionChange.screenPos);
+    }
+    if (result.onSelectedCellsChange && onSelectedCellsChange) {
+      onSelectedCellsChange(result.onSelectedCellsChange);
+    }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -150,6 +157,9 @@ export function AtlasCanvas({
     setInteractionState(prev => ({ ...prev, ...result.state }));
 
     // Execute callbacks
+    if (result.onCustomSelectionChange && onCustomSelectionChange) {
+      onCustomSelectionChange(result.onCustomSelectionChange.rect, result.onCustomSelectionChange.screenPos);
+    }
     if (result.onMaterialize && onMaterialize) {
       onMaterialize(result.onMaterialize.cx, result.onMaterialize.cy, result.onMaterialize.reason, result.onMaterialize.draggingPos);
     }

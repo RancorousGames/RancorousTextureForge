@@ -155,6 +155,7 @@ export function SourceAtlas({
     await new Promise(resolve => { img.onload = resolve; img.src = sourceTile.url; });
 
     let sx = customSelection.x, sy = customSelection.y, sw = customSelection.w, sh = customSelection.h;
+    
     const permClearRGB = hexToRgb(mainGridSettings.clearColor);
 
     // Temp canvas to sample the original selection
@@ -164,7 +165,11 @@ export function SourceAtlas({
     if (!analyzeCtx) return;
     
     analyzeCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-    const originalData = analyzeCtx.getImageData(0, 0, sw, sh).data;
+
+    const analyzeImageData = analyzeCtx.getImageData(0, 0, sw, sh);
+    const originalData = analyzeImageData.data;
+    const actualW = analyzeImageData.width;
+    const actualH = analyzeImageData.height;
 
     // Chroma-Key Sampling with fallback to (0,0)
     let tempClear = { r: originalData[0], g: originalData[1], b: originalData[2], a: originalData[3] };
@@ -182,21 +187,21 @@ export function SourceAtlas({
     }
 
     const tolerance = gridSettings.clearTolerance;
-    console.log(`[Forge] Chroma-Key Sampled: rgba(${tempClear.r},${tempClear.g},${tempClear.b},${tempClear.a}) with tolerance ${tolerance}`);
 
     const isMatch = (r: number, g: number, b: number, a: number) => {
       if (a < 10) return true; 
       if (tempClear.a < 10) return a < 10; 
-      return Math.abs(r - tempClear.r) <= tolerance && 
-             Math.abs(g - tempClear.g) <= tolerance && 
-             Math.abs(b - tempClear.b) <= tolerance;
+      const rDiff = Math.abs(r - tempClear.r);
+      const gDiff = Math.abs(g - tempClear.g);
+      const bDiff = Math.abs(b - tempClear.b);
+      return rDiff <= tolerance && gDiff <= tolerance && bDiff <= tolerance;
     };
 
     if (detectIsland) {
-      let minX = sw, minY = sh, maxX = 0, maxY = 0, found = false;
-      for (let y = 0; y < sh; y++) {
-        for (let x = 0; x < sw; x++) {
-          const i = (y * sw + x) * 4;
+      let minX = actualW, minY = actualH, maxX = 0, maxY = 0, found = false;
+      for (let y = 0; y < actualH; y++) {
+        for (let x = 0; x < actualW; x++) {
+          const i = (y * actualW + x) * 4;
           if (!isMatch(originalData[i], originalData[i+1], originalData[i+2], originalData[i+3])) {
             minX = Math.min(minX, x); minY = Math.min(minY, y);
             maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
@@ -205,9 +210,10 @@ export function SourceAtlas({
         }
       }
       if (found) {
-        console.log(`[Forge] Island detected! Shrinking box from ${sw}x${sh} to ${maxX-minX+1}x${maxY-minY+1}`);
+        const islandW = maxX - minX + 1;
+        const islandH = maxY - minY + 1;
         sx += minX; sy += minY;
-        sw = maxX - minX + 1; sh = maxY - minY + 1;
+        sw = islandW; sh = islandH;
       }
     }
 
@@ -235,7 +241,6 @@ export function SourceAtlas({
         mismatchSamples.push(`rgba(${r},${g},${b},${a}) dist:${dist}`);
       }
     }
-    console.log(`[Forge] Summary: Replaced ${replacedCount} of ${sw * sh} pixels. Mismatches: ${mismatchSamples.join(' | ')}`);
     cropCtx.putImageData(finalCropData, 0, 0);
 
     const targetW = mainGridSettings.cellSize;

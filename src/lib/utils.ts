@@ -18,6 +18,96 @@ export function rgbToHex(r: number, g: number, b: number) {
   return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
 }
 
+export interface RGBA {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
+
+export function detectBackgroundColor(imageData: ImageData, tolerance: number = 10): RGBA {
+  const { width, height, data } = imageData;
+  
+  const getPixel = (x: number, y: number): RGBA => {
+    const idx = (y * width + x) * 4;
+    return {
+      r: data[idx],
+      g: data[idx + 1],
+      b: data[idx + 2],
+      a: data[idx + 3]
+    };
+  };
+
+  const corners = [
+    getPixel(0, 0),
+    getPixel(width - 1, 0),
+    getPixel(0, height - 1),
+    getPixel(width - 1, height - 1)
+  ];
+
+  const isSimilar = (c1: RGBA, c2: RGBA) => {
+    // If both are mostly transparent, they match
+    if (c1.a < 5 && c2.a < 5) return true;
+    // If only one is transparent, they don't match
+    if ((c1.a < 5) !== (c2.a < 5)) return false;
+    
+    return Math.abs(c1.r - c2.r) <= tolerance &&
+           Math.abs(c1.g - c2.g) <= tolerance &&
+           Math.abs(c1.b - c2.b) <= tolerance;
+  };
+
+  const groups: { color: RGBA, count: number, indices: number[] }[] = [];
+
+  for (let i = 0; i < corners.length; i++) {
+    let found = false;
+    for (const group of groups) {
+      if (isSimilar(corners[i], group.color)) {
+        group.count++;
+        group.indices.push(i);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      groups.push({ color: corners[i], count: 1, indices: [i] });
+    }
+  }
+
+  // Majority consensus (>= 3 out of 4)
+  const majorityGroup = groups.find(g => g.count >= 3);
+  if (majorityGroup) {
+    console.log(`[detectBackgroundColor] Majority consensus found: rgba(${majorityGroup.color.r},${majorityGroup.color.g},${majorityGroup.color.b},${majorityGroup.color.a}) (${majorityGroup.count}/4 corners)`);
+    return majorityGroup.color;
+  }
+
+  // No majority, scan diagonal
+  console.log(`[detectBackgroundColor] No majority among corners. Scanning diagonal...`);
+  const cornerMatches = new Array(corners.length).fill(0);
+  const steps = Math.min(width, height, 100);
+  for (let i = 0; i < steps; i++) {
+    const x = Math.floor((i / (steps - 1)) * (width - 1));
+    const y = Math.floor((i / (steps - 1)) * (height - 1));
+    const px = getPixel(x, y);
+    
+    for (let j = 0; j < corners.length; j++) {
+      if (isSimilar(px, corners[j])) {
+        cornerMatches[j]++;
+      }
+    }
+  }
+
+  let maxIdx = 0;
+  for (let i = 1; i < cornerMatches.length; i++) {
+    if (cornerMatches[i] > cornerMatches[maxIdx]) {
+      maxIdx = i;
+    }
+  }
+
+  const resultColor = corners[maxIdx];
+  console.log(`[detectBackgroundColor] Diagonal scan chose corner ${maxIdx}: rgba(${resultColor.r},${resultColor.g},${resultColor.b},${resultColor.a})`);
+  return resultColor;
+}
+
 export function findIslands(
   imageData: ImageData,
   clearColorHex: string,

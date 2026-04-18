@@ -3,7 +3,7 @@ import { AppState, TextureTile } from '../types';
 import { Command, AddTilesCommand, SetMainTilesCommand, PatchCommand, MaterializeCommand, ClearCellCommand, RemoveTilesCommand } from '../lib/Commands';
 import { GridGeometry } from '../lib/GridGeometry';
 import { tileRegistry } from '../lib/TileRegistry';
-import { hexToRgb } from '../lib/utils';
+import { hexToRgb, detectBackgroundColor } from '../lib/utils';
 import { loadImage, generateId } from '../lib/canvas';
 
 export function useGridSlice(
@@ -57,17 +57,19 @@ export function useGridSlice(
     const sliceCtx = sliceCanvas.getContext('2d', { willReadFrequently: true });
     if (!sliceCtx) return;
 
-    // Sample key color from bottom-right pixel of source to detect background
+    // Detect background color using majority consensus of corners + diagonal scan
     const checkCanvas = document.createElement('canvas');
-    checkCanvas.width = 1; checkCanvas.height = 1;
-    const checkCtx = checkCanvas.getContext('2d')!;
     const realW = img.naturalWidth || img.width;
     const realH = img.naturalHeight || img.height;
-    checkCtx.drawImage(img, realW - 1, realH - 1, 1, 1, 0, 0, 1, 1);
-    const keyData = checkCtx.getImageData(0, 0, 1, 1).data;
-    const keyColor = { r: keyData[0], g: keyData[1], b: keyData[2], a: keyData[3] };
-    const permClear = hexToRgb(gs.clearColor);
+    checkCanvas.width = realW; checkCanvas.height = realH;
+    const checkCtx = checkCanvas.getContext('2d', { willReadFrequently: true })!;
+    checkCtx.drawImage(img, 0, 0);
+    const fullImageData = checkCtx.getImageData(0, 0, realW, realH);
+    
     const tolerance = gs.clearTolerance;
+    const keyColor = detectBackgroundColor(fullImageData, tolerance);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const permClear = hexToRgb(gs.clearColor);
 
     const isMatch = (r: number, g: number, b: number, a: number) => {
       if (a < 5 && keyColor.a < 5) return true;

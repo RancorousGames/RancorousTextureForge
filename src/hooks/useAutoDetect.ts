@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { AppState, GridSettings, TextureTile } from '../types';
-import { rgbToHex, detectSettingsFromImage } from '../lib/utils';
+import { rgbToHex, detectSettingsFromImage, detectBackgroundColor } from '../lib/utils';
 import { loadImage, renderTilesToCanvas } from '../lib/canvas';
 
 export function useAutoDetect(
@@ -41,11 +41,10 @@ export function useAutoDetect(
       imageData = canvas.getContext('2d')!.getImageData(0, 0, canvasWidth, canvasHeight);
     }
 
-    const lastIdx = (imageData.width * imageData.height - 1) * 4;
-    const [r, g, b] = [imageData.data[lastIdx], imageData.data[lastIdx + 1], imageData.data[lastIdx + 2]];
-    const detectedClearColor = rgbToHex(r, g, b);
-    console.log(`[AutoDetect] Main Grid: Detected background color ${detectedClearColor} from bottom-right pixel.`);
     const tolerance = state.gridSettings.clearTolerance ?? 10;
+    const keyColor = detectBackgroundColor(imageData, tolerance);
+    const detectedClearColor = rgbToHex(keyColor.r, keyColor.g, keyColor.b);
+    console.log(`[AutoDetect] Main Grid: Detected background color ${detectedClearColor}.`);
 
     const { cellSize, padding } = detectSettingsFromImage(imageData, detectedClearColor, tolerance, true);
 
@@ -76,13 +75,13 @@ export function useAutoDetect(
     ctx.drawImage(img, 0, 0, realW, realH);
     const imageData = ctx.getImageData(0, 0, realW, realH);
 
-    const lastIdx = (imageData.width * imageData.height - 1) * 4;
-    const [r, g, b] = [imageData.data[lastIdx], imageData.data[lastIdx + 1], imageData.data[lastIdx + 2]];
-    const detectedClearColor = rgbToHex(r, g, b);
-    console.log(`[AutoDetect] Source Grid: Detected background color ${detectedClearColor} from bottom-right pixel.`);
+    const tolerance = state.sourceGridSettings.clearTolerance ?? 10;
+    const keyColor = detectBackgroundColor(imageData, tolerance);
+    const detectedClearColor = rgbToHex(keyColor.r, keyColor.g, keyColor.b);
+    console.log(`[AutoDetect] Source Grid: Detected background color ${detectedClearColor}.`);
     
     const { cellSize, padding } = detectSettingsFromImage(
-      imageData, detectedClearColor, state.sourceGridSettings.clearTolerance ?? 10
+      imageData, detectedClearColor, tolerance
     );
 
     console.log(`[AutoDetect] Applying Source Grid settings: Cell=${cellSize}, Pad=${padding}, Color=${detectedClearColor}`);

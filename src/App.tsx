@@ -573,6 +573,9 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); }
       else if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo(); }
+      else if (e.key === 'Escape') {
+        setSelectedCells([]);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { TextureAsset, GridSettings } from '../types';
 import { AtlasCanvas } from './AtlasCanvas';
 import { DeferredNumberInput } from './DeferredNumberInput';
@@ -40,6 +40,17 @@ export function SourceAtlas({
   const [customSelection, setCustomSelection] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
   const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setCustomSelection(null);
+        setMenuPos(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleDrop = (assetId: string) => {
     const asset = availableAssets.find(t => t.id === assetId);

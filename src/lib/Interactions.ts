@@ -157,11 +157,31 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
         const cellPos = this.geo.getPosFromCell(cx, cy);
         if (callbacks.onCellClick) {
           result.onCellClick = { ...cellPos, w: this.geo.cellW, h: this.geo.cellH, cx, cy };
+          // Clear custom selection on click if one exists
+          if (callbacks.onCustomSelectionChange) {
+             result.onCustomSelectionChange = { rect: null };
+          }
         } else if (callbacks.onSelectedCellsChange) {
           const key = `${cx},${cy}`;
-          result.onSelectedCellsChange = callbacks.selectedCells?.includes(key)
-            ? callbacks.selectedCells.filter((k: string) => k !== key)
-            : [...(callbacks.selectedCells || []), key];
+          const isSelected = callbacks.selectedCells?.includes(key);
+          
+          if (e.ctrlKey || e.shiftKey) {
+            // Toggle mode
+            result.onSelectedCellsChange = isSelected
+              ? callbacks.selectedCells!.filter((k: string) => k !== key)
+              : [...(callbacks.selectedCells || []), key];
+          } else {
+            // Simple click: if already selected alone, keep it? 
+            // Better behavior: clear everything and select only this one, OR if it's already selected alone, clear it.
+            if (callbacks.selectedCells?.length === 1 && isSelected) {
+              result.onSelectedCellsChange = [];
+            } else {
+              result.onSelectedCellsChange = [key];
+            }
+          }
+        } else if (callbacks.onCustomSelectionChange) {
+           // Clicked nowhere/background in a custom selection strategy
+           result.onCustomSelectionChange = { rect: null };
         }
       }
     }

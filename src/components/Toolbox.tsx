@@ -139,19 +139,32 @@ interface ToolboxProps {
 
         {gridSettings.mode === 'fixed' && (
           <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-[10px] text-zinc-500" title="Width of each grid cell in pixels">Cell Width (Pixels)</label>
-              <DeferredNumberInput
-                value={gridSettings.cellSize}
-                min={16}
-                onCommit={(val) => onGridSettingsChange({
-                  ...gridSettings,
-                  cellSize: val,
-                  cellY: gridSettings.keepSquare ? val : (gridSettings.cellY || val)
-                })}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200 font-mono"
-                title="Width of each grid cell. Used for defining the grid and snap points."
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-[10px] text-zinc-500 whitespace-nowrap" title="Width of each grid cell in pixels">Grid Cell Width</label>
+                <DeferredNumberInput
+                  value={gridSettings.cellSize}
+                  min={16}
+                  onCommit={(val) => onGridSettingsChange({
+                    ...gridSettings,
+                    cellSize: val,
+                    cellY: gridSettings.keepSquare ? val : (gridSettings.cellY || val)
+                  })}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200 font-mono"
+                  title="Width of each grid cell. Used for defining the grid and snap points."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] text-zinc-500 whitespace-nowrap" title="Padding around each sprite inside its cell">Grid Cell Padding</label>
+                <DeferredNumberInput
+                  value={gridSettings.padding}
+                  min={0}
+                  onCommit={(val) => onGridSettingsChange({ ...gridSettings, padding: val })}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200 font-mono"
+                  title="Padding around each sprite inside its cell. Used for defining the grid spacing."
+                />
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -185,49 +198,44 @@ interface ToolboxProps {
                 />
               </div>
             )}
-
-            <div className="space-y-2">
-              <label className="text-[10px] text-zinc-500" title="Padding around each sprite inside its cell">Cell Padding (Pixels)</label>
-              <DeferredNumberInput
-                value={gridSettings.padding}
-                min={0}
-                onCommit={(val) => onGridSettingsChange({ ...gridSettings, padding: val })}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200 font-mono"
-                title="Padding around each sprite inside its cell. Used for defining the grid spacing."
-              />
-            </div>
           </div>
         )}
 
-        <div className="space-y-2">
-          <label className="text-[10px] text-zinc-500" title="The base color of the atlas. Used for clearing entries (R-Click) and as the key color for detecting islands in images.">Background Color</label>
-          <div className="flex items-center gap-2">
-            <input
-              type="color"
-              value={localClearColor}
-              onChange={(e) => setLocalClearColor(e.target.value)}
-              onBlur={() => onGridSettingsChange({ ...gridSettings, clearColor: localClearColor })}
-              className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0"
-              title="Select the background and transparency key color"
-            />
-            <span className="text-xs font-mono text-zinc-400 uppercase" title="Hex code of the current background color">{localClearColor}</span>
-          </div>
-        </div>
+        <div className="pt-2 border-t border-zinc-800 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <label className="text-[10px] text-zinc-500" title="The base color of the atlas. Used for clearing entries (R-Click) and as the key color for detecting islands in images.">Background</label>
+              <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded px-1.5 py-1">
+                <input
+                  type="color"
+                  value={localClearColor}
+                  onChange={(e) => setLocalClearColor(e.target.value)}
+                  onBlur={() => onGridSettingsChange({ ...gridSettings, clearColor: localClearColor })}
+                  className="w-5 h-5 rounded cursor-pointer bg-transparent border-0 p-0"
+                  title="Select the background and transparency key color"
+                />
+                <span className="text-[10px] font-mono text-zinc-400 uppercase truncate" title="Hex code of the current background color">{localClearColor}</span>
+              </div>
+            </div>
 
-        <div className="space-y-2">
-          <label className="text-[10px] text-zinc-500 flex justify-between" title="Sensitivity for color matching during island detection">
-            <span>Tolerance</span>
-            <span className="font-mono">{gridSettings.clearTolerance}</span>
-          </label>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={gridSettings.clearTolerance ?? 10}
-            onChange={(e) => onGridSettingsChange({ ...gridSettings, clearTolerance: Number(e.target.value) })}
-            className="w-full accent-blue-500"
-            title="Adjust how closely colors must match the background color to be considered transparent"
-          />
+            <div className="space-y-2">
+              <label className="text-[10px] text-zinc-500 flex justify-between" title="Sensitivity for color matching during island detection">
+                <span>Tolerance</span>
+                <span className="font-mono">{gridSettings.clearTolerance}</span>
+              </label>
+              <div className="flex items-center h-[26px]">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={gridSettings.clearTolerance ?? 10}
+                  onChange={(e) => onGridSettingsChange({ ...gridSettings, clearTolerance: Number(e.target.value) })}
+                  className="w-full accent-blue-500"
+                  title="Adjust how closely colors must match the background color to be considered transparent"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

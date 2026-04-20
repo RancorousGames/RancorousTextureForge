@@ -67,7 +67,7 @@ const getInitialState = (): AppState => {
     lastSourceAssetId: null,
     clearedCells: [],
     autoDetectEnabled: false,
-    textureName: 'atlas',
+    textureName: 'T_Texture_BC',
   };
 
   try {
@@ -80,7 +80,7 @@ const getInitialState = (): AppState => {
         sourceGridSettings: { ...baseState.sourceGridSettings, ...config.sourceGridSettings },
         adjustSettings: { ...baseState.adjustSettings, ...config.adjustSettings },
         autoDetectEnabled: config.autoDetectEnabled ?? false,
-        textureName: config.textureName ?? 'atlas',
+        textureName: config.textureName ?? 'T_Texture_BC',
       };
     }
   } catch (e) {
@@ -583,7 +583,7 @@ export default function App() {
               type="text"
               value={state.textureName}
               onChange={(e) => set(prev => ({ ...prev, textureName: e.target.value }))}
-              placeholder="Texture Name"
+              placeholder="T_Texture_BC"
               className="bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 w-32 focus:outline-none focus:border-blue-500 transition-colors"
               title="Set the name used when exporting the texture"
             />

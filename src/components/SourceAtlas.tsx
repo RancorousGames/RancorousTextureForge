@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { TextureAsset, GridSettings } from '../types';
 import { AtlasCanvas } from './AtlasCanvas';
 import { DeferredNumberInput } from './DeferredNumberInput';
-import { Image as ImageIcon, Plus, Wand2, LayoutTemplate, RefreshCw } from 'lucide-react';
+import { Image as ImageIcon, Wand2, LayoutTemplate, RefreshCw, Grid3X3 } from 'lucide-react';
 import { hexToRgb, findIslands, cn } from '../lib/utils';
 import { GridGeometry } from '../lib/GridGeometry';
 
@@ -295,7 +295,7 @@ export function SourceAtlas({
     <div className="flex-1 h-full bg-zinc-900 flex flex-col overflow-hidden relative">
       <div className="p-4 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2" title="Pick textures from this source image">
-          <ImageIcon className="w-4 h-4 text-zinc-400" />
+          <Grid3X3 className="w-4 h-4 text-zinc-400" />
           <h2 className="text-sm font-semibold text-zinc-200">Source Atlas</h2>
         </div>
         <div className="flex items-center gap-2">
@@ -342,14 +342,6 @@ export function SourceAtlas({
             />
           </div>
 
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded transition-colors border border-zinc-700"
-            title="Load Source Image"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-
           <div className="flex items-center gap-1">
             <button
               onClick={() => onAutoDetectEnabledChange(!autoDetectEnabled)}
@@ -367,9 +359,9 @@ export function SourceAtlas({
               disabled={!sourceAsset}
               onClick={() => sourceAsset && onAutoDetectGrid(sourceAsset)}
               className={cn(
-                "flex items-center gap-2 text-xs font-medium px-2 py-1 rounded transition-colors border",
+                "flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded transition-colors border",
                 sourceAsset 
-                  ? "bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border-blue-500/30" 
+                  ? "bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-blue-400 border-zinc-800" 
                   : "bg-zinc-800/50 text-zinc-600 border-zinc-800 opacity-50 cursor-not-allowed"
               )}
               title="Auto Detect Grid Settings Now"
@@ -383,9 +375,9 @@ export function SourceAtlas({
             disabled={!sourceAsset}
             onClick={handleExtractIslands}
             className={cn(
-              "flex items-center gap-2 text-xs font-medium px-2 py-1 rounded transition-colors border",
+              "flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded transition-colors border",
               sourceAsset 
-                ? "bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border-amber-500/30" 
+                ? "bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-amber-400 border-zinc-800" 
                 : "bg-zinc-800/50 text-zinc-600 border-zinc-800 opacity-50 cursor-not-allowed"
             )}
             title="Run Fix Grid algorithm on the entire source image to extract islands"

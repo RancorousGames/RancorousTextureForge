@@ -225,7 +225,7 @@ export function useAtlasOps(
     );
     const link = document.createElement('a');
     link.href = canvas.toDataURL('image/png');
-    link.download = `${state.textureName || 'atlas'}.png`;
+    link.download = `${state.textureName || 'T_Texture_BC'}.png`;
     link.click();
   }, [state.atlasEntries, state.gridSettings.clearColor, state.textureName, canvasWidth, canvasHeight]);
 

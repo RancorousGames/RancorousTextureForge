@@ -346,48 +346,63 @@ export function SourceAtlas({
           <h2 className="text-sm font-semibold text-zinc-200">Source Atlas</h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5" title="Source grid settings (Width, Height, Padding, Tolerance)">
-            <span className="text-[9px] text-zinc-500 uppercase font-bold" title="Cell Width">W</span>
-            <DeferredNumberInput
-              value={gridSettings.cellSize}
-              min={16}
-              onCommit={(val) => {
-                onGridSettingsChange({ ...gridSettings, cellSize: val, cellY: gridSettings.keepSquare ? val : (gridSettings.cellY || val) });
-              }}
-              className="w-10 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
-              title="Width for defining the source grid"
-            />
-            <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1" title="Cell Height">H</span>
-            <DeferredNumberInput
-              value={gridSettings.cellY || gridSettings.cellSize}
-              min={16}
-              onCommit={(val) => {
-                onGridSettingsChange({ ...gridSettings, cellY: val, keepSquare: false });
-              }}
-              className="w-10 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
-              title="Height for defining the source grid"
-            />
-            <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1" title="Cell Padding">Pad</span>
-            <DeferredNumberInput
-              value={gridSettings.padding}
-              min={0}
-              onCommit={(val) => {
-                onGridSettingsChange({ ...gridSettings, padding: val });
-              }}
-              className="w-8 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
-              title="Padding for defining the source grid spacing"
-            />
-            <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1" title="Color Tolerance">Tol</span>
-            <DeferredNumberInput
-              value={gridSettings.clearTolerance}
-              min={0}
-              onCommit={(val) => {
-                onGridSettingsChange({ ...gridSettings, clearTolerance: val });
-              }}
-              className="w-8 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
-              title="Color-key matching tolerance against the background color"
-            />
-          </div>
+          {mainGridSettings.mode !== 'packing' ? (
+            <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5" title="Source grid settings (Width, Height, Padding, Tolerance)">
+              <span className="text-[9px] text-zinc-500 uppercase font-bold" title="Cell Width">W</span>
+              <DeferredNumberInput
+                value={gridSettings.cellSize}
+                min={16}
+                onCommit={(val) => {
+                  onGridSettingsChange({ ...gridSettings, cellSize: val, cellY: gridSettings.keepSquare ? val : (gridSettings.cellY || val) });
+                }}
+                className="w-10 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
+                title="Width for defining the source grid"
+              />
+              <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1" title="Cell Height">H</span>
+              <DeferredNumberInput
+                value={gridSettings.cellY || gridSettings.cellSize}
+                min={16}
+                onCommit={(val) => {
+                  onGridSettingsChange({ ...gridSettings, cellY: val, keepSquare: false });
+                }}
+                className="w-10 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
+                title="Height for defining the source grid"
+              />
+              <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1" title="Cell Padding">Pad</span>
+              <DeferredNumberInput
+                value={gridSettings.padding}
+                min={0}
+                onCommit={(val) => {
+                  onGridSettingsChange({ ...gridSettings, padding: val });
+                }}
+                className="w-8 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
+                title="Padding for defining the source grid spacing"
+              />
+              <span className="text-[9px] text-zinc-500 uppercase font-bold ml-1" title="Color Tolerance">Tol</span>
+              <DeferredNumberInput
+                value={gridSettings.clearTolerance}
+                min={0}
+                onCommit={(val) => {
+                  onGridSettingsChange({ ...gridSettings, clearTolerance: val });
+                }}
+                className="w-8 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
+                title="Color-key matching tolerance against the background color"
+              />
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5" title="Island Detection Tolerance">
+              <span className="text-[9px] text-zinc-500 uppercase font-bold" title="Color Tolerance">Tolerance</span>
+              <DeferredNumberInput
+                value={gridSettings.clearTolerance}
+                min={0}
+                onCommit={(val) => {
+                  onGridSettingsChange({ ...gridSettings, clearTolerance: val });
+                }}
+                className="w-10 bg-transparent border-0 p-0 text-[10px] text-zinc-300 font-mono focus:ring-0"
+                title="Color-key matching tolerance against the background color"
+              />
+            </div>
+          )}
 
           <div className="flex items-center gap-1">
             <button
@@ -417,20 +432,22 @@ export function SourceAtlas({
             </button>
           </div>
 
-          <button
-            disabled={!sourceAsset}
-            onClick={handleExtractIslands}
-            className={cn(
-              "flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded transition-colors border",
-              sourceAsset 
-                ? "bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-amber-400 border-zinc-800" 
-                : "bg-zinc-800/50 text-zinc-600 border-zinc-800 opacity-50 cursor-not-allowed"
-            )}
-            title="Run Fix Grid algorithm on the entire source image to extract islands"
-          >
-            <LayoutTemplate className="w-3.5 h-3.5" />
-            <span>Fix Grid</span>
-          </button>
+          {mainGridSettings.mode !== 'packing' && (
+            <button
+              disabled={!sourceAsset}
+              onClick={handleExtractIslands}
+              className={cn(
+                "flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded transition-colors border",
+                sourceAsset 
+                  ? "bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-amber-400 border-zinc-800" 
+                  : "bg-zinc-800/50 text-zinc-600 border-zinc-800 opacity-50 cursor-not-allowed"
+              )}
+              title="Run Fix Grid algorithm on the entire source image to extract islands"
+            >
+              <LayoutTemplate className="w-3.5 h-3.5" />
+              <span>Fix Grid</span>
+            </button>
+          )}
         </div>
         <input type="file" className="hidden" ref={fileInputRef} onChange={handleLoadSource} accept="image/*" />
       </div>

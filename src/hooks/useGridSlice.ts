@@ -205,8 +205,12 @@ export function useGridSlice(
     let destX = mainAtlasGeo.padding;
     let destY = mainAtlasGeo.padding;
 
+    const isPacking = state.gridSettings.mode === 'packing';
+    const entryW = isPacking ? sourceGeo.cellW : mainAtlasGeo.cellW;
+    const entryH = isPacking ? sourceGeo.cellH : mainAtlasGeo.cellH;
+
     if (selectedCells.length === 0) {
-      if (state.gridSettings.mode === 'packing') {
+      if (isPacking) {
         const padding = state.gridSettings.padding || 2;
         const items = state.atlasEntries.map(e => ({
           w: (e.width * (e.scaleX ?? e.scale)) + padding * 2,
@@ -214,8 +218,8 @@ export function useGridSlice(
           x: e.x, y: e.y, id: e.id
         }));
         const newItem = {
-          w: mainAtlasGeo.cellW + padding * 2,
-          h: mainAtlasGeo.cellH + padding * 2,
+          w: entryW + padding * 2,
+          h: entryH + padding * 2,
           x: 0, y: 0, id: 'new'
         };
         const allItems = [...items, newItem];
@@ -241,9 +245,9 @@ export function useGridSlice(
     const img = await loadImage(sourceAsset.url);
 
     const createCrop = (cx: number, cy: number): string => {
-      ctx.clearRect(0, 0, mainAtlasGeo.cellW, mainAtlasGeo.cellH);
+      ctx.clearRect(0, 0, sourceGeo.cellW, sourceGeo.cellH);
       const { x: sx, y: sy } = sourceGeo.getPosFromCell(cx, cy);
-      ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, mainAtlasGeo.cellW, mainAtlasGeo.cellH);
+      ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
       return canvas.toDataURL();
     };
 
@@ -275,7 +279,7 @@ export function useGridSlice(
         const newEntry: TextureAsset = {
           id: generateId(), url: createCrop(sourceCX, sourceCY),
           name: `${sourceAsset.name}_crop_${sourceCX}_${sourceCY}`,
-          width: mainAtlasGeo.cellW, height: mainAtlasGeo.cellH,
+          width: entryW, height: entryH,
           x: dX, y: dY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1,
         };
         tileRegistry.register(newEntry);
@@ -292,7 +296,7 @@ export function useGridSlice(
       let replacedEntries: TextureAsset[] = [];
       let cellKey: string | null = null;
 
-      if (state.gridSettings.mode !== 'packing') {
+      if (!isPacking) {
         const { cx: tcx, cy: tcy } = mainAtlasGeo.getCellAtPos(destX, destY);
         cellKey = `${tcx},${tcy}`;
         replacedEntries = state.atlasEntries.filter(t =>
@@ -307,7 +311,7 @@ export function useGridSlice(
       const newEntry: TextureAsset = {
         id: generateId(), url: createCrop(scx, scy),
         name: `${sourceAsset.name}_crop_${scx}_${scy}`,
-        width: mainAtlasGeo.cellW, height: mainAtlasGeo.cellH,
+        width: entryW, height: entryH,
         x: destX, y: destY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1, isCrop: true,
       };
       tileRegistry.register(newEntry);

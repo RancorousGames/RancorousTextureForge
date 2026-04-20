@@ -427,36 +427,44 @@ export default function App() {
         }
       }
     } else if (x === 0 && y === 0) {
-      // Packing mode: find an empty spot using potpack
+      // Packing mode: find an empty spot by scanning the canvas
       console.log(`[Forge] Packing mode auto-placement for drop at (0,0).`);
       const padding = state.gridSettings.padding || 2;
-      const items = state.atlasEntries.map(e => ({
-        w: (e.width * (e.scaleX ?? e.scale)) + padding * 2,
-        h: (e.height * (e.scaleY ?? e.scale)) + padding * 2,
-        x: e.x, y: e.y, id: e.id
-      }));
+      const aw = asset.width * (asset.scaleX ?? asset.scale ?? 1);
+      const ah = asset.height * (asset.scaleY ?? asset.scale ?? 1);
       
-      const newItem = {
-        w: (mainAtlas.geo.cellW * 1) + padding * 2,
-        h: (mainAtlas.geo.cellH * 1) + padding * 2,
-        x: 0, y: 0, id: 'new'
-      };
-      
-      const allItems = [...items, newItem];
-      potpack(allItems as any);
-      
-      const placedNew = allItems.find(i => i.id === 'new')!;
-      finalX = placedNew.x + padding;
-      finalY = placedNew.y + padding;
-      console.log(`[Forge] Potpack auto-placed new entry at (${finalX}, ${finalY})`);
+      let found = false;
+      const step = 8;
+      // Search for the first spot that doesn't collide with existing entries
+      outer: for (let py = padding; py <= state.canvasHeight - ah - padding; py += step) {
+        for (let px = padding; px <= state.canvasWidth - aw - padding; px += step) {
+          const collision = state.atlasEntries.some(e => {
+            const ew = e.width * (e.scaleX ?? e.scale);
+            const eh = e.height * (e.scaleY ?? e.scale);
+            return px < e.x + ew + padding && px + aw + padding > e.x &&
+                   py < e.y + eh + padding && py + ah + padding > e.y;
+          });
+          if (!collision) {
+            finalX = px; finalY = py;
+            found = true;
+            break outer;
+          }
+        }
+      }
+      if (!found) {
+        console.warn("[Forge] No empty space found in canvas for new element.");
+        finalX = padding; finalY = padding;
+      }
+      console.log(`[Forge] Auto-placed new entry at (${finalX}, ${finalY})`);
     }
 
+    const isPacking = state.gridSettings.mode === 'packing';
     const newEntry: TextureAsset = {
       ...asset,
       id: generateId(),
       x: finalX, y: finalY,
-      width: mainAtlas.geo.cellW,
-      height: mainAtlas.geo.cellH,
+      width: isPacking ? asset.width : mainAtlas.geo.cellW,
+      height: isPacking ? asset.height : mainAtlas.geo.cellH,
       isCrop: true,
     };
     tileRegistry.register(newEntry);
@@ -656,8 +664,17 @@ export default function App() {
               onExport={exportAtlas}
               gridSettings={state.gridSettings}
               onGridSettingsChange={(gs) => {
-                const isModeSwitch = gs.mode !== state.gridSettings.mode;
-                const needsPrompt = state.atlasStatus === 'modified' || state.atlasStatus === 'baked';
+                const prev = state.gridSettings;
+                const isModeSwitch = gs.mode !== prev.mode;
+                const isStructuralChange = 
+                  gs.cellSize !== prev.cellSize ||
+                  gs.cellY !== prev.cellY ||
+                  gs.padding !== prev.padding ||
+                  gs.keepSquare !== prev.keepSquare ||
+                  gs.packingAlgo !== prev.packingAlgo;
+
+                const hasContent = state.atlasEntries.length > 0 || state.clearedCells.length > 0;
+                const needsPrompt = (state.atlasStatus === 'modified' || state.atlasStatus === 'baked' || hasContent) && isStructuralChange;
 
                 if (isModeSwitch || needsPrompt) {
                   const message = isModeSwitch 
@@ -667,10 +684,10 @@ export default function App() {
                   if (!confirm(message)) return;
                 }
                 
-                // If we have a source asset and are in a grid mode, re-slice.
+                // If we have a source asset and are in a grid mode, re-slice if structural or mode switch.
                 const sourceAsset = [...state.libraryAssets, ...state.modifiedAssets].find(t => t.id === state.lastSourceAssetId);
                 
-                if (sourceAsset && gs.mode === 'fixed') {
+                if (sourceAsset && gs.mode === 'fixed' && (isModeSwitch || isStructuralChange)) {
                    const validated = checkGridDensity(sourceAsset.width, sourceAsset.height, gs.cellSize, gs.cellY || gs.cellSize);
                    if (!validated) return;
                    

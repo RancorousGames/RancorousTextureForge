@@ -477,6 +477,7 @@ export function SourceAtlas({
             customSelection={customSelection}
             onCustomSelectionChange={handleCustomSelection}
             uniqueId="source"
+            disableHover={mainGridSettings.mode === 'packing'}
             tooltip={mainGridSettings.mode === 'packing' 
               ? "L-Click: Auto-Extract Island | Drag: Free Crop" 
               : "L-Click: Transfer | R-Click: Fill | Drag: Free Crop"

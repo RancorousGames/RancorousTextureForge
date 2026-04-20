@@ -165,6 +165,23 @@ export function findIslands(
   if (seedPoint) {
     // Targeted detection from seed point
     const sx = Math.floor(seedPoint.x), sy = Math.floor(seedPoint.y);
+    const sidx = sy * width + sx;
+    const isBg = !isNotBg(sx, sy);
+    const pidx = sidx * 4;
+    console.log(`[findIslands] Debug Seed (${sx},${sy}): pixel=rgba(${data[pidx]},${data[pidx+1]},${data[pidx+2]},${data[pidx+3]}), isBackground=${isBg}, isClearColored=${isClearColored(sx, sy)}`);
+
+    // Neighborhood scan
+    const radius = 2;
+    let fgCount = 0;
+    for (let ny = sy - radius; ny <= sy + radius; ny++) {
+      for (let nx = sx - radius; nx <= sx + radius; nx++) {
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          if (isNotBg(nx, ny)) fgCount++;
+        }
+      }
+    }
+    console.log(`[findIslands] Neighborhood scan (radius ${radius}): found ${fgCount} foreground pixels in ${((radius*2+1)**2)} sample area.`);
+
     if (sx >= 0 && sx < width && sy >= 0 && sy < height && isNotBg(sx, sy)) {
       let x1 = sx, y1 = sy, x2 = sx, y2 = sy;
       const queue: [number, number][] = [[sx, sy]];

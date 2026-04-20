@@ -154,9 +154,8 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
         result.onCustomSelectionChange = { rect, screenPos: { x: e.clientX, y: e.clientY } };
       }
       else if (dist <= this.MOVE_THRESHOLD) {
-        const cellPos = this.geo.getPosFromCell(cx, cy);
         if (callbacks.onCellClick) {
-          result.onCellClick = { ...cellPos, w: this.geo.cellW, h: this.geo.cellH, cx, cy };
+          result.onCellClick = { x: pos.x, y: pos.y, w: this.geo.cellW, h: this.geo.cellH, cx, cy };
           // Clear custom selection on click if one exists
           if (callbacks.onCustomSelectionChange) {
              result.onCustomSelectionChange = { rect: null };

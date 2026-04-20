@@ -27,6 +27,7 @@ interface AtlasCanvasProps {
   clearedCells?: string[];
   atlasStatus?: AtlasStatus;
   uniqueId?: string;
+  disableHover?: boolean;
 }
 
 export function AtlasCanvas({
@@ -52,6 +53,7 @@ export function AtlasCanvas({
   clearedCells = [],
   atlasStatus = 'parametric',
   uniqueId = 'atlas',
+  disableHover = false,
 }: AtlasCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -76,9 +78,16 @@ export function AtlasCanvas({
 
   const getPointerPos = (e: React.PointerEvent | React.MouseEvent | PointerEvent) => {
     const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return null;
-    const x = (e.clientX - rect.left) / zoom;
-    const y = (e.clientY - rect.top) / zoom;
+    if (!rect || rect.width === 0 || rect.height === 0) return null;
+    
+    // Use the actual rendered ratio to account for subpixel offsets and browser scaling
+    const x = (e.clientX - rect.left) * (canvasWidth / rect.width);
+    const y = (e.clientY - rect.top) * (canvasHeight / rect.height);
+    
+    if (uniqueId === 'source' && gridSettings.mode === 'packing' && (e.type === 'pointerdown' || e.type === 'mousedown')) {
+      console.log(`[AtlasCanvas:${uniqueId}] Click: screen(${e.clientX},${e.clientY}) -> rect(${rect.left.toFixed(1)},${rect.top.toFixed(1)}) -> canvas(${x.toFixed(1)},${y.toFixed(1)})`);
+    }
+
     return { x, y };
   };
 
@@ -195,7 +204,7 @@ export function AtlasCanvas({
     for (let i = 0; i <= cols; i++) lines.push(<div key={`v-${i}`} className="absolute top-0 bottom-0 border-r border-white/5" style={{ left: i * stepX }} />);
     for (let i = 0; i <= rows; i++) lines.push(<div key={`h-${i}`} className="absolute left-0 right-0 border-b border-white/5" style={{ top: i * stepY }} />);
     
-    if (hoveredCell && !isSelecting && !draggingId) {
+    if (hoveredCell && !isSelecting && !draggingId && !disableHover) {
       const { x, y } = geo.getPosFromCell(hoveredCell.cx, hoveredCell.cy);
       lines.push(
         <div 

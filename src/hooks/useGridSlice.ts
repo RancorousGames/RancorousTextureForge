@@ -196,18 +196,18 @@ export function useGridSlice(
     sourceAsset: TextureAsset
   ) => {
     const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceAsset.width, sourceAsset.height);
+    const isPacking = state.gridSettings.mode === 'packing';
+    const entryW = isPacking ? sourceGeo.cellW : mainAtlasGeo.cellW;
+    const entryH = isPacking ? sourceGeo.cellH : mainAtlasGeo.cellH;
+
     const canvas = document.createElement('canvas');
-    canvas.width = mainAtlasGeo.cellW; canvas.height = mainAtlasGeo.cellH;
+    canvas.width = entryW; canvas.height = entryH;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     // Pick destination BEFORE await to minimize race conditions
     let destX = mainAtlasGeo.padding;
     let destY = mainAtlasGeo.padding;
-
-    const isPacking = state.gridSettings.mode === 'packing';
-    const entryW = isPacking ? sourceGeo.cellW : mainAtlasGeo.cellW;
-    const entryH = isPacking ? sourceGeo.cellH : mainAtlasGeo.cellH;
 
     if (selectedCells.length === 0) {
       if (isPacking) {
@@ -245,9 +245,9 @@ export function useGridSlice(
     const img = await loadImage(sourceAsset.url);
 
     const createCrop = (cx: number, cy: number): string => {
-      ctx.clearRect(0, 0, sourceGeo.cellW, sourceGeo.cellH);
+      ctx.clearRect(0, 0, entryW, entryH);
       const { x: sx, y: sy } = sourceGeo.getPosFromCell(cx, cy);
-      ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
+      ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, entryW, entryH);
       return canvas.toDataURL();
     };
 

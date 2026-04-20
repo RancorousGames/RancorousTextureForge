@@ -153,13 +153,58 @@ export function SourceAtlas({
     img.src = url;
   };
 
-  const handleCellClick = (x: number, y: number, width: number, height: number, cx: number, cy: number) => {
+  const handleCellClick = async (x: number, y: number, width: number, height: number, cx: number, cy: number) => {
     if (!sourceAsset) return;
-    onSourceCellClick(x, y, width, height, cx, cy, sourceAsset);
+
+    if (mainGridSettings.mode === 'packing') {
+      // Packing mode: detect island at the clicked pixel
+      const img = new Image();
+      await new Promise(resolve => { img.onload = resolve; img.src = sourceAsset.url; });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = sourceAsset.width;
+      canvas.height = sourceAsset.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const islands = findIslands(
+        imageData,
+        gridSettings.clearColor,
+        gridSettings.clearTolerance,
+        false, // No median filter for targeted click
+        { x, y }
+      );
+
+      if (islands.length > 0) {
+        const isl = islands[0];
+        const cropCanvas = document.createElement('canvas');
+        cropCanvas.width = isl.w; cropCanvas.height = isl.h;
+        const cropCtx = cropCanvas.getContext('2d');
+        if (cropCtx) {
+          cropCtx.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, isl.w, isl.h);
+          
+          onAddAsset({
+            id: Math.random().toString(36).substring(2, 9),
+            url: cropCanvas.toDataURL(),
+            sourceUrl: sourceAsset.sourceUrl || sourceAsset.url,
+            name: `Island_${Math.round(isl.x)}_${Math.round(isl.y)}`,
+            width: isl.w, height: isl.h, x: 0, y: 0,
+            hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1,
+            isCrop: true
+          });
+        }
+      }
+    } else {
+      // Grid mode: use standard cell click
+      onSourceCellClick(x, y, width, height, cx, cy, sourceAsset);
+    }
   };
 
   const handleCellRightClick = (x: number, y: number, width: number, height: number, cx: number, cy: number) => {
     if (!sourceAsset) return;
+    if (mainGridSettings.mode === 'packing') return; // Right-click fill not relevant in packing mode
     if (onSourceCellRightClick) {
       onSourceCellRightClick(x, y, width, height, cx, cy, sourceAsset);
     }
@@ -266,8 +311,9 @@ export function SourceAtlas({
     }
     cropCtx.putImageData(finalCropData, 0, 0);
 
-    const targetW = mainGridSettings.cellSize;
-    const targetH = mainGridSettings.cellY || mainGridSettings.cellSize;
+    const isPacking = mainGridSettings.mode === 'packing';
+    const targetW = isPacking ? sw : mainGridSettings.cellSize;
+    const targetH = isPacking ? sh : (mainGridSettings.cellY || mainGridSettings.cellSize);
 
     const finalCanvas = document.createElement('canvas');
     finalCanvas.width = targetW; finalCanvas.height = targetH;
@@ -279,10 +325,10 @@ export function SourceAtlas({
       onAddAsset({
         id: Math.random().toString(36).substring(2, 9),
         url: finalCanvas.toDataURL(),
-        sourceUrl: finalCanvas.toDataURL(),
+        sourceUrl: sourceAsset.sourceUrl || sourceAsset.url,
         name: `Crop_${Math.round(sx)}_${Math.round(sy)}`,
         width: targetW, height: targetH, x: 0, y: 0,
-        hue: 0, brightness: 100, scale: 1,
+        hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1,
         isCrop: true
       });
     }
@@ -290,6 +336,7 @@ export function SourceAtlas({
     setCustomSelection(null);
     setMenuPos(null);
   };
+
 
   return (
     <div className="flex-1 h-full bg-zinc-900 flex flex-col overflow-hidden relative">
@@ -402,7 +449,10 @@ export function SourceAtlas({
             customSelection={customSelection}
             onCustomSelectionChange={handleCustomSelection}
             uniqueId="source"
-            tooltip="L-Click: Transfer | R-Click: Fill | Drag: Free Crop"
+            tooltip={mainGridSettings.mode === 'packing' 
+              ? "L-Click: Auto-Extract Island | Drag: Free Crop" 
+              : "L-Click: Transfer | R-Click: Fill | Drag: Free Crop"
+            }
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 p-8 text-center">

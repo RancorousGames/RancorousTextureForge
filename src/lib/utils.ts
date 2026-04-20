@@ -114,7 +114,8 @@ export function findIslands(
   imageData: ImageData,
   clearColorHex: string,
   tolerance: number,
-  useMedianFilter: boolean = true
+  useMedianFilter: boolean = true,
+  seedPoint?: { x: number, y: number }
 ): { x: number; y: number; w: number; h: number }[] {
   const startTime = performance.now();
   const { width, height, data } = imageData;
@@ -122,7 +123,7 @@ export function findIslands(
   const visited = new Uint8Array(width * height);
   const reachable = new Uint8Array(width * height);
 
-  console.log(`[findIslands] Starting detection on ${width}x${height} image. ClearColor: rgb(${clearColor.r},${clearColor.g},${clearColor.b}), Tolerance: ${tolerance}`);
+  console.log(`[findIslands] Starting detection on ${width}x${height} image. ClearColor: rgb(${clearColor.r},${clearColor.g},${clearColor.b}), Tolerance: ${tolerance}${seedPoint ? `, Seed: (${seedPoint.x},${seedPoint.y})` : ''}`);
 
   const isClearColored = (x: number, y: number) => {
     const idx = (y * width + x) * 4;
@@ -160,15 +161,14 @@ export function findIslands(
   // 2. Island detection
   const step2Start = performance.now();
   const rawIslands: { x: number; y: number; w: number; h: number }[] = [];
-  const scanStep = 4;
-  for (let sy = 0; sy < height; sy += scanStep) {
-    for (let sx = 0; sx < width; sx += scanStep) {
-      const sidx = sy * width + sx;
-      if (visited[sidx] || !isNotBg(sx, sy)) continue;
-
+  
+  if (seedPoint) {
+    // Targeted detection from seed point
+    const sx = Math.floor(seedPoint.x), sy = Math.floor(seedPoint.y);
+    if (sx >= 0 && sx < width && sy >= 0 && sy < height && isNotBg(sx, sy)) {
       let x1 = sx, y1 = sy, x2 = sx, y2 = sy;
       const queue: [number, number][] = [[sx, sy]];
-      visited[sidx] = 1;
+      visited[sy * width + sx] = 1;
       let head = 0;
       while (head < queue.length) {
         const [cx, cy] = queue[head++];
@@ -181,8 +181,34 @@ export function findIslands(
           }
         }
       }
+      rawIslands.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 });
+    }
+  } else {
+    // Global scan
+    const scanStep = 4;
+    for (let sy = 0; sy < height; sy += scanStep) {
+      for (let sx = 0; sx < width; sx += scanStep) {
+        const sidx = sy * width + sx;
+        if (visited[sidx] || !isNotBg(sx, sy)) continue;
 
-      if (x2 - x1 >= 4 && y2 - y1 >= 4) rawIslands.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 });
+        let x1 = sx, y1 = sy, x2 = sx, y2 = sy;
+        const queue: [number, number][] = [[sx, sy]];
+        visited[sidx] = 1;
+        let head = 0;
+        while (head < queue.length) {
+          const [cx, cy] = queue[head++];
+          x1 = Math.min(x1, cx); y1 = Math.min(y1, cy);
+          x2 = Math.max(x2, cx); y2 = Math.max(y2, cy);
+          for (const [nx, ny] of [[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]] as [number,number][]) {
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const nidx = ny * width + nx;
+              if (!visited[nidx] && isNotBg(nx, ny)) { visited[nidx] = 1; queue.push([nx, ny]); }
+            }
+          }
+        }
+
+        if (x2 - x1 >= 4 && y2 - y1 >= 4) rawIslands.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 });
+      }
     }
   }
 

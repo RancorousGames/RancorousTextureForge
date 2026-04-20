@@ -293,12 +293,12 @@ export function SourceAtlas({
 
   return (
     <div className="flex-1 h-full bg-zinc-900 flex flex-col overflow-hidden relative">
-      <div className="p-4 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between shrink-0">
+      <div className="p-3 sm:p-4 border-b border-zinc-800 bg-zinc-950 flex flex-wrap items-center justify-between gap-3 shrink-0 min-h-[56px]">
         <div className="flex items-center gap-2" title="Pick textures from this source image">
           <Grid3X3 className="w-4 h-4 text-zinc-400" />
           <h2 className="text-sm font-semibold text-zinc-200">Source Atlas</h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5" title="Source grid settings (Width, Height, Padding, Tolerance)">
             <span className="text-[9px] text-zinc-500 uppercase font-bold" title="Cell Width">W</span>
             <DeferredNumberInput
@@ -359,7 +359,7 @@ export function SourceAtlas({
               disabled={!sourceAsset}
               onClick={() => sourceAsset && onAutoDetectGrid(sourceAsset)}
               className={cn(
-                "flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded transition-colors border",
+                "p-1.5 rounded transition-colors border",
                 sourceAsset 
                   ? "bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-blue-400 border-zinc-800" 
                   : "bg-zinc-800/50 text-zinc-600 border-zinc-800 opacity-50 cursor-not-allowed"
@@ -367,7 +367,6 @@ export function SourceAtlas({
               title="Auto Detect Grid Settings Now"
             >
               <Wand2 className="w-3.5 h-3.5" />
-              <span>Auto Detect</span>
             </button>
           </div>
 

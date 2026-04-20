@@ -5,6 +5,7 @@ import { GridGeometry } from '../lib/GridGeometry';
 import { tileRegistry } from '../lib/TileRegistry';
 import { hexToRgb, detectBackgroundColor } from '../lib/utils';
 import { loadImage, generateId } from '../lib/canvas';
+import potpack from 'potpack';
 
 export function useGridSlice(
   state: AppState,
@@ -203,37 +204,37 @@ export function useGridSlice(
     // Pick destination BEFORE await to minimize race conditions
     let destX = mainAtlasGeo.padding;
     let destY = mainAtlasGeo.padding;
-    let foundEmpty = false;
 
     if (selectedCells.length === 0) {
-      console.log(`[Forge] Auto-Fill Start. AtlasEntries Count: ${state.atlasEntries.length}`);
-      console.log(`[Forge] Grid Config: Canvas ${mainAtlasGeo.canvasW}x${mainAtlasGeo.canvasH}, Cell ${mainAtlasGeo.cellW}x${mainAtlasGeo.cellH}, Step ${mainAtlasGeo.stepX}x${mainAtlasGeo.stepY}`);
-      console.log(`[Forge] Computed Grid: ${mainAtlasGeo.cols} cols x ${mainAtlasGeo.rows} rows`);
-
-      if (mainAtlasGeo.cols <= 0 || mainAtlasGeo.rows <= 0) {
-        console.error(`[Forge] INVALID GRID DIMENSIONS! Search cannot proceed.`);
-      }
-
-      outer: for (let r = 0; r < mainAtlasGeo.rows; r++) {
-        for (let c = 0; c < mainAtlasGeo.cols; c++) {
-          const occupied = state.atlasEntries.some(t => {
-            const isIn = mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r);
-            if (isIn) console.log(`[Forge] Cell (${c},${r}) is occupied by entry: ${t.id} (${t.name}) at x:${t.x}, y:${t.y}`);
-            return isIn;
-          });
-
-          if (!occupied) {
-            const pos = mainAtlasGeo.getPosFromCell(c, r);
-            destX = pos.x;
-            destY = pos.y;
-            foundEmpty = true;
-            console.log(`[Forge] Auto-Fill: Found empty cell at (${c},${r}) -> pos(${destX},${destY})`);
-            break outer;
+      if (state.gridSettings.mode === 'packing') {
+        const padding = state.gridSettings.padding || 2;
+        const items = state.atlasEntries.map(e => ({
+          w: (e.width * (e.scaleX ?? e.scale)) + padding * 2,
+          h: (e.height * (e.scaleY ?? e.scale)) + padding * 2,
+          x: e.x, y: e.y, id: e.id
+        }));
+        const newItem = {
+          w: mainAtlasGeo.cellW + padding * 2,
+          h: mainAtlasGeo.cellH + padding * 2,
+          x: 0, y: 0, id: 'new'
+        };
+        const allItems = [...items, newItem];
+        potpack(allItems as any);
+        const placedNew = allItems.find(i => i.id === 'new')!;
+        destX = placedNew.x + padding;
+        destY = placedNew.y + padding;
+      } else {
+        let foundEmpty = false;
+        outer: for (let r = 0; r < mainAtlasGeo.rows; r++) {
+          for (let c = 0; c < mainAtlasGeo.cols; c++) {
+            if (!state.atlasEntries.some(t => mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r))) {
+              const pos = mainAtlasGeo.getPosFromCell(c, r);
+              destX = pos.x; destY = pos.y;
+              foundEmpty = true;
+              break outer;
+            }
           }
         }
-      }
-      if (!foundEmpty) {
-        console.warn(`[Forge] Auto-Fill: No empty cells found! Checked all ${mainAtlasGeo.cols * mainAtlasGeo.rows} cells. Falling back to (${destX},${destY})`);
       }
     }
 
@@ -288,8 +289,20 @@ export function useGridSlice(
         ),
       ]);
     } else {
-      const cellKey = `${mainAtlasGeo.getCellAtPos(destX, destY).cx},${mainAtlasGeo.getCellAtPos(destX, destY).cy}`;
-      const newClearedCells = state.clearedCells.includes(cellKey) ? state.clearedCells : [...state.clearedCells, cellKey];
+      let replacedEntries: TextureAsset[] = [];
+      let cellKey: string | null = null;
+
+      if (state.gridSettings.mode !== 'packing') {
+        const { cx: tcx, cy: tcy } = mainAtlasGeo.getCellAtPos(destX, destY);
+        cellKey = `${tcx},${tcy}`;
+        replacedEntries = state.atlasEntries.filter(t =>
+          mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, tcx, tcy)
+        );
+      }
+
+      const newClearedCells = (cellKey && !state.clearedCells.includes(cellKey))
+        ? [...state.clearedCells, cellKey]
+        : state.clearedCells;
 
       const newEntry: TextureAsset = {
         id: generateId(), url: createCrop(scx, scy),
@@ -298,10 +311,7 @@ export function useGridSlice(
         x: destX, y: destY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1, isCrop: true,
       };
       tileRegistry.register(newEntry);
-      const { cx: tcx, cy: tcy } = mainAtlasGeo.getCellAtPos(destX, destY);
-      const replacedEntries = state.atlasEntries.filter(t =>
-        mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, tcx, tcy)
-      );
+
       executeCommand([
         new AddTilesCommand([newEntry], replacedEntries),
         new PatchCommand(
@@ -310,8 +320,8 @@ export function useGridSlice(
         ),
       ]);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId,
+  }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId, state.gridSettings,
+      state.clearedCells, state.libraryAssets, state.modifiedAssets,
       mainAtlasGeo, selectedCells, executeCommand]);
 
   const handleSourceCellRightClick = useCallback(async (

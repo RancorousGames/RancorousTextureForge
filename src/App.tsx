@@ -16,6 +16,7 @@ import { useAutoDetect } from './hooks/useAutoDetect';
 import { useAtlasOps } from './hooks/useAtlasOps';
 import { useAssetLibrary } from './hooks/useAssetLibrary';
 import { AddTilesCommand, PatchCommand, SetMainTilesCommand, RemoveTilesCommand } from './lib/Commands';
+import potpack from 'potpack';
 import { tileRegistry } from './lib/TileRegistry';
 import { generateId, renderTilesToCanvas } from './lib/canvas';
 
@@ -425,6 +426,29 @@ export default function App() {
           }
         }
       }
+    } else if (x === 0 && y === 0) {
+      // Packing mode: find an empty spot using potpack
+      console.log(`[Forge] Packing mode auto-placement for drop at (0,0).`);
+      const padding = state.gridSettings.padding || 2;
+      const items = state.atlasEntries.map(e => ({
+        w: (e.width * (e.scaleX ?? e.scale)) + padding * 2,
+        h: (e.height * (e.scaleY ?? e.scale)) + padding * 2,
+        x: e.x, y: e.y, id: e.id
+      }));
+      
+      const newItem = {
+        w: (mainAtlas.geo.cellW * 1) + padding * 2,
+        h: (mainAtlas.geo.cellH * 1) + padding * 2,
+        x: 0, y: 0, id: 'new'
+      };
+      
+      const allItems = [...items, newItem];
+      potpack(allItems as any);
+      
+      const placedNew = allItems.find(i => i.id === 'new')!;
+      finalX = placedNew.x + padding;
+      finalY = placedNew.y + padding;
+      console.log(`[Forge] Potpack auto-placed new entry at (${finalX}, ${finalY})`);
     }
 
     const newEntry: TextureAsset = {
@@ -437,20 +461,22 @@ export default function App() {
     };
     tileRegistry.register(newEntry);
     
-    const { cx, cy } = mainAtlas.geo.getCellAtPos(finalX, finalY);
-    console.log(`[Forge] Placing Entry: id=${newEntry.id}, cell=(${cx},${cy}), pos=(${finalX},${finalY})`);
+    let replacedEntries: TextureAsset[] = [];
+    let cellKey: string | null = null;
 
-    const replacedEntries = state.atlasEntries.filter(t =>
-      mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy)
-    );
-    if (replacedEntries.length > 0) {
-      console.log(`[Forge] Replacing ${replacedEntries.length} existing entries in cell.`);
+    if (state.gridSettings.mode !== 'packing') {
+      const { cx, cy } = mainAtlas.geo.getCellAtPos(finalX, finalY);
+      console.log(`[Forge] Placing Entry: id=${newEntry.id}, cell=(${cx},${cy}), pos=(${finalX},${finalY})`);
+
+      replacedEntries = state.atlasEntries.filter(t =>
+        mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy)
+      );
+      cellKey = `${cx},${cy}`;
     }
 
-    const cellKey = `${cx},${cy}`;
-    const nextClearedCells = state.clearedCells.includes(cellKey) 
-      ? state.clearedCells 
-      : [...state.clearedCells, cellKey];
+    const nextClearedCells = (cellKey && !state.clearedCells.includes(cellKey))
+      ? [...state.clearedCells, cellKey]
+      : state.clearedCells;
 
     executeCommand([
       new AddTilesCommand([newEntry], replacedEntries),
@@ -459,8 +485,8 @@ export default function App() {
         { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
       ),
     ]);
-  }, [state.libraryAssets, state.modifiedAssets, state.atlasEntries, state.gridSettings.mode,
-      state.lastSourceAssetId, mainAtlas.geo, handleAssetClick, executeCommand]);
+  }, [state.libraryAssets, state.modifiedAssets, state.atlasEntries, state.gridSettings,
+      state.lastSourceAssetId, state.clearedCells, activeAssets, mainAtlas.geo, handleAssetClick, executeCommand]);
 
   // ── Effects ────────────────────────────────────────────────────────────────
 

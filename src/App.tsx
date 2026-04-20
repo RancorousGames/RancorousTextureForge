@@ -15,7 +15,7 @@ import { useGridSlice } from './hooks/useGridSlice';
 import { useAutoDetect } from './hooks/useAutoDetect';
 import { useAtlasOps } from './hooks/useAtlasOps';
 import { useAssetLibrary } from './hooks/useAssetLibrary';
-import { AddTilesCommand, PatchCommand, SetMainTilesCommand } from './lib/Commands';
+import { AddTilesCommand, PatchCommand, SetMainTilesCommand, RemoveTilesCommand } from './lib/Commands';
 import { tileRegistry } from './lib/TileRegistry';
 import { generateId, renderTilesToCanvas } from './lib/canvas';
 
@@ -658,9 +658,9 @@ export default function App() {
                     entries={state.atlasEntries}
                     setEntries={(entries) => {
                       const next = typeof entries === 'function' ? (entries as any)(state.atlasEntries) : entries;
-                      set(prev => ({ ...prev, atlasEntries: next }));
+                      executeCommand(new SetMainTilesCommand(state.atlasEntries, next));
                     }}
-                    onRemoveEntry={(entry) => set(prev => ({ ...prev, atlasEntries: prev.atlasEntries.filter(t => t.id !== entry.id) }))}
+                    onRemoveEntry={(entry) => executeCommand(new RemoveTilesCommand([entry]))}
                     onDrop={handleMainAtlasDrop}
                     gridSettings={state.gridSettings}
                     selectedCells={selectedCells}

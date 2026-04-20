@@ -656,11 +656,20 @@ export default function App() {
               onExport={exportAtlas}
               gridSettings={state.gridSettings}
               onGridSettingsChange={(gs) => {
+                const isModeSwitch = gs.mode !== state.gridSettings.mode;
                 const needsPrompt = state.atlasStatus === 'modified' || state.atlasStatus === 'baked';
-                if (needsPrompt && !confirm('Changing grid settings will revert the atlas to the source image. Manual changes will be lost. Continue?')) return;
+
+                if (isModeSwitch || needsPrompt) {
+                  const message = isModeSwitch 
+                    ? `Switching to ${gs.mode === 'packing' ? 'Packing' : 'Grid'} mode will reset the canvas. Continue?`
+                    : 'Changing grid settings will revert the atlas to the source image. Manual changes will be lost. Continue?';
+                  
+                  if (!confirm(message)) return;
+                }
                 
                 // If we have a source asset and are in a grid mode, re-slice.
                 const sourceAsset = [...state.libraryAssets, ...state.modifiedAssets].find(t => t.id === state.lastSourceAssetId);
+                
                 if (sourceAsset && gs.mode === 'fixed') {
                    const validated = checkGridDensity(sourceAsset.width, sourceAsset.height, gs.cellSize, gs.cellY || gs.cellSize);
                    if (!validated) return;
@@ -669,7 +678,12 @@ export default function App() {
                    set(prev => ({ ...prev, gridSettings: finalGs, atlasEntries: [], clearedCells: [], atlasStatus: 'parametric' }));
                    performGridSlice(sourceAsset, state.canvasWidth, state.canvasHeight, true, finalGs);
                 } else {
-                   set(prev => ({ ...prev, gridSettings: gs }));
+                   // If switching TO packing mode, or no source asset, just reset entries
+                   if (isModeSwitch) {
+                     set(prev => ({ ...prev, gridSettings: gs, atlasEntries: [], clearedCells: [], atlasStatus: 'parametric' }));
+                   } else {
+                     set(prev => ({ ...prev, gridSettings: gs }));
+                   }
                 }
               }}
               atlasSwapMode={state.atlasSwapMode}

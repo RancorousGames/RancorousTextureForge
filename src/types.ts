@@ -24,6 +24,7 @@ export interface TextureAsset {
 
 export type AppMode = 'atlas' | 'adjust' | 'channel-pack' | 'layering';
 export type GridMode = 'fixed' | 'packing';
+export type ResizeMode = 'fill' | 'fit' | 'crop';
 
 export interface GridSettings {
   mode: GridMode;
@@ -77,6 +78,7 @@ export interface AppState {
   pbrSet: PBRSet;
   layeringLayers: Layer[];
   atlasSwapMode: boolean;
+  resizeMode: ResizeMode;
   atlasStatus: AtlasStatus;
   canvasWidth: number;
   canvasHeight: number;

@@ -19,6 +19,7 @@ interface SourceAtlasProps {
   canvasHeight: number;
   autoDetectEnabled: boolean;
   onAutoDetectEnabledChange: (enabled: boolean) => void;
+  resizeMode: string;
 }
 
 export function SourceAtlas({ 
@@ -33,7 +34,8 @@ export function SourceAtlas({
   canvasWidth: targetCanvasW,
   canvasHeight: targetCanvasH,
   autoDetectEnabled,
-  onAutoDetectEnabledChange
+  onAutoDetectEnabledChange,
+  resizeMode
 }: SourceAtlasProps) {
 
   const [sourceAsset, setSourceAsset] = useState<TextureAsset | null>(null);
@@ -322,27 +324,15 @@ export function SourceAtlas({
     }
     cropCtx.putImageData(finalCropData, 0, 0);
 
-    const isPacking = mainGridSettings.mode === 'packing';
-    const targetW = isPacking ? sw : mainGridSettings.cellSize;
-    const targetH = isPacking ? sh : (mainGridSettings.cellY || mainGridSettings.cellSize);
-
-    const finalCanvas = document.createElement('canvas');
-    finalCanvas.width = targetW; finalCanvas.height = targetH;
-    const finalCtx = finalCanvas.getContext('2d');
-    if (finalCtx) {
-      finalCtx.imageSmoothingEnabled = false; 
-      finalCtx.drawImage(cropCanvas, 0, 0, sw, sh, 0, 0, targetW, targetH);
-      
-      onAddAsset({
-        id: Math.random().toString(36).substring(2, 9),
-        url: finalCanvas.toDataURL(),
-        sourceUrl: sourceAsset.sourceUrl || sourceAsset.url,
-        name: `Crop_${Math.round(sx)}_${Math.round(sy)}`,
-        width: targetW, height: targetH, x: 0, y: 0,
-        hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1,
-        isCrop: true
-      });
-    }
+    onAddAsset({
+      id: Math.random().toString(36).substring(2, 9),
+      url: cropCanvas.toDataURL(),
+      sourceUrl: sourceAsset.sourceUrl || sourceAsset.url,
+      name: `Crop_${Math.round(sx)}_${Math.round(sy)}`,
+      width: sw, height: sh, x: 0, y: 0,
+      hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1,
+      isCrop: true
+    });
 
     setCustomSelection(null);
     setMenuPos(null);

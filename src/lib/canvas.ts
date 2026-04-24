@@ -72,12 +72,17 @@ export async function renderEntriesToCanvas(
     const dw = entry.width * (entry.scaleX ?? entry.scale);
     const dh = entry.height * (entry.scaleY ?? entry.scale);
 
+    const sx = entry.sourceX ?? 0;
+    const sy = entry.sourceY ?? 0;
+    const sw = entry.sourceW ?? img.naturalWidth;
+    const sh = entry.sourceH ?? img.naturalHeight;
+
     ctx.save();
     ctx.translate(entry.x, entry.y);
     if (entry.hue !== 0 || entry.brightness !== 100) {
       ctx.filter = `hue-rotate(${entry.hue}deg) brightness(${entry.brightness}%)`;
     }
-    ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, dw, dh);
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
     ctx.restore();
   }
 

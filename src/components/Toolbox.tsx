@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { DeferredNumberInput } from './DeferredNumberInput';
-import { TextureAsset, GridSettings, GridMode } from '../types';
+import { TextureAsset, GridSettings, GridMode, ResizeMode } from '../types';
 import { cn } from '../lib/utils';
-import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus, Box } from 'lucide-react';
+import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus, Box, Maximize2 } from 'lucide-react';
 
 interface ToolboxProps {
   selectedAsset: TextureAsset | null;
@@ -17,6 +17,8 @@ interface ToolboxProps {
   onGridSettingsChange: (settings: GridSettings) => void;
   atlasSwapMode: boolean;
   setAtlasSwapMode: (val: boolean) => void;
+  resizeMode: ResizeMode;
+  onResizeModeChange: (mode: ResizeMode) => void;
   autoDetectEnabled: boolean;
   onAutoDetectEnabledChange: (enabled: boolean) => void;
   }
@@ -34,6 +36,8 @@ interface ToolboxProps {
   onGridSettingsChange,
   atlasSwapMode,
   setAtlasSwapMode,
+  resizeMode,
+  onResizeModeChange,
   autoDetectEnabled,
   onAutoDetectEnabledChange
   }: ToolboxProps) {
@@ -84,6 +88,20 @@ interface ToolboxProps {
           >
             <option value="fixed">Grid</option>
             <option value="packing">Atlas Packing</option>
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="Choose how tiles are resized when added to the main atlas">Resize Mode</label>
+          <select
+            value={resizeMode}
+            onChange={(e) => onResizeModeChange(e.target.value as ResizeMode)}
+            className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200"
+            title="Choose how tiles are resized when added to the main atlas"
+          >
+            <option value="fill">Fill (Stretch)</option>
+            <option value="fit">Fit (Proportional)</option>
+            <option value="crop">Crop (Original Size)</option>
           </select>
         </div>
 

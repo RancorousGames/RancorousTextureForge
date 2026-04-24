@@ -201,24 +201,38 @@ export function AtlasCanvas({
     const { cellW, cellH, stepX, stepY, cols, rows } = geo;
     const { hoveredCell, isSelecting, draggingId } = interactionState;
     const lines = [];
-    for (let i = 0; i <= cols; i++) lines.push(<div key={`v-${i}`} className="absolute top-0 bottom-0 border-r border-white/5" style={{ left: i * stepX }} />);
-    for (let i = 0; i <= rows; i++) lines.push(<div key={`h-${i}`} className="absolute left-0 right-0 border-b border-white/5" style={{ top: i * stepY }} />);
+    for (let i = 0; i <= cols; i++) lines.push(<div key={`v-${i}`} className="absolute top-0 bottom-0 border-r border-white/20 mix-blend-difference" style={{ left: i * stepX }} />);
+    for (let i = 0; i <= rows; i++) lines.push(<div key={`h-${i}`} className="absolute left-0 right-0 border-b border-white/20 mix-blend-difference" style={{ top: i * stepY }} />);
     
     if (hoveredCell && !isSelecting && !draggingId && !disableHover) {
       const { x, y } = geo.getPosFromCell(hoveredCell.cx, hoveredCell.cy);
       lines.push(
         <div 
           key="hover" 
-          className="absolute bg-white/5 border border-white/20 pointer-events-none z-10" 
-          style={{ left: x, top: y, width: cellW, height: cellH }} 
-        />
+          className="absolute pointer-events-none z-10" 
+          style={{ left: x, top: y, width: cellW, height: cellH }}
+        >
+          {/* Thick dual-color border for maximum visibility */}
+          <div className="absolute -inset-[2px] border-[2px] border-black" />
+          <div className="absolute -inset-[2px] border-[2px] border-dashed border-white" />
+          <div className="absolute inset-0 bg-blue-500/20" />
+        </div>
       );
     }
 
     selectedCells.forEach(key => {
       const [cx, cy] = key.split(',').map(Number);
       const { x, y } = geo.getPosFromCell(cx, cy);
-      lines.push(<div key={`sel-${key}`} className="absolute bg-yellow-500/20 border border-yellow-500/50 pointer-events-none z-10" style={{ left: x, top: y, width: cellW, height: cellH }} />);
+      lines.push(
+        <div 
+          key={`sel-${key}`} 
+          className="absolute bg-yellow-500/30 pointer-events-none z-10" 
+          style={{ left: x, top: y, width: cellW, height: cellH }}
+        >
+          <div className="absolute inset-0 border-2 border-yellow-500" />
+          <div className="absolute inset-0 border border-black/40" />
+        </div>
+      );
     });
     return <div className="absolute inset-0 pointer-events-none">{lines}</div>;
   };

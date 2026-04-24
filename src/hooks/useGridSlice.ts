@@ -197,13 +197,58 @@ export function useGridSlice(
   ) => {
     const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceAsset.width, sourceAsset.height);
     const isPacking = state.gridSettings.mode === 'packing';
-    const entryW = isPacking ? sourceGeo.cellW : mainAtlasGeo.cellW;
-    const entryH = isPacking ? sourceGeo.cellH : mainAtlasGeo.cellH;
-
+    
+    // Create canvas at original source cell size
     const canvas = document.createElement('canvas');
-    canvas.width = entryW; canvas.height = entryH;
+    canvas.width = sourceGeo.cellW; 
+    canvas.height = sourceGeo.cellH;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    const img = await loadImage(sourceAsset.url);
+
+    const createCrop = (cx: number, cy: number): string => {
+      ctx.clearRect(0, 0, sourceGeo.cellW, sourceGeo.cellH);
+      const { x: sx, y: sy } = sourceGeo.getPosFromCell(cx, cy);
+      ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
+      return canvas.toDataURL();
+    };
+
+    const calculatePlacement = (dX: number, dY: number, sW: number, sH: number) => {
+      const cellW = mainAtlasGeo.cellW;
+      const cellH = mainAtlasGeo.cellH;
+      let finalW = sW;
+      let finalH = sH;
+      let finalX = dX;
+      let finalY = dY;
+      let finalScale = 1;
+      let sourceX: number | undefined;
+      let sourceY: number | undefined;
+      let sourceW: number | undefined;
+      let sourceH: number | undefined;
+
+      if (!isPacking) {
+        if (state.resizeMode === 'fill') {
+          finalW = cellW;
+          finalH = cellH;
+          finalScale = 1;
+        } else if (state.resizeMode === 'fit') {
+          finalScale = Math.min(cellW / sW, cellH / sH);
+          finalX = dX + (cellW - sW * finalScale) / 2;
+          finalY = dY + (cellH - sH * finalScale) / 2;
+        } else if (state.resizeMode === 'crop') {
+          finalW = Math.min(sW, cellW);
+          finalH = Math.min(sH, cellH);
+          finalX = dX + Math.max(0, (cellW - sW) / 2);
+          finalY = dY + Math.max(0, (cellH - sH) / 2);
+          sourceX = Math.max(0, (sW - cellW) / 2);
+          sourceY = Math.max(0, (sH - cellH) / 2);
+          sourceW = finalW;
+          sourceH = finalH;
+        }
+      }
+      return { finalW, finalH, finalX, finalY, finalScale, sourceX, sourceY, sourceW, sourceH };
+    };
 
     // Pick destination BEFORE await to minimize race conditions
     let destX = mainAtlasGeo.padding;
@@ -218,8 +263,8 @@ export function useGridSlice(
           x: e.x, y: e.y, id: e.id
         }));
         const newItem = {
-          w: entryW + padding * 2,
-          h: entryH + padding * 2,
+          w: sourceGeo.cellW + padding * 2,
+          h: sourceGeo.cellH + padding * 2,
           x: 0, y: 0, id: 'new'
         };
         const allItems = [...items, newItem];
@@ -241,15 +286,6 @@ export function useGridSlice(
         }
       }
     }
-
-    const img = await loadImage(sourceAsset.url);
-
-    const createCrop = (cx: number, cy: number): string => {
-      ctx.clearRect(0, 0, entryW, entryH);
-      const { x: sx, y: sy } = sourceGeo.getPosFromCell(cx, cy);
-      ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, entryW, entryH);
-      return canvas.toDataURL();
-    };
 
     if (selectedCells.length > 0) {
       let minCX = Infinity, minCY = Infinity;
@@ -276,11 +312,14 @@ export function useGridSlice(
 
         if (!newClearedCells.includes(key)) newClearedCells.push(key);
 
+        const { finalW, finalH, finalX, finalY, finalScale, sourceX, sourceY, sourceW, sourceH } = calculatePlacement(dX, dY, sourceGeo.cellW, sourceGeo.cellH);
+
         const newEntry: TextureAsset = {
           id: generateId(), url: createCrop(sourceCX, sourceCY),
           name: `${sourceAsset.name}_crop_${sourceCX}_${sourceCY}`,
-          width: entryW, height: entryH,
-          x: dX, y: dY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1,
+          width: finalW, height: finalH,
+          x: finalX, y: finalY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: finalScale,
+          sourceX, sourceY, sourceW, sourceH
         };
         tileRegistry.register(newEntry);
         newEntries.push(newEntry);
@@ -308,11 +347,14 @@ export function useGridSlice(
         ? [...state.clearedCells, cellKey]
         : state.clearedCells;
 
+      const { finalW, finalH, finalX, finalY, finalScale, sourceX, sourceY, sourceW, sourceH } = calculatePlacement(destX, destY, sourceGeo.cellW, sourceGeo.cellH);
+
       const newEntry: TextureAsset = {
         id: generateId(), url: createCrop(scx, scy),
         name: `${sourceAsset.name}_crop_${scx}_${scy}`,
-        width: entryW, height: entryH,
-        x: destX, y: destY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1, isCrop: true,
+        width: finalW, height: finalH,
+        x: finalX, y: finalY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: finalScale, isCrop: true,
+        sourceX, sourceY, sourceW, sourceH
       };
       tileRegistry.register(newEntry);
 
@@ -325,8 +367,9 @@ export function useGridSlice(
       ]);
     }
   }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId, state.gridSettings,
-      state.clearedCells, state.libraryAssets, state.modifiedAssets,
+      state.clearedCells, state.libraryAssets, state.modifiedAssets, state.resizeMode,
       mainAtlasGeo, selectedCells, executeCommand]);
+
 
   const handleSourceCellRightClick = useCallback(async (
     _x: number, _y: number, _w: number, _h: number,
@@ -337,13 +380,14 @@ export function useGridSlice(
     const sourceGeo = new GridGeometry(state.sourceGridSettings, sourceAsset.width, sourceAsset.height);
 
     const canvas = document.createElement('canvas');
-    canvas.width = mainAtlasGeo.cellW; canvas.height = mainAtlasGeo.cellH;
+    canvas.width = sourceGeo.cellW; 
+    canvas.height = sourceGeo.cellH;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const img = await loadImage(sourceAsset.url);
     const { x: sx, y: sy } = sourceGeo.getPosFromCell(scx, scy);
-    ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, mainAtlasGeo.cellW, mainAtlasGeo.cellH);
+    ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
     const croppedUrl = canvas.toDataURL();
 
     const newEntries: TextureAsset[] = [];
@@ -352,18 +396,50 @@ export function useGridSlice(
 
     for (const key of selectedCells) {
       const [dcx, dcy] = key.split(',').map(Number);
-      const { x: destX, y: destY } = mainAtlasGeo.getPosFromCell(dcx, dcy);
+      const { x: dX, y: dY } = mainAtlasGeo.getPosFromCell(dcx, dcy);
       replacedEntries.push(...state.atlasEntries.filter(t =>
         mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)
       ));
 
       if (!newClearedCells.includes(key)) newClearedCells.push(key);
 
+      const cellW = mainAtlasGeo.cellW;
+      const cellH = mainAtlasGeo.cellH;
+      let finalW = sourceGeo.cellW;
+      let finalH = sourceGeo.cellH;
+      let finalX = dX;
+      let finalY = dY;
+      let finalScale = 1;
+      let sourceX: number | undefined;
+      let sourceY: number | undefined;
+      let sourceW: number | undefined;
+      let sourceH: number | undefined;
+
+      if (state.resizeMode === 'fill') {
+        finalW = cellW;
+        finalH = cellH;
+        finalScale = 1;
+      } else if (state.resizeMode === 'fit') {
+        finalScale = Math.min(cellW / sourceGeo.cellW, cellH / sourceGeo.cellH);
+        finalX = dX + (cellW - sourceGeo.cellW * finalScale) / 2;
+        finalY = dY + (cellH - sourceGeo.cellH * finalScale) / 2;
+      } else if (state.resizeMode === 'crop') {
+        finalW = Math.min(sourceGeo.cellW, cellW);
+        finalH = Math.min(sourceGeo.cellH, cellH);
+        finalX = dX + Math.max(0, (cellW - sourceGeo.cellW) / 2);
+        finalY = dY + Math.max(0, (cellH - sourceGeo.cellH) / 2);
+        sourceX = Math.max(0, (sourceGeo.cellW - cellW) / 2);
+        sourceY = Math.max(0, (sourceGeo.cellH - cellH) / 2);
+        sourceW = finalW;
+        sourceH = finalH;
+      }
+
       const newEntry: TextureAsset = {
         id: generateId(), url: croppedUrl,
         name: `${sourceAsset.name}_fill_${scx}_${scy}`,
-        width: mainAtlasGeo.cellW, height: mainAtlasGeo.cellH,
-        x: destX, y: destY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1, isCrop: true,
+        width: finalW, height: finalH,
+        x: finalX, y: finalY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: finalScale, isCrop: true,
+        sourceX, sourceY, sourceW, sourceH
       };
       tileRegistry.register(newEntry);
       newEntries.push(newEntry);
@@ -376,8 +452,9 @@ export function useGridSlice(
       ),
     ]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId,
+  }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId, state.resizeMode,
       mainAtlasGeo, selectedCells, executeCommand]);
+
 
   return { performGridSlice, handleMaterialize, handleSourceCellClick, handleSourceCellRightClick };
 }

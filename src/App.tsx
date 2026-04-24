@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { TextureAsset, AppMode, GridSettings, ChannelMapping, PBRSet, Layer, AppState, VIRTUAL_MAIN_ATLAS_ID } from './types';
+import { TextureAsset, AppMode, GridSettings, ChannelMapping, PBRSet, Layer, AppState, VIRTUAL_MAIN_ATLAS_ID, ResizeMode } from './types';
 import { MainAtlas } from './components/MainAtlas';
 import { SourceAtlas } from './components/SourceAtlas';
 import { SecondaryAtlas } from './components/SecondaryAtlas';
@@ -61,6 +61,7 @@ const getInitialState = (): AppState => {
     pbrSet: initialPBRSet,
     layeringLayers: [],
     atlasSwapMode: false,
+    resizeMode: 'fill',
     atlasStatus: 'parametric',
     canvasWidth: 0,
     canvasHeight: 0,
@@ -80,6 +81,7 @@ const getInitialState = (): AppState => {
         gridSettings: { ...baseState.gridSettings, ...config.gridSettings },
         sourceGridSettings: { ...baseState.sourceGridSettings, ...config.sourceGridSettings },
         adjustSettings: { ...baseState.adjustSettings, ...config.adjustSettings },
+        resizeMode: config.resizeMode ?? 'fill',
         autoDetectEnabled: config.autoDetectEnabled ?? false,
         textureName: config.textureName ?? 'T_Texture_BC',
       };
@@ -459,12 +461,84 @@ export default function App() {
     }
 
     const isPacking = state.gridSettings.mode === 'packing';
+    let entryW = asset.width;
+    let entryH = asset.height;
+    let entryX = finalX;
+    let entryY = finalY;
+    let entryScale = asset.scale || 1;
+
+    if (!isPacking) {
+      const cellW = mainAtlas.geo.cellW;
+      const cellH = mainAtlas.geo.cellH;
+      
+      if (state.resizeMode === 'fill') {
+        entryW = cellW;
+        entryH = cellH;
+        entryScale = 1;
+      } else if (state.resizeMode === 'fit') {
+        entryScale = Math.min(cellW / asset.width, cellH / asset.height);
+        entryW = asset.width;
+        entryH = asset.height;
+        entryX = finalX + (cellW - asset.width * entryScale) / 2;
+        entryY = finalY + (cellH - asset.height * entryScale) / 2;
+      } else if (state.resizeMode === 'crop') {
+        entryW = Math.min(asset.width, cellW);
+        entryH = Math.min(asset.height, cellH);
+        entryScale = 1;
+        entryX = finalX + Math.max(0, (cellW - asset.width) / 2);
+        entryY = finalY + Math.max(0, (cellH - asset.height) / 2);
+        
+        const sourceX = Math.max(0, (asset.width - cellW) / 2);
+        const sourceY = Math.max(0, (asset.height - cellH) / 2);
+
+        const newEntry: TextureAsset = {
+          ...asset,
+          id: generateId(),
+          x: entryX, 
+          y: entryY,
+          width: entryW,
+          height: entryH,
+          scale: entryScale,
+          sourceX,
+          sourceY,
+          sourceW: entryW,
+          sourceH: entryH,
+          isCrop: true,
+        };
+        tileRegistry.register(newEntry);
+        
+        let replacedEntries: TextureAsset[] = [];
+        let cellKey: string | null = null;
+
+        const { cx, cy } = mainAtlas.geo.getCellAtPos(finalX, finalY);
+        replacedEntries = state.atlasEntries.filter(t =>
+          mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy)
+        );
+        cellKey = `${cx},${cy}`;
+
+        const nextClearedCells = (cellKey && !state.clearedCells.includes(cellKey))
+          ? [...state.clearedCells, cellKey]
+          : state.clearedCells;
+
+        executeCommand([
+          new AddTilesCommand([newEntry], replacedEntries),
+          new PatchCommand(
+            { lastSourceAssetId: null, clearedCells: nextClearedCells }, 
+            { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
+          ),
+        ]);
+        return;
+      }
+    }
+
     const newEntry: TextureAsset = {
       ...asset,
       id: generateId(),
-      x: finalX, y: finalY,
-      width: isPacking ? asset.width : mainAtlas.geo.cellW,
-      height: isPacking ? asset.height : mainAtlas.geo.cellH,
+      x: entryX, 
+      y: entryY,
+      width: entryW,
+      height: entryH,
+      scale: entryScale,
       isCrop: true,
     };
     tileRegistry.register(newEntry);
@@ -708,6 +782,8 @@ export default function App() {
               }}
               atlasSwapMode={state.atlasSwapMode}
               setAtlasSwapMode={(val) => set(prev => ({ ...prev, atlasSwapMode: val }))}
+              resizeMode={state.resizeMode}
+              onResizeModeChange={(rm) => set(prev => ({ ...prev, resizeMode: rm }))}
               autoDetectEnabled={state.autoDetectEnabled}
               onAutoDetectEnabledChange={(enabled) => set(prev => ({ ...prev, autoDetectEnabled: enabled }))}
             />
@@ -805,6 +881,7 @@ export default function App() {
                       canvasHeight={canvasHeight}
                       autoDetectEnabled={state.autoDetectEnabled}
                       onAutoDetectEnabledChange={(enabled) => set(prev => ({ ...prev, autoDetectEnabled: enabled }))}
+                      resizeMode={state.resizeMode}
                     />
                   </div>
                 </>

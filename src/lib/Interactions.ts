@@ -263,18 +263,53 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
             
             // Multi-drag: move all draggingIds by the same delta
             if (state.draggingIds.length > 1) {
-               const dCX = destCx - this.geo.getCellAtPos(state.dragOffset.originalX + this.geo.cellW / 2, state.dragOffset.originalY + this.geo.cellH / 2).cx;
-               const dCY = destCy - this.geo.getCellAtPos(state.dragOffset.originalX + this.geo.cellW / 2, state.dragOffset.originalY + this.geo.cellH / 2).cy;
+               const startCell = this.geo.getCellAtPos(state.dragOffset.originalX + this.geo.cellW / 2, state.dragOffset.originalY + this.geo.cellH / 2);
+               const dCX = destCx - startCell.cx;
+               const dCY = destCy - startCell.cy;
 
-               result.onEntriesChange = entries.map(e => {
-                  if (state.draggingIds.includes(e.id)) {
-                    const nextX = e.x + deltaX;
-                    const nextY = e.y + deltaY;
-                    const snapped = this.geo.snap(nextX + (e.width * (e.scaleX ?? e.scale) / 2), nextY + (e.height * (e.scaleY ?? e.scale) / 2));
-                    return { ...e, x: snapped.x, y: snapped.y };
-                  }
-                  return e;
+               // Calculate target cells
+               const targetKeys = (callbacks.selectedCells || []).map(key => {
+                 const [cx, cy] = key.split(',').map(Number);
+                 return `${cx + dCX},${cy + dCY}`;
                });
+
+               // Identify entries to be swapped or removed
+               const hitTargetEntries = entries.filter(e => {
+                 if (state.draggingIds.includes(e.id)) return false;
+                 const ec = this.geo.getCellAtPos(e.x + e.width * (e.scaleX ?? e.scale) / 2, e.y + e.height * (e.scaleY ?? e.scale) / 2);
+                 return targetKeys.includes(`${ec.cx},${ec.cy}`);
+               });
+
+               if (callbacks.atlasSwapMode) {
+                 result.onEntriesChange = entries.map(e => {
+                    if (state.draggingIds.includes(e.id)) {
+                      const nextX = e.x + deltaX;
+                      const nextY = e.y + deltaY;
+                      const snapped = this.geo.snap(nextX + (e.width * (e.scaleX ?? e.scale) / 2), nextY + (e.height * (e.scaleY ?? e.scale) / 2));
+                      return { ...e, x: snapped.x, y: snapped.y };
+                    }
+                    if (hitTargetEntries.some(hit => hit.id === e.id)) {
+                      const currentCell = this.geo.getCellAtPos(e.x + e.width * (e.scaleX ?? e.scale) / 2, e.y + e.height * (e.scaleY ?? e.scale) / 2);
+                      const targetCell = { cx: currentCell.cx - dCX, cy: currentCell.cy - dCY };
+                      const pos = this.geo.getPosFromCell(targetCell.cx, targetCell.cy);
+                      return { ...e, x: pos.x, y: pos.y };
+                    }
+                    return e;
+                 });
+               } else {
+                 const hitIds = hitTargetEntries.map(h => h.id);
+                 result.onEntriesChange = entries
+                   .filter(e => !hitIds.includes(e.id))
+                   .map(e => {
+                      if (state.draggingIds.includes(e.id)) {
+                        const nextX = e.x + deltaX;
+                        const nextY = e.y + deltaY;
+                        const snapped = this.geo.snap(nextX + (e.width * (e.scaleX ?? e.scale) / 2), nextY + (e.height * (e.scaleY ?? e.scale) / 2));
+                        return { ...e, x: snapped.x, y: snapped.y };
+                      }
+                      return e;
+                   });
+               }
 
                if (callbacks.selectedCells) {
                  result.onSelectedCellsChange = callbacks.selectedCells.map(key => {

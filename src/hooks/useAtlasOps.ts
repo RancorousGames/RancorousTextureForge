@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { AppState, TextureAsset } from '../types';
+import { AppState, TextureAsset, initialPackerMapping, initialPBRSet } from '../types';
 import { GridGeometry } from '../lib/GridGeometry';
 import { hexToRgb, findIslands } from '../lib/utils';
 import { renderTilesToCanvas, loadImage, generateId } from '../lib/canvas';
@@ -303,6 +303,12 @@ export function useAtlasOps(
       atlasEntries: [], atlasSwapMode: false,
       atlasStatus: 'parametric',
       clearedCells: [],
+      lastSourceAssetId: null,
+      debugIslands: [],
+      modifiedAssets: [],
+      packerMapping: initialPackerMapping,
+      pbrSet: initialPBRSet,
+      layeringLayers: [],
     }));
     onAfterNewAtlas?.();
   }, [set, onAfterNewAtlas]);

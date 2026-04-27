@@ -295,7 +295,50 @@ export function detectSettingsFromImage(
     console.log(`[AutoDetect] Keeping calculated size: ${finalSize}`);
   }
 
-  // New Simplified Gap Detection
+  // --- NEW Coordinate Clustering Logic ---
+  const clusterCoords = (coords: number[], epsilon: number) => {
+    if (coords.length === 0) return [];
+    const sorted = [...coords].sort((a, b) => a - b);
+    const clusters: number[][] = [[sorted[0]]];
+    for (let i = 1; i < sorted.length; i++) {
+      const val = sorted[i];
+      const lastCluster = clusters[clusters.length - 1];
+      if (val - (lastCluster.reduce((a, b) => a + b, 0) / lastCluster.length) < epsilon) {
+        lastCluster.push(val);
+      } else {
+        clusters.push([val]);
+      }
+    }
+    return clusters.map(c => c.reduce((a, b) => a + b, 0) / c.length);
+  };
+
+  const centersX = islands.map(i => i.x + i.w / 2);
+  const centersY = islands.map(i => i.y + i.h / 2);
+  const clusterEpsilon = finalSize * 0.4; // 40% of cell size as clustering threshold
+
+  const xClusters = clusterCoords(centersX, clusterEpsilon);
+  const yClusters = clusterCoords(centersY, clusterEpsilon);
+
+  const numX_cluster = xClusters.length;
+  const numY_cluster = yClusters.length;
+
+  const getMedianStep = (clusters: number[]) => {
+    if (clusters.length < 2) return 0;
+    const steps = [];
+    for (let i = 1; i < clusters.length; i++) {
+      steps.push(clusters[i] - clusters[i - 1]);
+    }
+    return getMedian(steps);
+  };
+
+  const stepX = getMedianStep(xClusters);
+  const stepY = getMedianStep(yClusters);
+  const medianStep = (stepX > 0 && stepY > 0) ? (stepX + stepY) / 2 : (stepX || stepY || 0);
+  
+  const clusterPadding = medianStep > 0 ? Math.max(0, (medianStep - finalSize) / 2) : 0;
+  console.log(`[AutoDetect] Clustering: Found ${numX_cluster} columns, ${numY_cluster} rows. Median Step: ${medianStep.toFixed(2)}, Padding: ${clusterPadding.toFixed(2)}`);
+
+  // --- Legacy Bounding Box Math (Keep for logging as requested) ---
   const minX = Math.min(...islands.map(i => i.x));
   const minY = Math.min(...islands.map(i => i.y));
   const maxX = Math.max(...islands.map(i => i.x + i.w));
@@ -303,29 +346,23 @@ export function detectSettingsFromImage(
   const bbW = maxX - minX;
   const bbH = maxY - minY;
 
-  const numX = Math.max(1, Math.floor(bbW / (finalSize * 1.01)));
-  const numY = Math.max(1, Math.floor(bbH / (finalSize * 1.01)));
+  const numX_legacy = Math.max(1, Math.floor(bbW / (finalSize * 1.01)));
+  const numY_legacy = Math.max(1, Math.floor(bbH / (finalSize * 1.01)));
 
   console.log(`[AutoDetect] Bounding Box: min(${minX},${minY}) max(${maxX},${maxY}) size(${bbW}x${bbH})`);
-  console.log(`[AutoDetect] Estimated Grid: ${numX} columns, ${numY} rows based on size ${finalSize}`);
+  console.log(`[AutoDetect] Legacy Estimation: ${numX_legacy} columns, ${numY_legacy} rows`);
 
-  const totalGapX = bbW - (numX * finalSize);
-  const totalGapY = bbH - (numY * finalSize);
+  const totalGapX = bbW - (numX_legacy * finalSize);
+  const totalGapY = bbH - (numY_legacy * finalSize);
   
-  const paddingX = numX > 1 ? (totalGapX / (numX - 1)) / 2 : 0;
-  const paddingY = numY > 1 ? (totalGapY / (numY - 1)) / 2 : 0;
+  const paddingX_legacy = numX_legacy > 1 ? (totalGapX / (numX_legacy - 1)) / 2 : 0;
+  const paddingY_legacy = numY_legacy > 1 ? (totalGapY / (numY_legacy - 1)) / 2 : 0;
 
-  console.log(`[AutoDetect] Padding Math X: (${bbW} - (${numX} * ${finalSize})) / (${numX}-1) / 2 = ${paddingX.toFixed(3)}`);
-  console.log(`[AutoDetect] Padding Math Y: (${bbH} - (${numY} * ${finalSize})) / (${numY}-1) / 2 = ${paddingY.toFixed(3)}`);
+  console.log(`[AutoDetect] Legacy Padding X: ${paddingX_legacy.toFixed(3)}, Y: ${paddingY_legacy.toFixed(3)}`);
 
-  const targetPadding = finalSize * 0.03;
-  const distX = Math.abs(paddingX - targetPadding);
-  const distY = Math.abs(paddingY - targetPadding);
-  const rawPadding = distX <= distY ? paddingX : paddingY;
-  
-  console.log(`[AutoDetect] Target padding (3% of cell): ${targetPadding.toFixed(3)}`);
-  console.log(`[AutoDetect] Best fit padding: ${rawPadding.toFixed(3)} (picked ${distX <= distY ? 'X' : 'Y'} axis)`);
-
+  // --- Final Decision ---
+  // We prioritize the clustering results for numX/numY and padding
+  const rawPadding = medianStep > 0 ? clusterPadding : paddingX_legacy;
   let detectedPadding = Math.round(rawPadding);
   
   // Snap padding to P2 if within 1px of the RAW float value

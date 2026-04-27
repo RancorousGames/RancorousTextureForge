@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { TextureAsset, AppMode, GridSettings, ChannelMapping, PBRSet, Layer, AppState, VIRTUAL_MAIN_ATLAS_ID, ResizeMode } from './types';
+import { TextureAsset, AppMode, GridSettings, ChannelMapping, PBRSet, Layer, AppState, VIRTUAL_MAIN_ATLAS_ID, ResizeMode, initialPackerMapping, initialPBRSet } from './types';
 import { MainAtlas } from './components/MainAtlas';
 import { SourceAtlas } from './components/SourceAtlas';
 import { SecondaryAtlas } from './components/SecondaryAtlas';
@@ -19,19 +19,6 @@ import { AddTilesCommand, PatchCommand, SetMainTilesCommand, RemoveTilesCommand 
 import potpack from 'potpack';
 import { tileRegistry } from './lib/TileRegistry';
 import { generateId, renderTilesToCanvas } from './lib/canvas';
-
-const initialPackerMapping: ChannelMapping = {
-  r: { asset: null, sourceChannel: 'r' },
-  g: { asset: null, sourceChannel: 'r' },
-  b: { asset: null, sourceChannel: 'r' },
-  a: { asset: null, sourceChannel: 'r' },
-};
-
-const initialPBRSet: PBRSet = {
-  baseColor: { asset: null, active: true },
-  normal: { asset: null, active: true },
-  orm: { asset: null, active: true },
-};
 
 const FORGE_CONFIG_KEY = 'forge_config_v1';
 
@@ -62,6 +49,7 @@ const getInitialState = (): AppState => {
     layeringLayers: [],
     atlasSwapMode: false,
     resizeMode: 'fill',
+    addMode: 'replace-bg',
     atlasStatus: 'parametric',
     canvasWidth: 0,
     canvasHeight: 0,
@@ -646,8 +634,18 @@ export default function App() {
   }, [isResizing]);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); }
+   const handleKeyDown = (e: KeyboardEvent) => {
+     if (e.altKey && e.key.toLowerCase() === 'd') {
+       e.preventDefault();
+       set(prev => ({
+         ...prev,
+         debugIslandDetection: !prev.debugIslandDetection,
+         debugIslands: !prev.debugIslandDetection ? prev.debugIslands : []
+       }));
+       return;
+     }
+     if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); }
+
       else if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo(); }
       else if (e.key === 'Escape') {
         setSelectedCells([]);
@@ -788,6 +786,8 @@ export default function App() {
               setAtlasSwapMode={(val) => set(prev => ({ ...prev, atlasSwapMode: val }))}
               resizeMode={state.resizeMode}
               onResizeModeChange={(rm) => set(prev => ({ ...prev, resizeMode: rm }))}
+              addMode={state.addMode}
+              onAddModeChange={(am) => set(prev => ({ ...prev, addMode: am }))}
               autoDetectEnabled={state.autoDetectEnabled}
               onAutoDetectEnabledChange={(val) => set(prev => ({ ...prev, autoDetectEnabled: val }))}
               debugIslandDetection={state.debugIslandDetection}
@@ -811,7 +811,7 @@ export default function App() {
                     atlasSwapMode={state.atlasSwapMode}
                     canvasWidth={canvasWidth}
                     canvasHeight={canvasHeight}
-                    tooltip="L-Click: Select | R-Drag: Move | R-Click: Clear | Ctrl+Z/Y: Undo/Redo"
+                    tooltip="MMB: Pan | L-Click: Select | R-Drag: Move | R-Click: Clear | Ctrl+Z/Y: Undo/Redo"
                     sourceAsset={[...state.libraryAssets, ...state.modifiedAssets].find(t => t.id === state.lastSourceAssetId)}
                     clearedCells={state.clearedCells}
                     atlasStatus={state.atlasStatus}

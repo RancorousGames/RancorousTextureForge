@@ -1,5 +1,18 @@
 export const VIRTUAL_MAIN_ATLAS_ID = 'virtual-main-atlas';
 
+export const initialPackerMapping: ChannelMapping = {
+  r: { asset: null, sourceChannel: 'r' },
+  g: { asset: null, sourceChannel: 'r' },
+  b: { asset: null, sourceChannel: 'r' },
+  a: { asset: null, sourceChannel: 'r' },
+};
+
+export const initialPBRSet: PBRSet = {
+  baseColor: { asset: null, active: true },
+  normal: { asset: null, active: true },
+  orm: { asset: null, active: true },
+};
+
 export interface TextureAsset {
   id: string;
   file?: File;
@@ -25,6 +38,7 @@ export interface TextureAsset {
 export type AppMode = 'atlas' | 'adjust' | 'channel-pack' | 'layering';
 export type GridMode = 'fixed' | 'packing';
 export type ResizeMode = 'fill' | 'fit' | 'crop';
+export type AddMode = 'as-is' | 'replace-bg';
 
 export interface GridSettings {
   mode: GridMode;
@@ -79,6 +93,7 @@ export interface AppState {
   layeringLayers: Layer[];
   atlasSwapMode: boolean;
   resizeMode: ResizeMode;
+  addMode: AddMode;
   atlasStatus: AtlasStatus;
   canvasWidth: number;
   canvasHeight: number;

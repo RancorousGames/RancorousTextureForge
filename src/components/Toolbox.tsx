@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { DeferredNumberInput } from './DeferredNumberInput';
-import { TextureAsset, GridSettings, GridMode, ResizeMode } from '../types';
+import { TextureAsset, GridSettings, GridMode, ResizeMode, AddMode } from '../types';
 import { cn } from '../lib/utils';
-import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus, Box, Maximize2 } from 'lucide-react';
+import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus, Box, Maximize2, MousePointer2 } from 'lucide-react';
 
 interface ToolboxProps {
   selectedAsset: TextureAsset | null;
@@ -20,6 +20,8 @@ interface ToolboxProps {
   setAtlasSwapMode: (val: boolean) => void;
   resizeMode: ResizeMode;
   onResizeModeChange: (mode: ResizeMode) => void;
+  addMode: AddMode;
+  onAddModeChange: (mode: AddMode) => void;
   autoDetectEnabled: boolean;
   onAutoDetectEnabledChange: (enabled: boolean) => void;
   debugIslandDetection: boolean;
@@ -42,6 +44,8 @@ interface ToolboxProps {
     setAtlasSwapMode,
     resizeMode,
     onResizeModeChange,
+    addMode,
+    onAddModeChange,
     autoDetectEnabled,
     onAutoDetectEnabledChange,
     debugIslandDetection,
@@ -84,16 +88,6 @@ interface ToolboxProps {
           </button>
         </div>
       </div>
-      <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-950/50 flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="debugIslands"
-          checked={debugIslandDetection}
-          onChange={(e) => onDebugIslandDetectionChange(e.target.checked)}
-          className="rounded border-zinc-700 bg-zinc-950 text-blue-500"
-        />
-        <label htmlFor="debugIslands" className="text-[10px] text-zinc-400 uppercase font-semibold">Debug Islands</label>
-      </div>
       <div className="p-4 space-y-4 border-b border-zinc-800 overflow-y-auto flex-1">
         <div className="space-y-1">
           <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="Choose the layout logic for the atlas">Mode</label>
@@ -105,6 +99,19 @@ interface ToolboxProps {
           >
             <option value="fixed">Grid</option>
             <option value="packing">Atlas Packing</option>
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="Choose how tiles are added to the main atlas">Add Mode</label>
+          <select
+            value={addMode}
+            onChange={(e) => onAddModeChange(e.target.value as AddMode)}
+            className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-200"
+            title="Choose how tiles are added to the main atlas"
+          >
+            <option value="as-is">As is</option>
+            <option value="replace-bg">Replace Background</option>
           </select>
         </div>
 

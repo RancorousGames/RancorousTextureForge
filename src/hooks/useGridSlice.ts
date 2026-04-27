@@ -207,10 +207,46 @@ export function useGridSlice(
 
     const img = await loadImage(sourceAsset.url);
 
+    // Prepare background replacement if enabled
+    let keyColor = { r: 0, g: 0, b: 0, a: 0 };
+    let tolerance = state.gridSettings.clearTolerance;
+    const targetBg = hexToRgb(state.gridSettings.clearColor);
+    
+    if (state.addMode === 'replace-bg') {
+      const checkCanvas = document.createElement('canvas');
+      checkCanvas.width = img.naturalWidth; checkCanvas.height = img.naturalHeight;
+      const checkCtx = checkCanvas.getContext('2d')!;
+      checkCtx.drawImage(img, 0, 0);
+      const fullData = checkCtx.getImageData(0, 0, checkCanvas.width, checkCanvas.height);
+      keyColor = detectBackgroundColor(fullData, tolerance);
+    }
+
+    const isMatch = (r: number, g: number, b: number, a: number) => {
+      if (a < 5 && keyColor.a < 5) return true;
+      return Math.abs(r - keyColor.r) <= tolerance &&
+             Math.abs(g - keyColor.g) <= tolerance &&
+             Math.abs(b - keyColor.b) <= tolerance;
+    };
+
     const createCrop = (cx: number, cy: number): string => {
       ctx.clearRect(0, 0, sourceGeo.cellW, sourceGeo.cellH);
       const { x: sx, y: sy } = sourceGeo.getPosFromCell(cx, cy);
       ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
+      
+      if (state.addMode === 'replace-bg') {
+        const imageData = ctx.getImageData(0, 0, sourceGeo.cellW, sourceGeo.cellH);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          if (isMatch(data[i], data[i+1], data[i+2], data[i+3])) {
+            data[i] = targetBg.r;
+            data[i+1] = targetBg.g;
+            data[i+2] = targetBg.b;
+            data[i+3] = 255;
+          }
+        }
+        ctx.putImageData(imageData, 0, 0);
+      }
+      
       return canvas.toDataURL();
     };
 
@@ -347,12 +383,13 @@ export function useGridSlice(
         ? [...state.clearedCells, cellKey]
         : state.clearedCells;
 
-      const { finalW, finalH, finalX, finalY, finalScale, sourceX, sourceY, sourceW, sourceH } = calculatePlacement(destX, destY, sourceGeo.cellW, sourceGeo.cellH);
+      const { finalW, finalH, finalX, finalY, finalScale, sourceX, sourceY, sourceW, sourceH } = calculatePlacement(dX, dY, sourceGeo.cellW, sourceGeo.cellH);
 
       const newEntry: TextureAsset = {
         id: generateId(), url: createCrop(scx, scy),
-        name: `${sourceAsset.name}_crop_${scx}_${scy}`,
+        name: `${sourceAsset.name}_fill_${scx}_${scy}`,
         width: finalW, height: finalH,
+
         x: finalX, y: finalY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: finalScale, isCrop: true,
         sourceX, sourceY, sourceW, sourceH
       };
@@ -386,9 +423,49 @@ export function useGridSlice(
     if (!ctx) return;
 
     const img = await loadImage(sourceAsset.url);
-    const { x: sx, y: sy } = sourceGeo.getPosFromCell(scx, scy);
-    ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
-    const croppedUrl = canvas.toDataURL();
+
+    // Prepare background replacement if enabled
+    let keyColor = { r: 0, g: 0, b: 0, a: 0 };
+    let tolerance = state.gridSettings.clearTolerance;
+    const targetBg = hexToRgb(state.gridSettings.clearColor);
+
+    if (state.addMode === 'replace-bg') {
+      const checkCanvas = document.createElement('canvas');
+      checkCanvas.width = img.naturalWidth; checkCanvas.height = img.naturalHeight;
+      const checkCtx = checkCanvas.getContext('2d')!;
+      checkCtx.drawImage(img, 0, 0);
+      const fullData = checkCtx.getImageData(0, 0, checkCanvas.width, checkCanvas.height);
+      keyColor = detectBackgroundColor(fullData, tolerance);
+    }
+
+    const isMatch = (r: number, g: number, b: number, a: number) => {
+      if (a < 5 && keyColor.a < 5) return true;
+      return Math.abs(r - keyColor.r) <= tolerance &&
+             Math.abs(g - keyColor.g) <= tolerance &&
+             Math.abs(b - keyColor.b) <= tolerance;
+    };
+
+    const createCrop = (cx: number, cy: number): string => {
+      ctx.clearRect(0, 0, sourceGeo.cellW, sourceGeo.cellH);
+      const { x: sx, y: sy } = sourceGeo.getPosFromCell(cx, cy);
+      ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
+      
+      if (state.addMode === 'replace-bg') {
+        const imageData = ctx.getImageData(0, 0, sourceGeo.cellW, sourceGeo.cellH);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          if (isMatch(data[i], data[i+1], data[i+2], data[i+3])) {
+            data[i] = targetBg.r;
+            data[i+1] = targetBg.g;
+            data[i+2] = targetBg.b;
+            data[i+3] = 255;
+          }
+        }
+        ctx.putImageData(imageData, 0, 0);
+      }
+      
+      return canvas.toDataURL();
+    };
 
     const newEntries: TextureAsset[] = [];
     const replacedEntries: TextureAsset[] = [];

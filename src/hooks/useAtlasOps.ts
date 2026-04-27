@@ -229,6 +229,61 @@ export function useAtlasOps(
     link.click();
   }, [state.atlasEntries, state.gridSettings.clearColor, state.textureName, canvasWidth, canvasHeight]);
 
+  const exportGridZip = useCallback(async () => {
+    if (state.gridSettings.mode !== 'fixed') return;
+
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+    
+    const geo = mainAtlasGeo;
+    const sourceAsset = [...state.libraryAssets, ...state.modifiedAssets].find(t => t.id === state.lastSourceAssetId);
+
+    const canvas = await renderTilesToCanvas(
+      state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings.clearColor,
+      {
+        sourceAsset,
+        clearedCells: state.clearedCells,
+        cellW: geo.cellW,
+        cellH: geo.cellH,
+        stepX: geo.stepX,
+        stepY: geo.stepY
+      }
+    );
+    
+    const cellW = geo.cellW;
+    const cellH = geo.cellH;
+    
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = cellW;
+    tempCanvas.height = cellH;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    if (!tempCtx) return;
+
+    for (let row = 0; row < geo.rows; row++) {
+      for (let col = 0; col < geo.cols; col++) {
+        const pos = geo.getPosFromCell(col, row);
+        
+        tempCtx.clearRect(0, 0, cellW, cellH);
+        tempCtx.drawImage(
+          canvas,
+          pos.x, pos.y, cellW, cellH,
+          0, 0, cellW, cellH
+        );
+        
+        const dataUrl = tempCanvas.toDataURL('image/png');
+        const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
+        zip.file(`${state.textureName || 'cell'}_${row}_${col}.png`, base64Data, {base64: true});
+      }
+    }
+    
+    const content = await zip.generateAsync({type: 'blob'});
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(content);
+    link.download = `${state.textureName || 'T_Texture'}_cells.zip`;
+    link.click();
+  }, [state.gridSettings, state.atlasEntries, state.textureName, canvasWidth, canvasHeight, mainAtlasGeo, state.clearedCells, state.libraryAssets, state.modifiedAssets, state.lastSourceAssetId]);
+
   const createNewAtlas = useCallback((width: number, height?: number) => {
     let finalW = width, finalH = height ?? width;
 
@@ -252,5 +307,5 @@ export function useAtlasOps(
     onAfterNewAtlas?.();
   }, [set, onAfterNewAtlas]);
 
-  return { packAtlas, fixGrid, packElements, exportAtlas, createNewAtlas };
+  return { packAtlas, fixGrid, packElements, exportAtlas, exportGridZip, createNewAtlas };
 }

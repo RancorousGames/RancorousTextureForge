@@ -51,9 +51,16 @@ export async function renderEntriesToCanvas(
       if (tCtx) {
         tCtx.drawImage(srcImg, 0, 0, width, height);
         tCtx.globalCompositeOperation = 'destination-out';
+        const paddingX = (opts.stepX - (opts.cellW || opts.stepX)) / 2;
+        const paddingY = (opts.stepY - (opts.cellH || opts.stepY)) / 2;
         opts.clearedCells.forEach(key => {
           const [cx, cy] = key.split(',').map(Number);
-          tCtx.fillRect(cx * opts.stepX!, cy * opts.stepY!, opts.cellW || opts.stepX!, opts.cellH || opts.stepY!);
+          tCtx.fillRect(
+            cx * opts.stepX! + paddingX, 
+            cy * opts.stepY! + paddingY, 
+            opts.cellW || opts.stepX!, 
+            opts.cellH || opts.stepY!
+          );
         });
         ctx.drawImage(tempCanvas, 0, 0);
       }

@@ -13,6 +13,7 @@ interface ToolboxProps {
   onFixGrid: () => void;
   onAutoDetect: () => void;
   onExport: () => void;
+  onExportZip?: () => void;
   gridSettings: GridSettings;
   onGridSettingsChange: (settings: GridSettings) => void;
   atlasSwapMode: boolean;
@@ -24,23 +25,25 @@ interface ToolboxProps {
   }
 
   export function Toolbox({
-  selectedAsset,
-  updateAsset,
-  onPack,
-  onPackElements,
-  onNewAtlas,
-  onFixGrid,
-  onAutoDetect,
-  onExport,
-  gridSettings,
-  onGridSettingsChange,
-  atlasSwapMode,
-  setAtlasSwapMode,
-  resizeMode,
-  onResizeModeChange,
-  autoDetectEnabled,
-  onAutoDetectEnabledChange
+    selectedAsset,
+    updateAsset,
+    onPack,
+    onPackElements,
+    onNewAtlas,
+    onFixGrid,
+    onAutoDetect,
+    onExport,
+    onExportZip,
+    gridSettings,
+    onGridSettingsChange,
+    atlasSwapMode,
+    setAtlasSwapMode,
+    resizeMode,
+    onResizeModeChange,
+    autoDetectEnabled,
+    onAutoDetectEnabledChange
   }: ToolboxProps) {
+
   const [localClearColor, setLocalClearColor] = useState(gridSettings.clearColor);
 
   useEffect(() => {
@@ -303,6 +306,16 @@ interface ToolboxProps {
           <Download className="w-4 h-4" />
           Export PNG
         </button>
+        {gridSettings.mode === 'fixed' && onExportZip && (
+          <button
+            onClick={onExportZip}
+            className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-2 px-4 rounded text-sm font-medium transition-colors border border-zinc-700"
+            title="Export each grid cell as a separate image in a ZIP file"
+          >
+            <Package className="w-4 h-4" />
+            Export Grid ZIP
+          </button>
+        )}
       </div>
     </div>
   );

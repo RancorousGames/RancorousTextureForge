@@ -60,6 +60,7 @@ export function AtlasCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   
   const geo = useMemo(() => 
     new GridGeometry(gridSettings, canvasWidth, canvasHeight),
@@ -73,21 +74,32 @@ export function AtlasCanvas({
     isSelecting: false,
     selectionStart: null,
     draggingId: null,
+    draggingIds: [],
     draggingPos: null,
     dragOffset: { x: 0, y: 0, originalX: 0, originalY: 0 },
-    hoveredCell: null
+    hoveredCell: null,
+    isPanning: false,
+    panStart: null
   });
 
   const getPointerPos = (e: React.PointerEvent | React.MouseEvent | PointerEvent) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return null;
     
-    // Use the actual rendered ratio to account for subpixel offsets and browser scaling
-    const x = (e.clientX - rect.left) * (canvasWidth / rect.width);
-    const y = (e.clientY - rect.top) * (canvasHeight / rect.height);
+    // rect already includes the transform scale and panOffset (if they shift the rect)
+    // but the most reliable way is to go from screen -> viewport-relative -> unpanned -> unzoomed
+    const viewRect = viewportRef.current?.getBoundingClientRect();
+    if (!viewRect) return null;
+
+    const screenX = e.clientX - viewRect.left;
+    const screenY = e.clientY - viewRect.top;
+
+    // Remove pan, then divide by zoom
+    const x = (screenX - panOffset.x) / zoom;
+    const y = (screenY - panOffset.y) / zoom;
     
     if (uniqueId === 'source' && gridSettings.mode === 'packing' && (e.type === 'pointerdown' || e.type === 'mousedown')) {
-      console.log(`[AtlasCanvas:${uniqueId}] Click: screen(${e.clientX},${e.clientY}) -> rect(${rect.left.toFixed(1)},${rect.top.toFixed(1)}) -> canvas(${x.toFixed(1)},${y.toFixed(1)})`);
+      console.log(`[AtlasCanvas:${uniqueId}] Click: screen(${e.clientX},${e.clientY}) -> canvas(${x.toFixed(1)},${y.toFixed(1)})`);
     }
 
     return { x, y };
@@ -126,7 +138,7 @@ export function AtlasCanvas({
     const pos = getPointerPos(e);
     if (!pos) return;
 
-    const result = strategy.onPointerDown(e, pos, entries, { onEntriesChange, onMaterialize });
+    const result = strategy.onPointerDown(e, pos, entries, { onEntriesChange, onMaterialize, selectedCells });
     setInteractionState(prev => ({ ...prev, ...result.state }));
     
     if (e.target instanceof HTMLElement) {
@@ -140,6 +152,13 @@ export function AtlasCanvas({
     
     const result = strategy.onPointerMove(e, pos, interactionState, entries, { onCustomSelectionChange, onSelectedCellsChange, selectedCells });
     setInteractionState(prev => ({ ...prev, ...result.state }));
+
+    if (result.onPan) {
+      setPanOffset(prev => ({
+        x: prev.x + result.onPan!.dx,
+        y: prev.y + result.onPan!.dy
+      }));
+    }
 
     if (result.onCustomSelectionChange && onCustomSelectionChange) {
       onCustomSelectionChange(result.onCustomSelectionChange.rect, result.onCustomSelectionChange.screenPos);
@@ -241,7 +260,7 @@ export function AtlasCanvas({
 
   return (
     <div ref={viewportRef} className={cn("flex-1 h-full bg-zinc-950 relative overflow-hidden checkerboard", className)} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setInteractionState(prev => ({ ...prev, hoveredCell: null }))} onContextMenu={e => e.preventDefault()} onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
-      <div ref={containerRef} className="relative origin-top-left shadow-2xl transition-transform duration-75 ease-out" style={{ width: canvasWidth, height: canvasHeight, transform: `scale(${zoom})` }}>
+      <div ref={containerRef} className="relative origin-top-left shadow-2xl transition-transform duration-75 ease-out" style={{ width: canvasWidth, height: canvasHeight, transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})` }}>
         <div className="absolute inset-0 pointer-events-none z-0" style={{ backgroundColor: gridSettings.clearColor }} />
         
         {/* Background Source Image with Holes */}
@@ -276,9 +295,20 @@ export function AtlasCanvas({
         {entries.map(entry => {
           const sX = entry.scaleX ?? entry.scale;
           const sY = entry.scaleY ?? entry.scale;
-          const isDragging = interactionState.draggingId === entry.id;
-          const x = isDragging && interactionState.draggingPos ? interactionState.draggingPos.x : entry.x;
-          const y = isDragging && interactionState.draggingPos ? interactionState.draggingPos.y : entry.y;
+          
+          const isPrimaryDragging = interactionState.draggingId === entry.id;
+          const isPartOfMultiDrag = interactionState.draggingIds.includes(entry.id);
+          const isDragging = isPrimaryDragging || isPartOfMultiDrag;
+
+          let x = entry.x;
+          let y = entry.y;
+
+          if (isDragging && interactionState.draggingPos) {
+             const deltaX = interactionState.draggingPos.x - interactionState.dragOffset.originalX;
+             const deltaY = interactionState.draggingPos.y - interactionState.dragOffset.originalY;
+             x = entry.x + deltaX;
+             y = entry.y + deltaY;
+          }
           
           return (
             <div 
@@ -334,7 +364,7 @@ export function AtlasCanvas({
         )}
       </div>
       <div className="absolute bottom-4 left-4 bg-black/60 px-2 py-1 rounded text-[10px] text-zinc-400 font-mono z-50">
-        {tooltip || `Zoom: ${Math.round(zoom * 100)}% (Ctrl+Scroll) | L-Click: Select | R-Drag: Move | R-Click: Clear`}
+        {tooltip || `Zoom: ${Math.round(zoom * 100)}% (Ctrl+Scroll) | Pan: MMB | L-Click: Select | R-Drag: Move | R-Click: Clear`}
       </div>
     </div>
   );

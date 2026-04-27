@@ -5,9 +5,12 @@ export interface InteractionState {
   isSelecting: boolean;
   selectionStart: { x: number, y: number } | null;
   draggingId: string | null;
+  draggingIds: string[];
   draggingPos: { x: number, y: number } | null;
   dragOffset: { x: number, y: number, originalX: number, originalY: number };
   hoveredCell: { cx: number, cy: number } | null;
+  isPanning: boolean;
+  panStart: { x: number, y: number } | null;
 }
 
 export interface InteractionResult {
@@ -19,6 +22,7 @@ export interface InteractionResult {
   onCellClick?: { x: number, y: number, w: number, h: number, cx: number, cy: number };
   onCellRightClick?: { x: number, y: number, w: number, h: number, cx: number, cy: number };
   onMaterialize?: { cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number } };
+  onPan?: { dx: number, dy: number };
 }
 
 export interface InteractionCallbacks {
@@ -54,6 +58,10 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
     this.dragStartMouse = { x: e.clientX, y: e.clientY };
     this.dragStartCanvas = { x: pos.x, y: pos.y };
 
+    if (e.button === 1) { // Middle Mouse
+      return { state: { isPanning: true, panStart: { x: e.clientX, y: e.clientY } } };
+    }
+
     if (e.button === 0) { // Left Click
       return { state: { isSelecting: true, selectionStart: { x: pos.x, y: pos.y } } };
     }
@@ -70,15 +78,30 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
 
       if (entry) {
         console.log(`[Interaction] Drag Start (Real Entry): id=${entry.id}, pos=(${entry.x},${entry.y}), cell=(${cx},${cy})`);
+
+        let draggingIds = [entry.id];
+        const isEntryInSelectedCell = callbacks.selectedCells?.includes(`${cx},${cy}`);
+        if (isEntryInSelectedCell && callbacks.selectedCells && callbacks.selectedCells.length > 1) {
+          // Identify all entries that are in any of the selected cells
+          const selectedEntries = entries.filter(e => {
+            const ec = this.geo.getCellAtPos(e.x + e.width * (e.scaleX ?? e.scale) / 2, e.y + e.height * (e.scaleY ?? e.scale) / 2);
+            return callbacks.selectedCells!.includes(`${ec.cx},${ec.cy}`);
+          });
+          draggingIds = selectedEntries.map(e => e.id);
+          if (!draggingIds.includes(entry.id)) draggingIds.push(entry.id);
+        }
+
         if (callbacks.onEntriesChange || callbacks.onMaterialize) {
           return {
             state: {
               draggingId: entry.id,
+              draggingIds,
               dragOffset: { x: pos.x - entry.x, y: pos.y - entry.y, originalX: entry.x, originalY: entry.y }
             }
           };
         }
-      } else if (this.geo.settings.mode !== 'packing') {
+      }
+ else if (this.geo.settings.mode !== 'packing') {
         console.log(`[Interaction] Drag Start (Virtual Cell): cell=(${cx},${cy})`);
         if (callbacks.onMaterialize) {
           const cellPos = this.geo.getPosFromCell(cx, cy);
@@ -102,6 +125,14 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
     if (!this.dragStartCanvas || !this.dragStartMouse) return result;
 
     const dist = Math.sqrt(Math.pow(e.clientX - this.dragStartMouse.x, 2) + Math.pow(e.clientY - this.dragStartMouse.y, 2));
+
+    if (state.isPanning) {
+      const dx = e.clientX - state.panStart!.x;
+      const dy = e.clientY - state.panStart!.y;
+      result.onPan = { dx, dy };
+      result.state.panStart = { x: e.clientX, y: e.clientY };
+      return result;
+    }
 
     if (state.draggingId && dist > this.MOVE_THRESHOLD) {
       let nx = pos.x - state.dragOffset.x;
@@ -139,7 +170,7 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
 
   onPointerUp(e: React.PointerEvent, pos: { x: number, y: number }, state: InteractionState, entries: TextureAsset[], callbacks: InteractionCallbacksExt): InteractionResult {
     const dist = this.dragStartMouse ? Math.sqrt(Math.pow(e.clientX - this.dragStartMouse.x, 2) + Math.pow(e.clientY - this.dragStartMouse.y, 2)) : 0;
-    const result: InteractionResult = { state: { isSelecting: false, selectionStart: null, draggingId: null, draggingPos: null } };
+    const result: InteractionResult = { state: { isSelecting: false, selectionStart: null, draggingId: null, draggingIds: [], draggingPos: null, isPanning: false, panStart: null } };
 
     const { cx, cy } = this.geo.getCellAtPos(pos.x, pos.y);
 
@@ -224,30 +255,68 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
             };
           }
         } else if (callbacks.onEntriesChange) {
+          const deltaX = nx - state.dragOffset.originalX;
+          const deltaY = ny - state.dragOffset.originalY;
+
           if (this.geo.settings.mode !== 'packing') {
             const { cx: destCx, cy: destCy } = this.geo.getCellAtPos(nx + this.geo.cellW / 2, ny + this.geo.cellH / 2);
-            const hitEntry = entries.find(e =>
-              e.id !== state.draggingId &&
-              this.geo.isTileInCell(e.x, e.y, e.width, e.height, e.scale, destCx, destCy)
-            );
+            
+            // Multi-drag: move all draggingIds by the same delta
+            if (state.draggingIds.length > 1) {
+               const dCX = destCx - this.geo.getCellAtPos(state.dragOffset.originalX + this.geo.cellW / 2, state.dragOffset.originalY + this.geo.cellH / 2).cx;
+               const dCY = destCy - this.geo.getCellAtPos(state.dragOffset.originalX + this.geo.cellW / 2, state.dragOffset.originalY + this.geo.cellH / 2).cy;
 
-            if (hitEntry && callbacks.atlasSwapMode) {
-              const origX = state.dragOffset.originalX;
-              const origY = state.dragOffset.originalY;
+               result.onEntriesChange = entries.map(e => {
+                  if (state.draggingIds.includes(e.id)) {
+                    const nextX = e.x + deltaX;
+                    const nextY = e.y + deltaY;
+                    const snapped = this.geo.snap(nextX + (e.width * (e.scaleX ?? e.scale) / 2), nextY + (e.height * (e.scaleY ?? e.scale) / 2));
+                    return { ...e, x: snapped.x, y: snapped.y };
+                  }
+                  return e;
+               });
+
+               if (callbacks.selectedCells) {
+                 result.onSelectedCellsChange = callbacks.selectedCells.map(key => {
+                   const [cx, cy] = key.split(',').map(Number);
+                   return `${cx + dCX},${cy + dCY}`;
+                 });
+               }
+            } else {
+              // Single drag with swap/hit logic
+              const hitEntry = entries.find(e =>
+                e.id !== state.draggingId &&
+                this.geo.isTileInCell(e.x, e.y, e.width, e.height, e.scale, destCx, destCy)
+              );
+
+              if (hitEntry && callbacks.atlasSwapMode) {
+                const origX = state.dragOffset.originalX;
+                const origY = state.dragOffset.originalY;
+                result.onEntriesChange = entries.map(e => {
+                  if (e.id === state.draggingId) return { ...e, x: nx, y: ny };
+                  if (e.id === hitEntry.id) return { ...e, x: origX, y: origY };
+                  return e;
+                });
+              } else if (hitEntry) {
+                result.onEntriesChange = entries
+                  .filter(e => e.id !== hitEntry.id)
+                  .map(e => e.id === state.draggingId ? { ...e, x: nx, y: ny } : e);
+              } else {
+                result.onEntriesChange = entries.map(e => e.id === state.draggingId ? { ...e, x: nx, y: ny } : e);
+              }
+            }
+          } else {
+            // Packing mode multi-drag
+            if (state.draggingIds.length > 1) {
               result.onEntriesChange = entries.map(e => {
-                if (e.id === state.draggingId) return { ...e, x: nx, y: ny };
-                if (e.id === hitEntry.id) return { ...e, x: origX, y: origY };
+                if (state.draggingIds.includes(e.id)) {
+                  return { ...e, x: e.x + deltaX, y: e.y + deltaY };
+                }
                 return e;
               });
-            } else if (hitEntry) {
-              result.onEntriesChange = entries
-                .filter(e => e.id !== hitEntry.id)
-                .map(e => e.id === state.draggingId ? { ...e, x: nx, y: ny } : e);
             } else {
               result.onEntriesChange = entries.map(e => e.id === state.draggingId ? { ...e, x: nx, y: ny } : e);
             }
-          } else {
-            result.onEntriesChange = entries.map(e => e.id === state.draggingId ? { ...e, x: nx, y: ny } : e);
           }
         }
       }

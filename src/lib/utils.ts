@@ -265,10 +265,10 @@ export function detectSettingsFromImage(
   clearColorHex: string,
   tolerance: number,
   useMedianFilter: boolean = true
-): { cellSize: number; padding: number } {
+): { cellSize: number; padding: number; islands: { x: number; y: number; w: number; h: number }[] } {
   const startTime = performance.now();
   const islands = findIslands(imageData, clearColorHex, tolerance, useMedianFilter);
-  if (islands.length === 0) return { cellSize: 128, padding: 0 };
+  if (islands.length === 0) return { cellSize: 128, padding: 0, islands: [] };
 
   const getMedian = (arr: number[]) => {
     if (arr.length === 0) return 0;
@@ -344,7 +344,7 @@ export function detectSettingsFromImage(
   }
 
   console.log(`[AutoDetect] FINAL RESULT -> Cell: ${finalSize}, Padding: ${detectedPadding}. Total Time: ${(performance.now() - startTime).toFixed(2)}ms`);
-  return { cellSize: finalSize, padding: detectedPadding };
+  return { cellSize: finalSize, padding: detectedPadding, islands };
 }
 
 export function checkGridDensity(

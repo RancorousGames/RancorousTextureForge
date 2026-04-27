@@ -69,6 +69,8 @@ const getInitialState = (): AppState => {
     lastSourceAssetId: null,
     clearedCells: [],
     autoDetectEnabled: false,
+    debugIslands: [],
+    debugIslandDetection: false,
     textureName: 'T_Texture_BC',
   };
 
@@ -787,8 +789,11 @@ export default function App() {
               resizeMode={state.resizeMode}
               onResizeModeChange={(rm) => set(prev => ({ ...prev, resizeMode: rm }))}
               autoDetectEnabled={state.autoDetectEnabled}
-              onAutoDetectEnabledChange={(enabled) => set(prev => ({ ...prev, autoDetectEnabled: enabled }))}
-            />
+              onAutoDetectEnabledChange={(val) => set(prev => ({ ...prev, autoDetectEnabled: val }))}
+              debugIslandDetection={state.debugIslandDetection}
+              onDebugIslandDetectionChange={(val) => set(prev => ({ ...prev, debugIslandDetection: val, debugIslands: val ? prev.debugIslands : [] }))}
+              />
+
             <div className="flex-1 flex overflow-hidden" ref={splitPaneRef}>
               <div style={{ flex: canvasWidth > 0 ? splitRatio : 1 }} className="flex overflow-hidden">
                 {canvasWidth > 0 ? (
@@ -811,6 +816,7 @@ export default function App() {
                     clearedCells={state.clearedCells}
                     atlasStatus={state.atlasStatus}
                     onMaterialize={handleMaterialize}
+                    debugIslands={state.debugIslands}
                   />
                 ) : (
                   <div

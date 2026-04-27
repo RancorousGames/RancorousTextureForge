@@ -70,7 +70,7 @@ export function useAutoDetect(
     const keyColor = detectBackgroundColor(imageData, tolerance);
     const detectedClearColor = rgbToHex(keyColor.r, keyColor.g, keyColor.b);
     
-    const { cellSize, padding } = detectSettingsFromImage(imageData, detectedClearColor, tolerance, true);
+    const { cellSize, padding, islands } = detectSettingsFromImage(imageData, detectedClearColor, tolerance, true);
 
     const newSettings: GridSettings = {
       ...state.gridSettings,
@@ -81,7 +81,12 @@ export function useAutoDetect(
 
     console.log(`[AutoDetect] Applying Main Grid settings: Cell=${cellSize}, Pad=${padding}, Color=${detectedClearColor}`);
     console.log(`[AutoDetect] Main Grid TOTAL TIME: ${(performance.now() - totalStart).toFixed(2)}ms`);
-    set(prev => ({ ...prev, gridSettings: newSettings }));
+    
+    set(prev => ({ 
+      ...prev, 
+      gridSettings: newSettings,
+      debugIslands: prev.debugIslandDetection ? islands : prev.debugIslands 
+    }));
     onSettingsDetected?.(newSettings);
     return newSettings;
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,7 +113,7 @@ export function useAutoDetect(
     const keyColor = detectBackgroundColor(imageData, tolerance);
     const detectedClearColor = rgbToHex(keyColor.r, keyColor.g, keyColor.b);
     
-    const { cellSize, padding } = detectSettingsFromImage(
+    const { cellSize, padding, islands } = detectSettingsFromImage(
       imageData, detectedClearColor, tolerance
     );
 
@@ -124,6 +129,7 @@ export function useAutoDetect(
     set(prev => ({
       ...prev,
       sourceGridSettings: newSettings,
+      debugIslands: prev.debugIslandDetection ? islands : prev.debugIslands
     }));
     return newSettings;
   // eslint-disable-next-line react-hooks/exhaustive-deps

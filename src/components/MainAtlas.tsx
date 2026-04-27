@@ -18,6 +18,7 @@ interface MainAtlasProps {
   clearedCells?: string[];
   atlasStatus: AtlasStatus;
   onMaterialize?: (cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number }) => void;
+  debugIslands?: { x: number; y: number; w: number; h: number }[];
 }
 
 export function MainAtlas({
@@ -36,7 +37,8 @@ export function MainAtlas({
   sourceAsset,
   clearedCells,
   atlasStatus,
-  onMaterialize
+  onMaterialize,
+  debugIslands
 }: MainAtlasProps) {
   return (
     <AtlasCanvas
@@ -58,6 +60,7 @@ export function MainAtlas({
       atlasStatus={atlasStatus}
       uniqueId="main"
       onMaterialize={onMaterialize}
+      debugIslands={debugIslands}
     />
   );
 }

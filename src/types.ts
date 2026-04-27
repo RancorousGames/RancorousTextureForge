@@ -86,6 +86,8 @@ export interface AppState {
   lastSourceAssetId: string | null;
   clearedCells: string[];
   autoDetectEnabled: boolean;
+  debugIslands: { x: number; y: number; w: number; h: number }[];
+  debugIslandDetection: boolean;
   textureName: string;
 }
 

@@ -22,6 +22,8 @@ interface ToolboxProps {
   onResizeModeChange: (mode: ResizeMode) => void;
   autoDetectEnabled: boolean;
   onAutoDetectEnabledChange: (enabled: boolean) => void;
+  debugIslandDetection: boolean;
+  onDebugIslandDetectionChange: (enabled: boolean) => void;
   }
 
   export function Toolbox({
@@ -41,7 +43,9 @@ interface ToolboxProps {
     resizeMode,
     onResizeModeChange,
     autoDetectEnabled,
-    onAutoDetectEnabledChange
+    onAutoDetectEnabledChange,
+    debugIslandDetection,
+    onDebugIslandDetectionChange
   }: ToolboxProps) {
 
   const [localClearColor, setLocalClearColor] = useState(gridSettings.clearColor);
@@ -79,7 +83,17 @@ interface ToolboxProps {
             <Wand2 className="w-3.5 h-3.5" />
           </button>
         </div>
-      </div>      
+      </div>
+      <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-950/50 flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="debugIslands"
+          checked={debugIslandDetection}
+          onChange={(e) => onDebugIslandDetectionChange(e.target.checked)}
+          className="rounded border-zinc-700 bg-zinc-950 text-blue-500"
+        />
+        <label htmlFor="debugIslands" className="text-[10px] text-zinc-400 uppercase font-semibold">Debug Islands</label>
+      </div>
       <div className="p-4 space-y-4 border-b border-zinc-800 overflow-y-auto flex-1">
         <div className="space-y-1">
           <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="Choose the layout logic for the atlas">Mode</label>

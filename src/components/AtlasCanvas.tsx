@@ -28,6 +28,7 @@ interface AtlasCanvasProps {
   atlasStatus?: AtlasStatus;
   uniqueId?: string;
   disableHover?: boolean;
+  debugIslands?: { x: number; y: number; w: number; h: number }[];
 }
 
 export function AtlasCanvas({
@@ -54,6 +55,7 @@ export function AtlasCanvas({
   atlasStatus = 'parametric',
   uniqueId = 'atlas',
   disableHover = false,
+  debugIslands = [],
 }: AtlasCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -302,6 +304,27 @@ export function AtlasCanvas({
             </div>
           );
         })}
+
+        {/* Debug Islands */}
+        {debugIslands.map((isl, idx) => (
+          <div
+            key={`debug-isl-${idx}`}
+            className="absolute border border-magenta-500 bg-magenta-500/20 pointer-events-none z-[60]"
+            style={{
+              left: isl.x,
+              top: isl.y,
+              width: isl.w,
+              height: isl.h,
+              borderColor: '#ff00ff',
+              backgroundColor: 'rgba(255, 0, 255, 0.2)'
+            }}
+          >
+            <span className="absolute bottom-full left-0 bg-magenta-600 text-[8px] text-white px-0.5" style={{ backgroundColor: '#ff00ff' }}>
+              {isl.w}x{isl.h}
+            </span>
+          </div>
+        ))}
+
         {customSelection && (
           <div className="absolute border-2 border-blue-400 bg-blue-400/20 pointer-events-none z-[100] ring-1 ring-white/50" style={{ left: customSelection.x, top: customSelection.y, width: customSelection.w, height: customSelection.h }}>
             <div className="absolute bottom-full right-0 bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded-t-sm font-mono whitespace-nowrap shadow-lg">

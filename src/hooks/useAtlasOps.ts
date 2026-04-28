@@ -3,7 +3,7 @@ import { AppState, TextureAsset, initialPackerMapping, initialPBRSet } from '../
 import { GridGeometry } from '../lib/GridGeometry';
 import { hexToRgb, findIslands } from '../lib/utils';
 import { renderTilesToCanvas, loadImage, generateId } from '../lib/canvas';
-import { Command, SetMainTilesCommand } from '../lib/Commands';
+import { Command, SetMainTilesCommand, PatchCommand } from '../lib/Commands';
 import potpack from 'potpack';
 
 export function useAtlasOps(
@@ -135,8 +135,14 @@ export function useAtlasOps(
     });
 
     console.log(`[FixGrid] Complete. Generated ${newEntries.length} fixed entries.`);
-    executeCommand(new SetMainTilesCommand(state.atlasEntries, newEntries, state.atlasStatus, 'baked'));
-  }, [state.libraryAssets, state.modifiedAssets, state.lastSourceAssetId, state.atlasStatus, state.gridSettings.clearColor, state.gridSettings.clearTolerance, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand]);
+    executeCommand([
+      new SetMainTilesCommand(state.atlasEntries, newEntries, state.atlasStatus, 'baked'),
+      new PatchCommand(
+        { lastSourceAssetId: null, clearedCells: [] },
+        { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
+      )
+    ]);
+  }, [state.libraryAssets, state.modifiedAssets, state.lastSourceAssetId, state.clearedCells, state.atlasStatus, state.resizeMode, state.gridSettings.clearColor, state.gridSettings.clearTolerance, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand]);
 
   const packElements = useCallback(async () => {
     if (state.atlasEntries.length === 0) return;
@@ -247,8 +253,9 @@ export function useAtlasOps(
     // Add to library
     const img = new Image();
     img.onload = () => {
+      const id = generateId();
       const newAsset: TextureAsset = {
-        id: generateId(),
+        id,
         url: url,
         name: name,
         width: img.naturalWidth,
@@ -258,7 +265,8 @@ export function useAtlasOps(
       };
       set(prev => ({
         ...prev,
-        libraryAssets: [newAsset, ...prev.libraryAssets]
+        libraryAssets: [newAsset, ...prev.libraryAssets],
+        lastMainAssetId: id
       }));
     };
     img.src = url;
@@ -279,8 +287,9 @@ export function useAtlasOps(
     // Add to library
     const img = new Image();
     img.onload = () => {
+      const id = generateId();
       const newAsset: TextureAsset = {
-        id: generateId(),
+        id,
         url: url,
         name: name,
         width: img.naturalWidth,
@@ -290,7 +299,8 @@ export function useAtlasOps(
       };
       set(prev => ({
         ...prev,
-        libraryAssets: [newAsset, ...prev.libraryAssets]
+        libraryAssets: [newAsset, ...prev.libraryAssets],
+        lastMainAssetId: id
       }));
     };
     img.src = url;
@@ -371,6 +381,7 @@ export function useAtlasOps(
       atlasStatus: 'parametric',
       clearedCells: [],
       lastSourceAssetId: null,
+      lastMainAssetId: null,
       debugIslands: [],
       modifiedAssets: [],
       packerMapping: initialPackerMapping,

@@ -103,10 +103,6 @@ export function AtlasCanvas({
     const x = (screenX - panOffset.x) / zoom;
     const y = (screenY - panOffset.y) / zoom;
     
-    if (uniqueId === 'source' && gridSettings.mode === 'packing' && (e.type === 'pointerdown' || e.type === 'mousedown')) {
-      console.log(`[AtlasCanvas:${uniqueId}] Click: screen(${e.clientX},${e.clientY}) -> canvas(${x.toFixed(1)},${y.toFixed(1)})`);
-    }
-
     return { x, y };
   };
 
@@ -291,34 +287,6 @@ export function AtlasCanvas({
       <div ref={containerRef} className="relative origin-top-left shadow-2xl transition-transform duration-75 ease-out" style={{ width: canvasWidth, height: canvasHeight, transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})` }}>
         <div className="absolute inset-0 pointer-events-none z-0" style={{ backgroundColor: gridSettings.clearColor }} />
         
-        {/* Background Source Image with Holes */}
-        {sourceAsset && atlasStatus !== 'baked' && (
-          <div className="absolute inset-0 pointer-events-none z-[1]">
-            <svg width={canvasWidth} height={canvasHeight} className="absolute inset-0 w-full h-full">
-              <defs>
-                <mask id={`mask-${uniqueId}-${sourceAsset.id.replace(/[^a-zA-Z0-9]/g, '_')}`} x="0" y="0" width={canvasWidth} height={canvasHeight}>
-                  <rect x="0" y="0" width={canvasWidth} height={canvasHeight} fill="white" />
-                  {clearedCells.map(key => {
-                    const [cx, cy] = key.split(',').map(Number);
-                    const { x, y } = geo.getPosFromCell(cx, cy);
-                    return <rect key={key} x={x} y={y} width={geo.cellW} height={geo.cellH} fill="black" />;
-                  })}
-                </mask>
-              </defs>
-              <image 
-                href={sourceAsset.sourceUrl || sourceAsset.url} 
-                width={canvasWidth} 
-                height={canvasHeight} 
-                mask={`url(#mask-${uniqueId}-${sourceAsset.id.replace(/[^a-zA-Z0-9]/g, '_')})`}
-                preserveAspectRatio="none"
-                style={{
-                  filter: `hue-rotate(${sourceAsset.hue}deg) brightness(${sourceAsset.brightness}%)`
-                }}
-              />
-            </svg>
-          </div>
-        )}
-
         {renderGrid()}
         {entries.map(entry => {
           const sX = entry.scaleX ?? entry.scale;

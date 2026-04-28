@@ -11,6 +11,8 @@ interface SecondaryAtlasProps {
   onClear?: () => void;
   onGetSnapshot?: () => Promise<string>;
   virtualMainAtlasPreview?: string;
+  lastMainAssetId?: string | null;
+  lastSourceAssetId?: string | null;
 }
 
 export function SecondaryAtlas({ 
@@ -20,7 +22,9 @@ export function SecondaryAtlas({
   onFilesDrop, 
   onClear,
   onGetSnapshot,
-  virtualMainAtlasPreview
+  virtualMainAtlasPreview,
+  lastMainAssetId,
+  lastSourceAssetId
 }: SecondaryAtlasProps) {
   const [search, setSearch] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -53,6 +57,8 @@ export function SecondaryAtlas({
 
   const AssetItem = ({ asset, isActive = false }: { asset: TextureAsset, isActive?: boolean }) => {
     const isVirtual = asset.id === VIRTUAL_MAIN_ATLAS_ID;
+    const isLastMain = asset.id === lastMainAssetId;
+    const isLastSource = asset.id === lastSourceAssetId;
     
     return (
       <div
@@ -60,7 +66,9 @@ export function SecondaryAtlas({
         onDragStart={(e) => handleDragStart(e, asset)}
         className={cn(
           "group relative aspect-square bg-zinc-950 border rounded-md overflow-hidden cursor-pointer transition-all checkerboard",
-          isActive ? "border-blue-500/50 ring-1 ring-blue-500/30" : "border-zinc-800 hover:border-blue-500"
+          isActive ? "border-blue-500 ring-2 ring-blue-500/20" : "border-zinc-800 hover:border-blue-500",
+          isLastMain && "border-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.4)] z-10",
+          isLastSource && "border-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.4)] z-10"
         )}
         onClick={() => onAssetClick(asset)}
         title={isVirtual ? "Main Atlas Canvas (Live). Drag into tools to use current layout." : `${asset.name} (${asset.width}x${asset.height}). Drag into the atlas to use.`}
@@ -120,7 +128,16 @@ export function SecondaryAtlas({
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-zinc-200">Asset Browser</h2>
-            <p className="text-xs text-zinc-500 mt-1">Drag files here to load</p>
+            <div className="flex gap-2 mt-1">
+              <div className="flex items-center gap-1" title="Last asset added as a tile to the Main Atlas">
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 shadow-[0_0_4px_rgba(6,182,212,0.8)]" />
+                <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-tighter">Main</span>
+              </div>
+              <div className="flex items-center gap-1" title="Current background source image for the Source Atlas">
+                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_4px_rgba(245,158,11,0.8)]" />
+                <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-tighter">Source</span>
+              </div>
+            </div>
           </div>
           {onClear && assets.length > 0 && (
             <button 

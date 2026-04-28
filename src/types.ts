@@ -34,6 +34,7 @@ export interface TextureAsset {
   sourceW?: number;
   sourceH?: number;
   isKeyed?: boolean;
+  originalId?: string;
 }
 
 export type AppMode = 'atlas' | 'adjust' | 'channel-pack' | 'layering';
@@ -101,6 +102,8 @@ export interface AppState {
   canvasHeight: number;
   adjustSettings: AdjustSettings;
   lastSourceAssetId: string | null;
+  lastMainAssetId: string | null;
+  currentSourceAsset: TextureAsset | null;
   clearedCells: string[];
   autoDetectEnabled: boolean;
   debugIslands: { x: number; y: number; w: number; h: number }[];

@@ -160,3 +160,18 @@ export class MaterializeCommand implements Command {
     };
   }
 }
+
+export class SetSourceAssetCommand implements Command {
+  constructor(
+    private oldAsset: TextureAsset | null,
+    private newAsset: TextureAsset | null
+  ) {}
+
+  execute(state: AppState): AppState {
+    return { ...state, currentSourceAsset: this.newAsset };
+  }
+
+  undo(state: AppState): AppState {
+    return { ...state, currentSourceAsset: this.oldAsset };
+  }
+}

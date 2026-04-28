@@ -15,7 +15,7 @@ import { useGridSlice } from './hooks/useGridSlice';
 import { useAutoDetect } from './hooks/useAutoDetect';
 import { useAtlasOps } from './hooks/useAtlasOps';
 import { useAssetLibrary } from './hooks/useAssetLibrary';
-import { AddTilesCommand, PatchCommand, SetMainTilesCommand, RemoveTilesCommand } from './lib/Commands';
+import { AddTilesCommand, PatchCommand, SetMainTilesCommand, RemoveTilesCommand, SetSourceAssetCommand } from './lib/Commands';
 import potpack from 'potpack';
 import { tileRegistry } from './lib/TileRegistry';
 import { generateId, renderTilesToCanvas, applyAlphaKey, loadImage } from './lib/canvas';
@@ -55,8 +55,8 @@ const getInitialState = (): AppState => {
     canvasHeight: 0,
     adjustSettings: { targetW: 'source', targetH: 'source' },
     lastSourceAssetId: null,
-    clearedCells: [],
-    autoDetectEnabled: false,
+    lastMainAssetId: null,
+    currentSourceAsset: null,    clearedCells: [],    autoDetectEnabled: false,
     debugIslands: [],
     debugIslandDetection: false,
     textureName: 'T_Texture_BC',
@@ -119,7 +119,7 @@ export default function App() {
       if (!validated) return;
       
       const finalGs = { ...gs, cellSize: validated.cellSize, cellY: validated.cellY };
-      set(prev => ({ ...prev, gridSettings: finalGs, atlasEntries: [], clearedCells: [], atlasStatus: 'parametric' }));
+      set(prev => ({ ...prev, gridSettings: finalGs, atlasEntries: [], clearedCells: [], lastMainAssetId: null, atlasStatus: 'parametric' }));
       performGridSlice(sourceAsset, state.canvasWidth, state.canvasHeight, true, finalGs);
     }
   }, [state.libraryAssets, state.modifiedAssets, state.lastSourceAssetId,
@@ -316,7 +316,9 @@ export default function App() {
         set(prev => ({
           ...prev,
           canvasWidth: effectiveAsset.width, canvasHeight: effectiveAsset.height,
-          lastSourceAssetId: effectiveAsset.id, clearedCells: [],
+          lastSourceAssetId: effectiveAsset.id,
+          lastMainAssetId: prev.lastMainAssetId,
+          clearedCells: [],
           atlasEntries: [],
           atlasStatus: 'parametric'
         }));
@@ -343,12 +345,17 @@ export default function App() {
         return;
       }
 
-      set(prev => ({
-        ...prev,
-        canvasWidth: effectiveAsset.width, canvasHeight: effectiveAsset.height,
-        atlasEntries: shouldSlice ? [] : [{ ...effectiveAsset, id: generateId(), x: 0, y: 0 }], 
-        lastSourceAssetId: effectiveAsset.id, clearedCells: [],
-      }));
+      set(prev => {
+        const newMainAssetId = shouldSlice ? prev.lastMainAssetId : generateId();
+        return {
+          ...prev,
+          canvasWidth: effectiveAsset.width, canvasHeight: effectiveAsset.height,
+          atlasEntries: shouldSlice ? [] : [{ ...effectiveAsset, id: newMainAssetId, x: 0, y: 0 }], 
+          lastSourceAssetId: effectiveAsset.id,
+          lastMainAssetId: newMainAssetId,
+          clearedCells: [],
+        };
+      });
       setSelectedAssetId(null);
       setSelectedCells([]);
       
@@ -407,13 +414,19 @@ export default function App() {
       console.log(`[Forge] Grid Snap: Original(${x},${y}) -> Snapped(${finalX},${finalY})`);
 
       if (x === 0 && y === 0) {
-        console.log(`[Forge] Detected drop at (0,0). Searching for first empty cell...`);
-        outer: for (let r = 0; r < mainAtlas.geo.rows; r++) {
-          for (let c = 0; c < mainAtlas.geo.cols; c++) {
-            if (!state.atlasEntries.some(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r))) {
-              ({ x: finalX, y: finalY } = mainAtlas.geo.getPosFromCell(c, r));
-              console.log(`[Forge] Teleporting to first empty cell at (${c},${r}) -> pos(${finalX},${finalY})`);
-              break outer;
+        if (selectedCells.length > 0) {
+          const [scx, scy] = selectedCells[0].split(',').map(Number);
+          ({ x: finalX, y: finalY } = mainAtlas.geo.getPosFromCell(scx, scy));
+          console.log(`[Forge] Priority to selected cell at (${scx},${scy}) -> pos(${finalX},${finalY})`);
+        } else {
+          console.log(`[Forge] Detected drop at (0,0). Searching for first empty cell...`);
+          outer: for (let r = 0; r < mainAtlas.geo.rows; r++) {
+            for (let c = 0; c < mainAtlas.geo.cols; c++) {
+              if (!state.atlasEntries.some(t => mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, c, r))) {
+                ({ x: finalX, y: finalY } = mainAtlas.geo.getPosFromCell(c, r));
+                console.log(`[Forge] Teleporting to first empty cell at (${c},${r}) -> pos(${finalX},${finalY})`);
+                break outer;
+              }
             }
           }
         }
@@ -539,11 +552,11 @@ export default function App() {
     executeCommand([
       new AddTilesCommand([newEntry], replacedEntries),
       new PatchCommand(
-        { lastSourceAssetId: null, clearedCells: nextClearedCells }, 
-        { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
+        { lastSourceAssetId: state.lastSourceAssetId, lastMainAssetId: asset.id, clearedCells: nextClearedCells }, 
+        { lastSourceAssetId: state.lastSourceAssetId, lastMainAssetId: state.lastMainAssetId, clearedCells: state.clearedCells }
       ),
-    ]);
-  }, [state.libraryAssets, state.modifiedAssets, state.atlasEntries, state.gridSettings, state.dragMode, state.resizeMode, state.clearedCells, state.lastSourceAssetId, state.canvasHeight, state.canvasWidth, mainAtlas.geo, executeCommand, handleAssetClick]);
+      ]);
+      }, [state.libraryAssets, state.modifiedAssets, state.atlasEntries, state.gridSettings, state.dragMode, state.lastMainAssetId, state.resizeMode, state.clearedCells, state.lastSourceAssetId, state.canvasHeight, state.canvasWidth, mainAtlas.geo, executeCommand, handleAssetClick, selectedCells]);
 
   // ── Effects ────────────────────────────────────────────────────────────────
 
@@ -792,12 +805,12 @@ export default function App() {
                    if (!validated) return;
                    
                    const finalGs = { ...gs, cellSize: validated.cellSize, cellY: validated.cellY };
-                   set(prev => ({ ...prev, gridSettings: finalGs, atlasEntries: [], clearedCells: [], atlasStatus: 'parametric' }));
+                   set(prev => ({ ...prev, gridSettings: finalGs, atlasEntries: [], clearedCells: [], lastMainAssetId: null, atlasStatus: 'parametric' }));
                    performGridSlice(sourceAsset, state.canvasWidth, state.canvasHeight, true, finalGs);
                 } else {
                    // If switching TO packing mode, or no source asset, just reset entries
                    if (isModeSwitch) {
-                     set(prev => ({ ...prev, gridSettings: gs, atlasEntries: [], clearedCells: [], atlasStatus: 'parametric' }));
+                     set(prev => ({ ...prev, gridSettings: gs, atlasEntries: [], clearedCells: [], lastMainAssetId: null, lastSourceAssetId: null, atlasStatus: 'parametric' }));
                    } else {
                      set(prev => ({ ...prev, gridSettings: gs }));
                    }
@@ -833,9 +846,8 @@ export default function App() {
                     canvasWidth={canvasWidth}
                     canvasHeight={canvasHeight}
                     tooltip="MMB: Pan | L-Click: Select | R-Drag: Move | R-Click: Clear | Ctrl+Z/Y: Undo/Redo"
-                    sourceAsset={[...state.libraryAssets, ...state.modifiedAssets].find(t => t.id === state.lastSourceAssetId)}
-                    clearedCells={state.clearedCells}
-                    atlasStatus={state.atlasStatus}
+                    sourceAsset={state.currentSourceAsset}
+                    clearedCells={state.clearedCells}                    atlasStatus={state.atlasStatus}
                     onMaterialize={handleMaterialize}
                     debugIslands={state.debugIslands}
                   />
@@ -890,6 +902,17 @@ export default function App() {
                   <div style={{ flex: 1 - splitRatio }} className="flex overflow-hidden">
                     <SourceAtlas
                       onAddAsset={(asset) => handleMainAtlasDrop(asset, 0, 0)}
+                      sourceAsset={state.currentSourceAsset}
+                      onSourceAssetChange={(asset) => {
+                        const sid = asset ? (asset.originalId || asset.id) : null;
+                        executeCommand([
+                          new SetSourceAssetCommand(state.currentSourceAsset, asset),
+                          new PatchCommand(
+                            { lastSourceAssetId: sid },
+                            { lastSourceAssetId: state.lastSourceAssetId }
+                          )
+                        ]);
+                      }}
                       gridSettings={state.sourceGridSettings}
                       onGridSettingsChange={(gs) => {
                         const sourceAsset = [...state.libraryAssets, ...state.modifiedAssets].find(t => t.id === state.lastSourceAssetId);
@@ -965,15 +988,16 @@ export default function App() {
         )}
 
         <SecondaryAtlas
-          assets={state.libraryAssets}
-          activeAssets={activeAssets}
-          onAssetClick={handleAssetClick}
-          onFilesDrop={addFilesToLibrary}
-          onClear={handleClearLibrary}
-          onGetSnapshot={handleGetMainAtlasSnapshot}
-          virtualMainAtlasPreview={virtualMainAtlasPreview}
-        />
-      </div>
+           assets={state.libraryAssets}
+           activeAssets={activeAssets}
+           onAssetClick={handleAssetClick}
+           onFilesDrop={addFilesToLibrary}
+           onClear={handleClearLibrary}
+           onGetSnapshot={handleGetMainAtlasSnapshot}
+           virtualMainAtlasPreview={virtualMainAtlasPreview}
+           lastMainAssetId={state.lastMainAssetId}
+           lastSourceAssetId={state.lastSourceAssetId}
+         />      </div>
     </div>
   );
 }

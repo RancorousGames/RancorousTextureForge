@@ -8,6 +8,8 @@ import { GridGeometry } from '../lib/GridGeometry';
 
 interface SourceAtlasProps {
   onAddAsset: (asset: TextureAsset) => void;
+  sourceAsset: TextureAsset | null;
+  onSourceAssetChange: (asset: TextureAsset | null) => void;
   gridSettings: GridSettings;
   onGridSettingsChange: (settings: GridSettings) => void;
   onAutoDetectGrid: (sourceAsset: TextureAsset) => void;
@@ -24,6 +26,8 @@ interface SourceAtlasProps {
 
 export function SourceAtlas({ 
   onAddAsset, 
+  sourceAsset,
+  onSourceAssetChange,
   gridSettings, 
   onGridSettingsChange, 
   onAutoDetectGrid,
@@ -38,7 +42,6 @@ export function SourceAtlas({
   resizeMode
 }: SourceAtlasProps) {
 
-  const [sourceAsset, setSourceAsset] = useState<TextureAsset | null>(null);
   const [customSelection, setCustomSelection] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
   const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,8 +60,8 @@ export function SourceAtlas({
   const handleDrop = (assetId: string) => {
     const asset = availableAssets.find(t => t.id === assetId);
     if (asset) {
-      const newAsset = { ...asset, id: 'source' };
-      setSourceAsset(newAsset);
+      const newAsset = { ...asset, id: 'source', originalId: asset.id };
+      onSourceAssetChange(newAsset);
       if (autoDetectEnabled) {
         onAutoDetectGrid(newAsset);
       }
@@ -86,20 +89,10 @@ export function SourceAtlas({
       true
     );
 
-    if (islands.length <= 1) {
-      console.log(`[FixGrid] Aborting: Only ${islands.length} island(s) detected. FixGrid requires multiple islands.`);
-      return;
-    }
+    if (islands.length <= 1) return;
 
     const geo = new GridGeometry(gridSettings, sourceAsset.width, sourceAsset.height);
-    if (geo.padding === 0) {
-      console.log(`[FixGrid] Aborting: Cell padding is 0. FixGrid requires non-zero padding to align islands.`);
-      return;
-    }
-
-    console.log(`[FixGrid] Algorithm Start: Image ${sourceAsset.width}x${sourceAsset.height}`);
-    console.log(`[FixGrid] Found ${islands.length} raw islands using tolerance ${gridSettings.clearTolerance}`);
-    console.log(`[FixGrid] Geometry Config: CellSize=${geo.cellW}x${geo.cellH}, Padding=${geo.padding}, Step=${geo.stepX}x${geo.stepY}`);
+    if (geo.padding === 0) return;
 
     const outCanvas = document.createElement('canvas');
     outCanvas.width = sourceAsset.width;
@@ -137,27 +130,20 @@ export function SourceAtlas({
         finalX = destX + (geo.cellW - isl.w) / 2;
         finalY = destY + (geo.cellH - isl.h) / 2;
       }
-      
-      if (idx < 5 || idx === islands.length - 1) {
-        console.log(`[FixGrid:Source] Island #${idx}: Rect(${isl.x},${isl.y},${isl.w},${isl.h}) -> Dest(${finalX.toFixed(1)},${finalY.toFixed(1)}, ${finalW.toFixed(1)}x${finalH.toFixed(1)}) Mode: ${resizeMode}`);
-      }
 
       outCtx.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, finalX, finalY, finalW, finalH);
     });
 
-    console.log(`[FixGrid] Finished processing ${islands.length} islands.`);
-    setSourceAsset({ ...sourceAsset, url: outCanvas.toDataURL() });
+    onSourceAssetChange({ ...sourceAsset, url: outCanvas.toDataURL() });
   };
 
   const handleLoadSource = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
     const file = e.target.files[0];
-    console.log(`[Forge] Loading new source image: ${file.name}`);
     
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
-      console.log(`[Forge] Source image loaded: ${img.width}x${img.height}`);
       const newAsset: TextureAsset = {
         id: 'source',
         url,
@@ -170,7 +156,7 @@ export function SourceAtlas({
         brightness: 100,
         scale: 1,
       };
-      setSourceAsset(newAsset);
+      onSourceAssetChange(newAsset);
       setCustomSelection(null);
       setMenuPos(null);
 

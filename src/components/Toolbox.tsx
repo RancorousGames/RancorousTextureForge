@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { DeferredNumberInput } from './DeferredNumberInput';
 import { TextureAsset, GridSettings, GridMode, ResizeMode, AddMode, DragMode } from '../types';
 import { cn } from '../lib/utils';
-import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus, Box, Maximize2, MousePointer2 } from 'lucide-react';
+import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus, Box, Maximize2, MousePointer2, Library } from 'lucide-react';
 
 interface ToolboxProps {
   selectedAsset: TextureAsset | null;
@@ -13,6 +13,7 @@ interface ToolboxProps {
   onFixGrid: () => void;
   onAutoDetect: () => void;
   onExport: () => void;
+  onAddToLibrary: () => void;
   onExportZip?: () => void;
   gridSettings: GridSettings;
   onGridSettingsChange: (settings: GridSettings) => void;
@@ -37,6 +38,7 @@ interface ToolboxProps {
     onFixGrid,
     onAutoDetect,
     onExport,
+    onAddToLibrary,
     onExportZip,
     gridSettings,
     onGridSettingsChange,
@@ -310,7 +312,7 @@ interface ToolboxProps {
             </div>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1.5">
           {gridSettings.mode === 'fixed' && (
             <button
               onClick={onFixGrid}
@@ -321,17 +323,24 @@ interface ToolboxProps {
               Fix Grid
             </button>
           )}
-          <button
-            onClick={onExport}
-            className={cn(
-              "flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white py-1.5 px-2 rounded text-[10px] font-medium transition-colors",
-              gridSettings.mode === 'fixed' ? "" : "col-span-2"
-            )}
-            title="Export the final atlas as a PNG image"
-          >
-            <Download className="w-3 h-3" />
-            Export PNG
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={onAddToLibrary}
+              className="flex items-center justify-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-1.5 px-2 rounded text-[10px] font-medium transition-colors border border-zinc-700"
+              title="Rasterize current atlas and add to asset library without downloading"
+            >
+              <Library className="w-3 h-3" />
+              Add to Library
+            </button>
+            <button
+              onClick={onExport}
+              className="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white py-1.5 px-2 rounded text-[10px] font-medium transition-colors"
+              title="Export the final atlas as a PNG image"
+            >
+              <Download className="w-3 h-3" />
+              Export PNG
+            </button>
+          </div>
         </div>
         {gridSettings.mode === 'fixed' && onExportZip && (
           <button

@@ -172,7 +172,7 @@ export default function App() {
   const { handleAutoDetectMainGrid, handleAutoDetectSourceGrid } =
     useAutoDetect(state, canvasWidth, canvasHeight, set, onAutoDetectSettingsApplied);
 
-  const { packAtlas, fixGrid, packElements, exportAtlas, exportGridZip, createNewAtlas } =
+  const { packAtlas, fixGrid, packElements, exportAtlas, exportGridZip, createNewAtlas, addToLibrary } =
     useAtlasOps(state, canvasWidth, canvasHeight, mainAtlas.geo, set, executeCommand, () => {
       setSelectedAssetId(null);
       setSelectedCells([]);
@@ -759,6 +759,7 @@ export default function App() {
               onFixGrid={fixGrid}
               onAutoDetect={handleAutoDetectMainGrid}
               onExport={exportAtlas}
+              onAddToLibrary={addToLibrary}
               onExportZip={exportGridZip}
               gridSettings={state.gridSettings}
 

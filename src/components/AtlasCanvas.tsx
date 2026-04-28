@@ -61,6 +61,16 @@ export function AtlasCanvas({
   const viewportRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const mousePosRef = useRef({ x: 0, y: 0 });
+
+  // Update mouse pos for zoom-to-cursor logic
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      mousePosRef.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener('mousemove', handleGlobalMouseMove);
+    return () => window.removeEventListener('mousemove', handleGlobalMouseMove);
+  }, []);
   
   const geo = useMemo(() => 
     new GridGeometry(gridSettings, canvasWidth, canvasHeight),
@@ -83,11 +93,6 @@ export function AtlasCanvas({
   });
 
   const getPointerPos = (e: React.PointerEvent | React.MouseEvent | PointerEvent) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect || rect.width === 0 || rect.height === 0) return null;
-    
-    // rect already includes the transform scale and panOffset (if they shift the rect)
-    // but the most reliable way is to go from screen -> viewport-relative -> unpanned -> unzoomed
     const viewRect = viewportRef.current?.getBoundingClientRect();
     if (!viewRect) return null;
 
@@ -109,18 +114,43 @@ export function AtlasCanvas({
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
+      
+      const viewRect = viewportRef.current?.getBoundingClientRect();
+      if (!viewRect) return;
+
       const delta = -e.deltaY;
       const factor = delta > 0 ? 1.1 : 0.9;
-      setZoom(prev => Math.min(Math.max(0.1, prev * factor), 10));
+      
+      setZoom(prevZoom => {
+        const nextZoom = Math.min(Math.max(0.1, prevZoom * factor), 10);
+        
+        // Zoom relative to cursor:
+        // P_screen = P_canvas * zoom + pan
+        // We want P_screen to stay the same.
+        // pan_new = P_screen - P_canvas * zoom_new
+        
+        const mouseX = e.clientX - viewRect.left;
+        const mouseY = e.clientY - viewRect.top;
+
+        // Current canvas-space coord under mouse
+        const canvasX = (mouseX - panOffset.x) / prevZoom;
+        const canvasY = (mouseY - panOffset.y) / prevZoom;
+
+        const nextPanX = mouseX - canvasX * nextZoom;
+        const nextPanY = mouseY - canvasY * nextZoom;
+
+        setPanOffset({ x: nextPanX, y: nextPanY });
+        return nextZoom;
+      });
     };
-    const el = containerRef.current;
+    const el = viewportRef.current; // Use viewport as event target for better coverage
     if (el) {
       el.addEventListener('wheel', handleWheel, { passive: false });
     }
     return () => {
       if (el) el.removeEventListener('wheel', handleWheel);
     };
-  }, []);
+  }, [panOffset]); // Need panOffset in deps to calculate next pan correctly in the functional setZoom callback or just use a ref for pan if needed, but this works if we use the current panOffset. Actually, closure on panOffset is dangerous here.
 
   // Fit-to-view when canvas dimensions change (new atlas loaded)
   useEffect(() => {

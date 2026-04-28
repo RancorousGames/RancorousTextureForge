@@ -119,15 +119,30 @@ export function SourceAtlas({
       
       const destX = geo.padding + col * geo.stepX;
       const destY = geo.padding + row * geo.stepY;
+
+      let finalW = geo.cellW;
+      let finalH = geo.cellH;
+      let finalX = destX;
+      let finalY = destY;
+
+      if (resizeMode === 'fit') {
+        const scale = Math.min(geo.cellW / isl.w, geo.cellH / isl.h);
+        finalW = isl.w * scale;
+        finalH = isl.h * scale;
+        finalX = destX + (geo.cellW - finalW) / 2;
+        finalY = destY + (geo.cellH - finalH) / 2;
+      } else if (resizeMode === 'crop') {
+        finalW = isl.w;
+        finalH = isl.h;
+        finalX = destX + (geo.cellW - isl.w) / 2;
+        finalY = destY + (geo.cellH - isl.h) / 2;
+      }
       
       if (idx < 5 || idx === islands.length - 1) {
-        console.log(`[FixGrid] Island #${idx}: Original Rect(${isl.x},${isl.y},${isl.w},${isl.h}) Center(${centerX.toFixed(1)},${centerY.toFixed(1)})`);
-        console.log(`[FixGrid]   -> Mapping: Rel(${relX.toFixed(1)},${relY.toFixed(1)}) -> Cell(${col},${row}) -> Dest(${destX},${destY})`);
-      } else if (idx === 5) {
-        console.log(`[FixGrid] ... (skipping logs for intermediate islands) ...`);
+        console.log(`[FixGrid:Source] Island #${idx}: Rect(${isl.x},${isl.y},${isl.w},${isl.h}) -> Dest(${finalX.toFixed(1)},${finalY.toFixed(1)}, ${finalW.toFixed(1)}x${finalH.toFixed(1)}) Mode: ${resizeMode}`);
       }
 
-      outCtx.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, destX, destY, geo.cellW, geo.cellH);
+      outCtx.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, finalX, finalY, finalW, finalH);
     });
 
     console.log(`[FixGrid] Finished processing ${islands.length} islands.`);

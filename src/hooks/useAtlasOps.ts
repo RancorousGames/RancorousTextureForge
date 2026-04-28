@@ -94,25 +94,43 @@ export function useAtlasOps(
       const destX = geo.padding + col * geo.stepX;
       const destY = geo.padding + row * geo.stepY;
 
-      if (i < 5 || i === finalIslands.length - 1) {
-        console.log(`[FixGrid] Island #${i}: Rect(${isl.x},${isl.y},${isl.w},${isl.h}) Center(${centerX.toFixed(1)},${centerY.toFixed(1)})`);
-        console.log(`[FixGrid]   -> Mapping: Rel(${relX.toFixed(1)},${relY.toFixed(1)}) -> Cell(${col},${row}) -> Dest(${destX},${destY})`);
-      } else if (i === 5) {
-        console.log(`[FixGrid] ... (skipping logs for intermediate islands) ...`);
+      let finalW = geo.cellW;
+      let finalH = geo.cellH;
+      let finalX = destX;
+      let finalY = destY;
+      let finalScale = 1;
+
+      if (state.resizeMode === 'fit') {
+        finalScale = Math.min(geo.cellW / isl.w, geo.cellH / isl.h);
+        finalW = isl.w;
+        finalH = isl.h;
+        finalX = destX + (geo.cellW - isl.w * finalScale) / 2;
+        finalY = destY + (geo.cellH - isl.h * finalScale) / 2;
+      } else if (state.resizeMode === 'crop') {
+        finalW = isl.w;
+        finalH = isl.h;
+        finalX = destX + (geo.cellW - isl.w) / 2;
+        finalY = destY + (geo.cellH - isl.h) / 2;
+        finalScale = 1;
       }
 
       const islCanvas = document.createElement('canvas');
-      islCanvas.width = geo.cellW; islCanvas.height = geo.cellH;
-      islCanvas.getContext('2d')?.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, geo.cellW, geo.cellH);
+      islCanvas.width = finalW; 
+      islCanvas.height = finalH;
+      islCanvas.getContext('2d')?.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, finalW, finalH);
 
       return {
         id: `fixed-${i}-${Date.now()}`,
         name: `Island_${i}`,
         url: islCanvas.toDataURL(),
-        x: destX,
-        y: destY,
-        width: geo.cellW, height: geo.cellH,
-        scale: 1, hue: 0, brightness: 100,
+        x: finalX,
+        y: finalY,
+        width: finalW, 
+        height: finalH,
+        scale: finalScale, 
+        hue: 0, 
+        brightness: 100,
+        isCrop: state.resizeMode === 'crop'
       };
     });
 
@@ -218,6 +236,33 @@ export function useAtlasOps(
     console.log(`[PackElements] Complete.`);
     executeCommand(new SetMainTilesCommand(state.atlasEntries, nextEntries, state.atlasStatus, 'baked'));
   }, [state.atlasEntries, state.gridSettings, state.atlasStatus, canvasWidth, canvasHeight, executeCommand]);
+
+  const addToLibrary = useCallback(async () => {
+    const canvas = await renderTilesToCanvas(
+      state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings.clearColor
+    );
+    const url = canvas.toDataURL('image/png');
+    const name = `${state.textureName || 'T_Texture_BC'}.png`;
+
+    // Add to library
+    const img = new Image();
+    img.onload = () => {
+      const newAsset: TextureAsset = {
+        id: generateId(),
+        url: url,
+        name: name,
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        x: 0, y: 0,
+        hue: 0, brightness: 100, scale: 1,
+      };
+      set(prev => ({
+        ...prev,
+        libraryAssets: [newAsset, ...prev.libraryAssets]
+      }));
+    };
+    img.src = url;
+  }, [state.atlasEntries, state.gridSettings.clearColor, state.textureName, canvasWidth, canvasHeight, set]);
 
   const exportAtlas = useCallback(async () => {
     const canvas = await renderTilesToCanvas(
@@ -335,5 +380,5 @@ export function useAtlasOps(
     onAfterNewAtlas?.();
   }, [set, onAfterNewAtlas]);
 
-  return { packAtlas, fixGrid, packElements, exportAtlas, exportGridZip, createNewAtlas };
+  return { packAtlas, fixGrid, packElements, exportAtlas, exportGridZip, createNewAtlas, addToLibrary };
 }

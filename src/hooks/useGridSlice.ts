@@ -417,7 +417,7 @@ export function useGridSlice(
         newEntries.push(newEntry);
       }
       executeCommand([
-        new AddTilesCommand(newEntries, replacedEntries),
+        new AddTilesCommand(newEntries, replacedEntries, state.lastMainAssetId, newEntries[newEntries.length-1].id),
         new PatchCommand(
           { lastSourceAssetId: state.lastSourceAssetId, clearedCells: newClearedCells }, 
           { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
@@ -454,7 +454,7 @@ export function useGridSlice(
       tileRegistry.register(newEntry);
 
       executeCommand([
-        new AddTilesCommand([newEntry], replacedEntries),
+        new AddTilesCommand([newEntry], replacedEntries, state.lastMainAssetId, newEntry.id),
         new PatchCommand(
           { lastSourceAssetId: state.lastSourceAssetId, clearedCells: newClearedCells }, 
           { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
@@ -591,7 +591,7 @@ export function useGridSlice(
       newEntries.push(newEntry);
     }
     executeCommand([
-      new AddTilesCommand(newEntries, replacedEntries),
+      new AddTilesCommand(newEntries, replacedEntries, state.lastMainAssetId, newEntries[newEntries.length-1].id),
       new PatchCommand(
         { lastSourceAssetId: state.lastSourceAssetId, clearedCells: newClearedCells }, 
         { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }

@@ -57,6 +57,8 @@ const getInitialState = (): AppState => {
     lastSourceAssetId: null,
     lastMainAssetId: null,
     currentSourceAsset: null,    clearedCells: [],    autoDetectEnabled: false,
+    addTextEnabled: false,
+    textColor: '#ffffff',
     debugIslands: [],
     debugIslandDetection: false,
     textureName: 'T_Texture_BC',
@@ -102,10 +104,9 @@ export default function App() {
     entries: state.atlasEntries,
     setEntries: (newEntries) => {
       const next = typeof newEntries === 'function' ? newEntries(state.atlasEntries) : newEntries;
-      executeCommand(new SetMainTilesCommand(state.atlasEntries, next));
+      executeCommand(new SetMainTilesCommand(state.atlasEntries, next, state.atlasStatus, state.atlasStatus, state.lastMainAssetId, state.lastMainAssetId));
     },
   });
-
   const { performGridSlice, handleMaterialize, handleSourceCellClick, handleSourceCellRightClick } =
     useGridSlice(state, canvasWidth, canvasHeight, mainAtlas.geo, selectedCells, set, executeCommand);
 
@@ -550,7 +551,7 @@ export default function App() {
       : state.clearedCells;
 
     executeCommand([
-      new AddTilesCommand([newEntry], replacedEntries),
+      new AddTilesCommand([newEntry], replacedEntries, state.lastMainAssetId, asset.id),
       new PatchCommand(
         { lastSourceAssetId: state.lastSourceAssetId, lastMainAssetId: asset.id, clearedCells: nextClearedCells }, 
         { lastSourceAssetId: state.lastSourceAssetId, lastMainAssetId: state.lastMainAssetId, clearedCells: state.clearedCells }
@@ -826,8 +827,11 @@ export default function App() {
               onAutoDetectEnabledChange={(val) => set(prev => ({ ...prev, autoDetectEnabled: val }))}
               debugIslandDetection={state.debugIslandDetection}
               onDebugIslandDetectionChange={(val) => set(prev => ({ ...prev, debugIslandDetection: val, debugIslands: val ? prev.debugIslands : [] }))}
+              addTextEnabled={state.addTextEnabled}
+              onAddTextEnabledChange={(val) => set(prev => ({ ...prev, addTextEnabled: val }))}
+              textColor={state.textColor}
+              onTextColorChange={(val) => set(prev => ({ ...prev, textColor: val }))}
               />
-
             <div className="flex-1 flex overflow-hidden" ref={splitPaneRef}>
               <div style={{ flex: canvasWidth > 0 ? splitRatio : 1 }} className="flex overflow-hidden">
                 {canvasWidth > 0 ? (
@@ -835,7 +839,8 @@ export default function App() {
                     entries={state.atlasEntries}
                     setEntries={(entries) => {
                       const next = typeof entries === 'function' ? (entries as any)(state.atlasEntries) : entries;
-                      executeCommand(new SetMainTilesCommand(state.atlasEntries, next));
+                      const newId = next.length > state.atlasEntries.length ? next[next.length - 1].id : state.lastMainAssetId;
+                      executeCommand(new SetMainTilesCommand(state.atlasEntries, next, state.atlasStatus, state.atlasStatus, state.lastMainAssetId, newId));
                     }}
                     onRemoveEntry={(entry) => executeCommand(new RemoveTilesCommand([entry]))}
                     onDrop={handleMainAtlasDrop}
@@ -850,6 +855,9 @@ export default function App() {
                     clearedCells={state.clearedCells}                    atlasStatus={state.atlasStatus}
                     onMaterialize={handleMaterialize}
                     debugIslands={state.debugIslands}
+                    addTextEnabled={state.addTextEnabled}
+                    textColor={state.textColor}
+                    lastMainAssetId={state.lastMainAssetId}
                   />
                 ) : (
                   <div

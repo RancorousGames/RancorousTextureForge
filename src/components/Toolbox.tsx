@@ -27,40 +27,72 @@ interface ToolboxProps {
   onAutoDetectEnabledChange: (enabled: boolean) => void;
   debugIslandDetection: boolean;
   onDebugIslandDetectionChange: (enabled: boolean) => void;
+  addTextEnabled: boolean;
+  onAddTextEnabledChange: (enabled: boolean) => void;
+  textColor: string;
+  onTextColorChange: (color: string) => void;
   }
 
   export function Toolbox({
-    selectedAsset,
-    updateAsset,
-    onPack,
-    onPackElements,
-    onNewAtlas,
-    onFixGrid,
-    onAutoDetect,
-    onExport,
-    onAddToLibrary,
-    onExportZip,
-    gridSettings,
-    onGridSettingsChange,
-    dragMode,
-    setDragMode,
-    resizeMode,
-    onResizeModeChange,
-    addMode,
-    onAddModeChange,
-    autoDetectEnabled,
-    onAutoDetectEnabledChange,
-    debugIslandDetection,
-    onDebugIslandDetectionChange
+  selectedAsset,
+  updateAsset,
+  onPack,
+  onPackElements,
+  onNewAtlas,
+  onFixGrid,
+  onAutoDetect,
+  onExport,
+  onAddToLibrary,
+  onExportZip,
+  gridSettings,
+  onGridSettingsChange,
+  dragMode,
+  setDragMode,
+  resizeMode,
+  onResizeModeChange,
+  addMode,
+  onAddModeChange,
+  autoDetectEnabled,
+  onAutoDetectEnabledChange,
+  debugIslandDetection,
+  onDebugIslandDetectionChange,
+  addTextEnabled,
+  onAddTextEnabledChange,
+  textColor,
+  onTextColorChange
   }: ToolboxProps) {
 
   const [localClearColor, setLocalClearColor] = useState(gridSettings.clearColor);
+  const [localTextColor, setLocalTextColor] = useState(textColor);
 
   useEffect(() => {
     setLocalClearColor(gridSettings.clearColor);
   }, [gridSettings.clearColor]);
+
+  useEffect(() => {
+    setLocalTextColor(textColor);
+  }, [textColor]);
+
   const [showNewAtlas, setShowNewAtlas] = React.useState(false);
-  return (
+
+  // Determine if a hex color is light or dark
+  const isColorLight = (hex: string) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    return brightness > 128;
+  };
+
+  const handleToggleText = () => {
+    const nextEnabled = !addTextEnabled;
+    if (nextEnabled) {
+      // Auto-set contrast color
+      const autoColor = isColorLight(gridSettings.clearColor) ? '#000000' : '#ffffff';
+      onTextColorChange(autoColor);
+    }
+    onAddTextEnabledChange(nextEnabled);
+  };  return (
     <div className="w-64 h-full bg-zinc-900 border-r border-zinc-800 flex flex-col">
       {/* Grid Settings */}
       <div className="p-3 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between">
@@ -168,6 +200,40 @@ interface ToolboxProps {
             </button>
           </div>
         )}
+
+        <div className="pt-2 border-t border-zinc-800 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-semibold text-zinc-500 uppercase">Text Overlay</label>
+            <button
+              onClick={handleToggleText}
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold transition-all border",
+                addTextEnabled 
+                  ? "bg-blue-600 border-blue-500 text-white shadow-[0_0_10px_rgba(37,99,235,0.3)]" 
+                  : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700"
+              )}
+            >
+              <Palette className="w-3 h-3" />
+              {addTextEnabled ? 'ENABLED' : 'ADD TEXT'}
+            </button>
+          </div>
+
+          {addTextEnabled && (
+            <div className="space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+              <label className="text-[10px] text-zinc-500">Text Color</label>
+              <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded px-1.5 py-1">
+                <input
+                  type="color"
+                  value={localTextColor}
+                  onChange={(e) => setLocalTextColor(e.target.value)}
+                  onBlur={() => onTextColorChange(localTextColor)}
+                  className="w-5 h-5 rounded cursor-pointer bg-transparent border-0 p-0"
+                />
+                <span className="text-[10px] font-mono text-zinc-400 uppercase truncate">{localTextColor}</span>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="space-y-1 pt-2 border-t border-zinc-800">
           <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="Choose what happens when dragging an entry onto another">Drag Mode</label>

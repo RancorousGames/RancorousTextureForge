@@ -19,6 +19,8 @@ interface MainAtlasProps {
   atlasStatus: AtlasStatus;
   onMaterialize?: (cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number }) => void;
   debugIslands?: { x: number; y: number; w: number; h: number }[];
+  addTextEnabled?: boolean;
+  textColor?: string;
 }
 
 export function MainAtlas({
@@ -38,7 +40,9 @@ export function MainAtlas({
   clearedCells,
   atlasStatus,
   onMaterialize,
-  debugIslands
+  debugIslands,
+  addTextEnabled,
+  textColor
 }: MainAtlasProps) {
   return (
     <AtlasCanvas
@@ -61,6 +65,8 @@ export function MainAtlas({
       uniqueId="main"
       onMaterialize={onMaterialize}
       debugIslands={debugIslands}
+      addTextEnabled={addTextEnabled}
+      textColor={textColor}
     />
   );
 }

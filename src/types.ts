@@ -106,6 +106,8 @@ export interface AppState {
   currentSourceAsset: TextureAsset | null;
   clearedCells: string[];
   autoDetectEnabled: boolean;
+  addTextEnabled: boolean;
+  textColor: string;
   debugIslands: { x: number; y: number; w: number; h: number }[];
   debugIslandDetection: boolean;
   textureName: string;

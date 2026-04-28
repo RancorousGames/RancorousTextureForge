@@ -136,7 +136,7 @@ export function useAtlasOps(
 
     console.log(`[FixGrid] Complete. Generated ${newEntries.length} fixed entries.`);
     executeCommand([
-      new SetMainTilesCommand(state.atlasEntries, newEntries, state.atlasStatus, 'baked'),
+      new SetMainTilesCommand(state.atlasEntries, newEntries, state.atlasStatus, 'baked', state.lastMainAssetId, state.lastMainAssetId),
       new PatchCommand(
         { lastSourceAssetId: state.lastSourceAssetId, clearedCells: [] },
         { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
@@ -240,8 +240,8 @@ export function useAtlasOps(
     });
 
     console.log(`[PackElements] Complete.`);
-    executeCommand(new SetMainTilesCommand(state.atlasEntries, nextEntries, state.atlasStatus, 'baked'));
-  }, [state.atlasEntries, state.gridSettings, state.atlasStatus, canvasWidth, canvasHeight, executeCommand]);
+    executeCommand(new SetMainTilesCommand(state.atlasEntries, nextEntries, state.atlasStatus, 'baked', state.lastMainAssetId, state.lastMainAssetId));
+  }, [state.atlasEntries, state.gridSettings, state.atlasStatus, state.lastMainAssetId, canvasWidth, canvasHeight, executeCommand]);
 
   const addToLibrary = useCallback(async () => {
     const canvas = await renderTilesToCanvas(

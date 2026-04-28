@@ -43,7 +43,12 @@ export class MoveTileCommand implements Command {
 }
 
 export class AddTilesCommand implements Command {
-  constructor(private newEntries: TextureAsset[], private replacedEntries: TextureAsset[]) {}
+  constructor(
+    private newEntries: TextureAsset[],
+    private replacedEntries: TextureAsset[],
+    private oldLastId?: string | null,
+    private newLastId?: string | null
+  ) {}
 
   execute(state: AppState): AppState {
     const idsToRemove = new Set([
@@ -52,7 +57,8 @@ export class AddTilesCommand implements Command {
     ]);
     return {
       ...state,
-      atlasEntries: [...state.atlasEntries.filter(e => !idsToRemove.has(e.id)), ...this.newEntries]
+      atlasEntries: [...state.atlasEntries.filter(e => !idsToRemove.has(e.id)), ...this.newEntries],
+      lastMainAssetId: this.newLastId !== undefined ? this.newLastId : state.lastMainAssetId
     };
   }
 
@@ -60,7 +66,8 @@ export class AddTilesCommand implements Command {
     const idsToRevert = new Set(this.newEntries.map(e => e.id));
     return {
       ...state,
-      atlasEntries: [...state.atlasEntries.filter(e => !idsToRevert.has(e.id)), ...this.replacedEntries]
+      atlasEntries: [...state.atlasEntries.filter(e => !idsToRevert.has(e.id)), ...this.replacedEntries],
+      lastMainAssetId: this.oldLastId !== undefined ? this.oldLastId : state.lastMainAssetId
     };
   }
 }
@@ -89,14 +96,17 @@ export class SetMainTilesCommand implements Command {
     private oldEntries: TextureAsset[],
     private newEntries: TextureAsset[],
     private oldStatus?: AtlasStatus,
-    private newStatus?: AtlasStatus
+    private newStatus?: AtlasStatus,
+    private oldLastId?: string | null,
+    private newLastId?: string | null
   ) {}
 
   execute(state: AppState): AppState {
     return { 
       ...state, 
       atlasEntries: this.newEntries,
-      atlasStatus: this.newStatus ?? state.atlasStatus
+      atlasStatus: this.newStatus ?? state.atlasStatus,
+      lastMainAssetId: this.newLastId !== undefined ? this.newLastId : state.lastMainAssetId
     };
   }
 
@@ -104,7 +114,8 @@ export class SetMainTilesCommand implements Command {
     return { 
       ...state, 
       atlasEntries: this.oldEntries,
-      atlasStatus: this.oldStatus ?? state.atlasStatus
+      atlasStatus: this.oldStatus ?? state.atlasStatus,
+      lastMainAssetId: this.oldLastId !== undefined ? this.oldLastId : state.lastMainAssetId
     };
   }
 }

@@ -29,6 +29,9 @@ interface AtlasCanvasProps {
   uniqueId?: string;
   disableHover?: boolean;
   debugIslands?: { x: number; y: number; w: number; h: number }[];
+  addTextEnabled?: boolean;
+  textColor?: string;
+  lastMainAssetId?: string | null;
 }
 
 export function AtlasCanvas({
@@ -56,12 +59,88 @@ export function AtlasCanvas({
   uniqueId = 'atlas',
   disableHover = false,
   debugIslands = [],
+  addTextEnabled = false,
+  textColor = '#ffffff',
+  lastMainAssetId = null,
 }: AtlasCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const mousePosRef = useRef({ x: 0, y: 0 });
+
+  const [textInput, setTextInput] = useState<{ x: number, y: number, w: number, h: number, cells: string[] } | null>(null);
+  const [textValue, setTextValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Submit text and rasterize
+  const submitText = () => {
+    if (!textInput || !textValue.trim() || !onEntriesChange) {
+      setTextInput(null);
+      setTextValue('');
+      return;
+    }
+
+    const { x, y, w, h, cells } = textInput;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Use a very clean font for tiny resolutions
+    const fontStack = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
+    
+    // Auto-size font to fit
+    let fontSize = h * 0.8;
+    ctx.font = `bold ${fontSize}px ${fontStack}`;
+    
+    // Shrink if too wide
+    const metrics = ctx.measureText(textValue);
+    if (metrics.width > w * 0.9) {
+      fontSize = fontSize * (w * 0.9 / metrics.width);
+      ctx.font = `bold ${fontSize}px ${fontStack}`;
+    }
+
+    ctx.fillStyle = textColor || '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(textValue, w / 2, h / 2);
+
+    const newId = Math.random().toString(36).substring(2, 9);
+    const newEntry: TextureAsset = {
+      id: newId,
+      url: canvas.toDataURL(),
+      name: `Text_${textValue.substring(0, 10)}`,
+      width: w,
+      height: h,
+      x: x,
+      y: y,
+      hue: 0,
+      brightness: 100,
+      scale: 1,
+    };
+
+    // Find entries that were in these cells to replace them (unless overlay)
+    const replacedEntries = dragMode === 'overlay' ? [] : entries.filter(e => 
+      cells.some(cellKey => {
+        const [cx, cy] = cellKey.split(',').map(Number);
+        return geo.isTileInCell(e.x, e.y, e.width, e.height, e.scale, cx, cy);
+      })
+    );
+
+    const nextEntries = [...entries.filter(e => !replacedEntries.includes(e)), newEntry];
+    onEntriesChange(nextEntries);
+
+    setTextInput(null);
+    setTextValue('');
+  };
+
+  useEffect(() => {
+    if (textInput && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [textInput]);
 
   // Update mouse pos for zoom-to-cursor logic
   useEffect(() => {
@@ -195,6 +274,40 @@ export function AtlasCanvas({
   const handlePointerUp = (e: React.PointerEvent) => {
     const pos = getPointerPos(e);
     if (!pos) return;
+
+    // Handle Add Text Mode
+    if (addTextEnabled && !interactionState.draggingId && !interactionState.isPanning) {
+      const { cx, cy } = geo.getCellAtPos(pos.x, pos.y);
+      const isSelected = selectedCells.includes(`${cx},${cy}`);
+
+      let targetX, targetY, targetW, targetH, targetCells;
+
+      if (isSelected && selectedCells.length > 0) {
+        // Use full selected area
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        selectedCells.forEach(key => {
+          const [ccx, ccy] = key.split(',').map(Number);
+          const p = geo.getPosFromCell(ccx, ccy);
+          minX = Math.min(minX, p.x);
+          minY = Math.min(minY, p.y);
+          maxX = Math.max(maxX, p.x + geo.cellW);
+          maxY = Math.max(maxY, p.y + geo.cellH);
+        });
+        targetX = minX; targetY = minY;
+        targetW = maxX - minX; targetH = maxY - minY;
+        targetCells = [...selectedCells];
+      } else {
+        // Single cell
+        const p = geo.getPosFromCell(cx, cy);
+        targetX = p.x; targetY = p.y;
+        targetW = geo.cellW; targetH = geo.cellH;
+        targetCells = [`${cx},${cy}`];
+      }
+
+      setTextInput({ x: targetX, y: targetY, w: targetW, h: targetH, cells: targetCells });
+      setInteractionState(prev => ({ ...prev, isSelecting: false, selectionStart: null }));
+      return;
+    }
 
     const result = strategy.onPointerUp(e, pos, interactionState, entries, {
       selectedCells,
@@ -356,6 +469,40 @@ export function AtlasCanvas({
             <div className="absolute bottom-full right-0 bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded-t-sm font-mono whitespace-nowrap shadow-lg">
               {customSelection.w} x {customSelection.h} px
             </div>
+          </div>
+        )}
+
+        {textInput && (
+          <div 
+            className="absolute z-[200]" 
+            style={{ 
+              left: textInput.x, 
+              top: textInput.y, 
+              width: textInput.w, 
+              height: textInput.h,
+            }}
+          >
+            <input
+              ref={inputRef}
+              type="text"
+              value={textValue}
+              onChange={(e) => setTextValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitText();
+                if (e.key === 'Escape') {
+                  setTextInput(null);
+                  setTextValue('');
+                }
+              }}
+              onBlur={submitText}
+              className="w-full h-full bg-black/40 text-center outline-none border-2 border-blue-500 rounded-sm shadow-[0_0_15px_rgba(59,130,246,0.5)]"
+              style={{ 
+                color: textColor,
+                fontSize: `${Math.min(textInput.h * 0.7, 100)}px`,
+                fontWeight: 'bold',
+                fontFamily: 'system-ui, sans-serif'
+              }}
+            />
           </div>
         )}
       </div>

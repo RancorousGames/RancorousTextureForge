@@ -810,7 +810,7 @@ export default function App() {
                 } else {
                    // If switching TO packing mode, or no source asset, just reset entries
                    if (isModeSwitch) {
-                     set(prev => ({ ...prev, gridSettings: gs, atlasEntries: [], clearedCells: [], lastMainAssetId: null, lastSourceAssetId: null, atlasStatus: 'parametric' }));
+                     set(prev => ({ ...prev, gridSettings: gs, atlasEntries: [], clearedCells: [], lastMainAssetId: null, atlasStatus: 'parametric' }));
                    } else {
                      set(prev => ({ ...prev, gridSettings: gs }));
                    }

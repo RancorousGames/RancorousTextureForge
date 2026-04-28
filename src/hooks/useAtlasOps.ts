@@ -138,7 +138,7 @@ export function useAtlasOps(
     executeCommand([
       new SetMainTilesCommand(state.atlasEntries, newEntries, state.atlasStatus, 'baked'),
       new PatchCommand(
-        { lastSourceAssetId: null, clearedCells: [] },
+        { lastSourceAssetId: state.lastSourceAssetId, clearedCells: [] },
         { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
       )
     ]);

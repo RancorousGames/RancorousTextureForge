@@ -23,6 +23,18 @@ export function SecondaryAtlas({
   virtualMainAtlasPreview
 }: SecondaryAtlasProps) {
   const [search, setSearch] = useState('');
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const prevAssetsLength = useRef(assets.length);
+
+  useEffect(() => {
+    if (assets.length > prevAssetsLength.current) {
+      // New asset added (likely to the top)
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+    prevAssetsLength.current = assets.length;
+  }, [assets.length]);
 
   const handleDragStart = (e: React.DragEvent, asset: TextureAsset) => {
     e.dataTransfer.setData('text/plain', asset.id);
@@ -134,7 +146,7 @@ export function SecondaryAtlas({
         </div>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 space-y-6" ref={scrollContainerRef}>
         {/* Active Section */}
         {filteredActive.length > 0 && (
           <div className="space-y-3">

@@ -223,11 +223,33 @@ export function useAtlasOps(
     const canvas = await renderTilesToCanvas(
       state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings.clearColor
     );
+    const url = canvas.toDataURL('image/png');
+    const name = `${state.textureName || 'T_Texture_BC'}.png`;
+
     const link = document.createElement('a');
-    link.href = canvas.toDataURL('image/png');
-    link.download = `${state.textureName || 'T_Texture_BC'}.png`;
+    link.href = url;
+    link.download = name;
     link.click();
-  }, [state.atlasEntries, state.gridSettings.clearColor, state.textureName, canvasWidth, canvasHeight]);
+
+    // Add to library
+    const img = new Image();
+    img.onload = () => {
+      const newAsset: TextureAsset = {
+        id: generateId(),
+        url: url,
+        name: name,
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        x: 0, y: 0,
+        hue: 0, brightness: 100, scale: 1,
+      };
+      set(prev => ({
+        ...prev,
+        libraryAssets: [newAsset, ...prev.libraryAssets]
+      }));
+    };
+    img.src = url;
+  }, [state.atlasEntries, state.gridSettings.clearColor, state.textureName, canvasWidth, canvasHeight, set]);
 
   const exportGridZip = useCallback(async () => {
     if (state.gridSettings.mode !== 'fixed') return;

@@ -152,9 +152,9 @@ export default function App() {
       const newAsset: TextureAsset = {
         id: generateId(),
         url: url,
-        name: name,
-        width: img.width,
-        height: img.height,
+        name: finalName,
+        width: img.naturalWidth,
+        height: img.naturalHeight,
         x: 0,
         y: 0,
         hue: 0,
@@ -465,6 +465,10 @@ export default function App() {
       const cellW = mainAtlas.geo.cellW;
       const cellH = mainAtlas.geo.cellH;
       
+      if (state.resizeMode === 'fill') {
+        entryW = cellW;
+        entryH = cellH;
+        entryScale = 1;
       } else if (state.resizeMode === 'fit') {
         // Scale to fit while maintaining aspect ratio (allows upscaling)
         entryScale = Math.min(cellW / asset.width, cellH / asset.height);

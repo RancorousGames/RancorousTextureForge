@@ -465,11 +465,8 @@ export default function App() {
       const cellW = mainAtlas.geo.cellW;
       const cellH = mainAtlas.geo.cellH;
       
-      if (state.resizeMode === 'fill') {
-        entryW = cellW;
-        entryH = cellH;
-        entryScale = 1;
       } else if (state.resizeMode === 'fit') {
+        // Scale to fit while maintaining aspect ratio (allows upscaling)
         entryScale = Math.min(cellW / asset.width, cellH / asset.height);
         entryW = asset.width;
         entryH = asset.height;
@@ -513,7 +510,7 @@ export default function App() {
       sourceY,
       sourceW,
       sourceH,
-      isCrop: true,
+      isCrop: state.resizeMode === 'crop',
       isKeyed
     };
     tileRegistry.register(newEntry);

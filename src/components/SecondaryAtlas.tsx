@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { TextureAsset, VIRTUAL_MAIN_ATLAS_ID } from '../types';
 import { cn } from '../lib/utils';
 import { Sparkles, Search, Trash2, Layout } from 'lucide-react';

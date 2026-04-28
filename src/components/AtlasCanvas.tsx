@@ -108,12 +108,10 @@ export function AtlasCanvas({
   // Zoom Handler
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault();
-        const delta = -e.deltaY;
-        const factor = delta > 0 ? 1.1 : 0.9;
-        setZoom(prev => Math.min(Math.max(0.1, prev * factor), 10));
-      }
+      e.preventDefault();
+      const delta = -e.deltaY;
+      const factor = delta > 0 ? 1.1 : 0.9;
+      setZoom(prev => Math.min(Math.max(0.1, prev * factor), 10));
     };
     const el = containerRef.current;
     if (el) {
@@ -364,7 +362,7 @@ export function AtlasCanvas({
         )}
       </div>
       <div className="absolute bottom-4 left-4 bg-black/60 px-2 py-1 rounded text-[10px] text-zinc-400 font-mono z-50">
-        {tooltip || `Zoom: ${Math.round(zoom * 100)}% (Ctrl+Scroll) | Pan: MMB | L-Click: Select | R-Drag: Move | R-Click: Clear`}
+        {tooltip || `Zoom: ${Math.round(zoom * 100)}% (Scroll) | Pan: MMB | L-Click: Select | R-Drag: Move | R-Click: Clear`}
       </div>
     </div>
   );

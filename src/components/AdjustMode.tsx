@@ -91,11 +91,9 @@ export function AdjustMode({ selectedAsset, updateAsset, onExport, adjustSetting
 
   React.useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        setZoom((prev) => Math.min(Math.max(prev * delta, 0.1), 10));
-      }
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setZoom((prev) => Math.min(Math.max(prev * delta, 0.1), 10));
     };
 
     const el = containerRef.current;

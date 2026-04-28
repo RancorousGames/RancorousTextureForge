@@ -57,10 +57,8 @@ export function LayeringMode({ availableAssets, layers, setLayers, onExport, can
     const el = viewportRef.current;
     if (!el) return;
     const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault();
-        setZoom(prev => Math.min(Math.max(0.1, prev * (e.deltaY > 0 ? 0.9 : 1.1)), 10));
-      }
+      e.preventDefault();
+      setZoom(prev => Math.min(Math.max(0.1, prev * (e.deltaY > 0 ? 0.9 : 1.1)), 10));
     };
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
@@ -459,7 +457,7 @@ export function LayeringMode({ availableAssets, layers, setLayers, onExport, can
         )}
 
         <div className="absolute bottom-4 left-4 bg-black/60 px-2 py-1 rounded text-[10px] text-zinc-400 font-mono z-50 pointer-events-none">
-          {`Zoom: ${Math.round(zoom * 100)}% (Ctrl+Scroll) | Drag: Move | Corner-drag: Resize`}
+          {`Zoom: ${Math.round(zoom * 100)}% (Scroll) | Drag: Move | Corner-drag: Resize`}
         </div>
 
         {resultUrl && (

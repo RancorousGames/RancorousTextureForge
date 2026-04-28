@@ -1,4 +1,4 @@
-import { TextureAsset } from '../types';
+import { TextureAsset, DragMode } from '../types';
 import { GridGeometry } from './GridGeometry';
 
 export interface InteractionState {
@@ -31,7 +31,7 @@ export interface InteractionCallbacks {
   selectedCells?: string[];
   onCellClick?: (x: number, y: number, w: number, h: number, cx: number, cy: number) => void;
   onCellRightClick?: (x: number, y: number, w: number, h: number, cx: number, cy: number) => void;
-  atlasSwapMode?: boolean;
+  dragMode?: DragMode;
 }
 
 export interface InteractionCallbacksExt extends InteractionCallbacks {
@@ -73,7 +73,8 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
           pos.y >= t.y && pos.y <= t.y + t.height * (t.scaleY ?? t.scale)
         );
       } else {
-        entry = entries.find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
+        // Search backwards to pick the top-most entry
+        entry = [...entries].reverse().find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
       }
 
       if (entry) {
@@ -215,7 +216,7 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
         }
       }
     }
-    else if (e.button === 2) { // Right Button
+    else if (e.button === 2) { // Right Click
       if (dist <= this.MOVE_THRESHOLD) {
         let entry: TextureAsset | undefined;
         if (this.geo.settings.mode === 'packing') {
@@ -224,7 +225,7 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
             pos.y >= t.y && pos.y <= t.y + t.height * (t.scaleY ?? t.scale)
           );
         } else {
-          entry = entries.find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
+          entry = [...entries].reverse().find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
         }
 
         if (callbacks.onMaterialize && this.geo.settings.mode !== 'packing') {
@@ -280,7 +281,7 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
                  return targetKeys.includes(`${ec.cx},${ec.cy}`);
                });
 
-               if (callbacks.atlasSwapMode) {
+               if (callbacks.dragMode === 'swap') {
                  result.onEntriesChange = entries.map(e => {
                     if (state.draggingIds.includes(e.id)) {
                       const nextX = e.x + deltaX;
@@ -297,18 +298,15 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
                     return e;
                  });
                } else {
-                 const hitIds = hitTargetEntries.map(h => h.id);
-                 result.onEntriesChange = entries
-                   .filter(e => !hitIds.includes(e.id))
-                   .map(e => {
-                      if (state.draggingIds.includes(e.id)) {
-                        const nextX = e.x + deltaX;
-                        const nextY = e.y + deltaY;
-                        const snapped = this.geo.snap(nextX + (e.width * (e.scaleX ?? e.scale) / 2), nextY + (e.height * (e.scaleY ?? e.scale) / 2));
-                        return { ...e, x: snapped.x, y: snapped.y };
-                      }
-                      return e;
-                   });
+                 const hitIds = callbacks.dragMode === 'replace' ? hitTargetEntries.map(h => h.id) : [];
+                 const others = entries.filter(e => !state.draggingIds.includes(e.id) && !hitIds.includes(e.id));
+                 const moved = entries.filter(e => state.draggingIds.includes(e.id)).map(e => {
+                    const nextX = e.x + deltaX;
+                    const nextY = e.y + deltaY;
+                    const snapped = this.geo.snap(nextX + (e.width * (e.scaleX ?? e.scale) / 2), nextY + (e.height * (e.scaleY ?? e.scale) / 2));
+                    return { ...e, x: snapped.x, y: snapped.y };
+                 });
+                 result.onEntriesChange = [...others, ...moved];
                }
 
                if (callbacks.selectedCells) {
@@ -324,7 +322,7 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
                 this.geo.isTileInCell(e.x, e.y, e.width, e.height, e.scale, destCx, destCy)
               );
 
-              if (hitEntry && callbacks.atlasSwapMode) {
+              if (hitEntry && callbacks.dragMode === 'swap') {
                 const origX = state.dragOffset.originalX;
                 const origY = state.dragOffset.originalY;
                 result.onEntriesChange = entries.map(e => {
@@ -332,12 +330,12 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
                   if (e.id === hitEntry.id) return { ...e, x: origX, y: origY };
                   return e;
                 });
-              } else if (hitEntry) {
-                result.onEntriesChange = entries
-                  .filter(e => e.id !== hitEntry.id)
-                  .map(e => e.id === state.draggingId ? { ...e, x: nx, y: ny } : e);
               } else {
-                result.onEntriesChange = entries.map(e => e.id === state.draggingId ? { ...e, x: nx, y: ny } : e);
+                const others = entries.filter(e => e.id !== state.draggingId && (callbacks.dragMode !== 'replace' || !hitEntry || e.id !== hitEntry.id));
+                const draggingEntry = entries.find(e => e.id === state.draggingId);
+                if (draggingEntry) {
+                   result.onEntriesChange = [...others, { ...draggingEntry, x: nx, y: ny }];
+                }
               }
             }
           } else {

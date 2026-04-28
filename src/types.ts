@@ -33,12 +33,14 @@ export interface TextureAsset {
   sourceY?: number;
   sourceW?: number;
   sourceH?: number;
+  isKeyed?: boolean;
 }
 
 export type AppMode = 'atlas' | 'adjust' | 'channel-pack' | 'layering';
 export type GridMode = 'fixed' | 'packing';
 export type ResizeMode = 'fill' | 'fit' | 'crop';
 export type AddMode = 'as-is' | 'replace-bg';
+export type DragMode = 'replace' | 'swap' | 'overlay';
 
 export interface GridSettings {
   mode: GridMode;
@@ -91,7 +93,7 @@ export interface AppState {
   packerMapping: ChannelMapping;
   pbrSet: PBRSet;
   layeringLayers: Layer[];
-  atlasSwapMode: boolean;
+  dragMode: DragMode;
   resizeMode: ResizeMode;
   addMode: AddMode;
   atlasStatus: AtlasStatus;

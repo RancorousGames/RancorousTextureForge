@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { TextureAsset, GridSettings, AtlasStatus } from '../types';
+import { TextureAsset, GridSettings, AtlasStatus, DragMode } from '../types';
 import { cn, hexToRgb } from '../lib/utils';
 import { GridGeometry } from '../lib/GridGeometry';
 import { InteractionState, DefaultInteractionStrategy } from '../lib/Interactions';
@@ -21,7 +21,7 @@ interface AtlasCanvasProps {
   customSelection?: { x: number, y: number, w: number, h: number } | null;
   onCustomSelectionChange?: (rect: { x: number, y: number, w: number, h: number } | null, screenPos?: { x: number, y: number }) => void;
   onMaterialize?: (cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number }) => void;
-  atlasSwapMode?: boolean;
+  dragMode?: DragMode;
   tooltip?: string;
   sourceAsset?: TextureAsset | null;
   clearedCells?: string[];
@@ -48,7 +48,7 @@ export function AtlasCanvas({
   customSelection,
   onCustomSelectionChange,
   onMaterialize,
-  atlasSwapMode = false,
+  dragMode = 'replace',
   tooltip,
   sourceAsset,
   clearedCells = [],
@@ -180,7 +180,7 @@ export function AtlasCanvas({
       onEntriesChange,
       onRemoveEntry,
       onCustomSelectionChange,
-      atlasSwapMode,
+      dragMode,
       onMaterialize
     });
 

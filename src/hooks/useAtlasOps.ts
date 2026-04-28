@@ -300,7 +300,7 @@ export function useAtlasOps(
     set(prev => ({
       ...prev,
       canvasWidth: finalW, canvasHeight: finalH,
-      atlasEntries: [], atlasSwapMode: false,
+      atlasEntries: [], dragMode: 'replace',
       atlasStatus: 'parametric',
       clearedCells: [],
       lastSourceAssetId: null,

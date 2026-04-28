@@ -98,6 +98,19 @@ export function useGridSlice(
         }
 
         if (hasContent) {
+          let isKeyed = false;
+          // Alpha key out background if in overlay mode
+          if (state.dragMode === 'overlay') {
+            console.log(`[useGridSlice] Overlay mode: keying out background for slice ${col},${row}`);
+            for (let i = 0; i < pixels.length; i += 4) {
+              if (isMatch(pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3])) {
+                pixels[i + 3] = 0;
+              }
+            }
+            sliceCtx.putImageData(sliceData, 0, 0);
+            isKeyed = true;
+          }
+
           const key = `${col},${row}`;
           newClearedCells.push(key);
           newEntries.push({
@@ -108,6 +121,7 @@ export function useGridSlice(
             width: cellW, height: cellH,
             x: col * stepX + padding, y: row * stepY + padding,
             hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1, isCrop: true,
+            isKeyed
           });
         }
       }
@@ -151,6 +165,36 @@ export function useGridSlice(
     const img = await loadImage(sourceAsset.sourceUrl || sourceAsset.url);
     ctx.drawImage(img, cellPos.x, cellPos.y, geo.cellW, geo.cellH, 0, 0, geo.cellW, geo.cellH);
 
+    let isKeyed = false;
+    if (state.dragMode === 'overlay') {
+      console.log(`[useGridSlice] handleMaterialize: applying alpha key to JIT tile ${cx},${cy}`);
+      const imageData = ctx.getImageData(0, 0, geo.cellW, geo.cellH);
+      const pixels = imageData.data;
+      
+      const checkCanvas = document.createElement('canvas');
+      checkCanvas.width = img.naturalWidth; checkCanvas.height = img.naturalHeight;
+      const checkCtx = checkCanvas.getContext('2d', { willReadFrequently: true })!;
+      checkCtx.drawImage(img, 0, 0);
+      const fullImageData = checkCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
+      const tolerance = state.gridSettings.clearTolerance;
+      const keyColor = detectBackgroundColor(fullImageData, tolerance);
+
+      const isMatch = (r: number, g: number, b: number, a: number) => {
+        if (a < 5 && keyColor.a < 5) return true;
+        return Math.abs(r - keyColor.r) <= tolerance &&
+               Math.abs(g - keyColor.g) <= tolerance &&
+               Math.abs(b - keyColor.b) <= tolerance;
+      };
+
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (isMatch(pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3])) {
+          pixels[i + 3] = 0;
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+      isKeyed = true;
+    }
+
     const newEntry: TextureAsset = {
       id: generateId(),
       url: canvas.toDataURL(),
@@ -160,6 +204,7 @@ export function useGridSlice(
       x: draggingPos ? draggingPos.x : cellPos.x,
       y: draggingPos ? draggingPos.y : cellPos.y,
       hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1, isCrop: true,
+      isKeyed
     };
     tileRegistry.register(newEntry);
     const key = `${cx},${cy}`;
@@ -177,7 +222,7 @@ export function useGridSlice(
     if (reason === 'clear') {
       executeCommand(new ClearCellCommand(key, state.atlasStatus));
     } else {
-      if (existingEntry) {
+      if (existingEntry && state.dragMode !== 'overlay') {
         executeCommand([
            new RemoveTilesCommand([existingEntry]),
            new MaterializeCommand(newEntry, key, state.atlasStatus)
@@ -206,18 +251,21 @@ export function useGridSlice(
     if (!ctx) return;
 
     const img = await loadImage(sourceAsset.url);
+    const realW = img.naturalWidth || img.width;
+    const realH = img.naturalHeight || img.height;
 
     // Prepare background replacement if enabled
     let keyColor = { r: 0, g: 0, b: 0, a: 0 };
     let tolerance = state.gridSettings.clearTolerance;
     const targetBg = hexToRgb(state.gridSettings.clearColor);
     
-    if (state.addMode === 'replace-bg') {
+    if (state.addMode === 'replace-bg' || state.dragMode === 'overlay') {
+      if (state.dragMode === 'overlay') console.log(`[useGridSlice] Overlay mode: detecting background for alpha keying`);
       const checkCanvas = document.createElement('canvas');
       checkCanvas.width = img.naturalWidth; checkCanvas.height = img.naturalHeight;
       const checkCtx = checkCanvas.getContext('2d')!;
       checkCtx.drawImage(img, 0, 0);
-      const fullData = checkCtx.getImageData(0, 0, checkCanvas.width, checkCanvas.height);
+      const fullData = checkCtx.getImageData(0, 0, realW || img.naturalWidth, realH || img.naturalHeight);
       keyColor = detectBackgroundColor(fullData, tolerance);
     }
 
@@ -228,26 +276,32 @@ export function useGridSlice(
              Math.abs(b - keyColor.b) <= tolerance;
     };
 
-    const createCrop = (cx: number, cy: number): string => {
+    const createCrop = (cx: number, cy: number): { url: string, isKeyed: boolean } => {
       ctx.clearRect(0, 0, sourceGeo.cellW, sourceGeo.cellH);
       const { x: sx, y: sy } = sourceGeo.getPosFromCell(cx, cy);
       ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
       
-      if (state.addMode === 'replace-bg') {
+      let isKeyed = false;
+      if (state.addMode === 'replace-bg' || state.dragMode === 'overlay') {
         const imageData = ctx.getImageData(0, 0, sourceGeo.cellW, sourceGeo.cellH);
         const data = imageData.data;
         for (let i = 0; i < data.length; i += 4) {
           if (isMatch(data[i], data[i+1], data[i+2], data[i+3])) {
-            data[i] = targetBg.r;
-            data[i+1] = targetBg.g;
-            data[i+2] = targetBg.b;
-            data[i+3] = 255;
+            if (state.dragMode === 'overlay') {
+              data[i+3] = 0;
+              isKeyed = true;
+            } else {
+              data[i] = targetBg.r;
+              data[i+1] = targetBg.g;
+              data[i+2] = targetBg.b;
+              data[i+3] = 255;
+            }
           }
         }
         ctx.putImageData(imageData, 0, 0);
       }
       
-      return canvas.toDataURL();
+      return { url: canvas.toDataURL(), isKeyed };
     };
 
     const calculatePlacement = (dX: number, dY: number, sW: number, sH: number) => {
@@ -342,20 +396,22 @@ export function useGridSlice(
         if (sourceCX >= sourceGeo.cols || sourceCY >= sourceGeo.rows) continue;
 
         const { x: dX, y: dY } = mainAtlasGeo.getPosFromCell(dcx, dcy);
-        replacedEntries.push(...state.atlasEntries.filter(t =>
+        replacedEntries.push(...(state.dragMode === 'overlay' ? [] : state.atlasEntries.filter(t =>
           mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)
-        ));
+        )));
 
         if (!newClearedCells.includes(key)) newClearedCells.push(key);
 
         const { finalW, finalH, finalX, finalY, finalScale, sourceX, sourceY, sourceW, sourceH } = calculatePlacement(dX, dY, sourceGeo.cellW, sourceGeo.cellH);
+        const crop = createCrop(sourceCX, sourceCY);
 
         const newEntry: TextureAsset = {
-          id: generateId(), url: createCrop(sourceCX, sourceCY),
+          id: generateId(), url: crop.url,
           name: `${sourceAsset.name}_crop_${sourceCX}_${sourceCY}`,
           width: finalW, height: finalH,
           x: finalX, y: finalY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: finalScale,
-          sourceX, sourceY, sourceW, sourceH
+          sourceX, sourceY, sourceW, sourceH,
+          isKeyed: crop.isKeyed
         };
         tileRegistry.register(newEntry);
         newEntries.push(newEntry);
@@ -374,7 +430,7 @@ export function useGridSlice(
       if (!isPacking) {
         const { cx: tcx, cy: tcy } = mainAtlasGeo.getCellAtPos(destX, destY);
         cellKey = `${tcx},${tcy}`;
-        replacedEntries = state.atlasEntries.filter(t =>
+        replacedEntries = state.dragMode === 'overlay' ? [] : state.atlasEntries.filter(t =>
           mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, tcx, tcy)
         );
       }
@@ -383,15 +439,17 @@ export function useGridSlice(
         ? [...state.clearedCells, cellKey]
         : state.clearedCells;
 
-      const { finalW, finalH, finalX, finalY, finalScale, sourceX, sourceY, sourceW, sourceH } = calculatePlacement(dX, dY, sourceGeo.cellW, sourceGeo.cellH);
+      const { finalW, finalH, finalX, finalY, finalScale, sourceX, sourceY, sourceW, sourceH } = calculatePlacement(destX, destY, sourceGeo.cellW, sourceGeo.cellH);
+      const crop = createCrop(scx, scy);
 
       const newEntry: TextureAsset = {
-        id: generateId(), url: createCrop(scx, scy),
+        id: generateId(), url: crop.url,
         name: `${sourceAsset.name}_fill_${scx}_${scy}`,
         width: finalW, height: finalH,
 
         x: finalX, y: finalY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: finalScale, isCrop: true,
-        sourceX, sourceY, sourceW, sourceH
+        sourceX, sourceY, sourceW, sourceH,
+        isKeyed: crop.isKeyed
       };
       tileRegistry.register(newEntry);
 
@@ -423,18 +481,21 @@ export function useGridSlice(
     if (!ctx) return;
 
     const img = await loadImage(sourceAsset.url);
+    const realW = img.naturalWidth || img.width;
+    const realH = img.naturalHeight || img.height;
 
     // Prepare background replacement if enabled
     let keyColor = { r: 0, g: 0, b: 0, a: 0 };
     let tolerance = state.gridSettings.clearTolerance;
     const targetBg = hexToRgb(state.gridSettings.clearColor);
 
-    if (state.addMode === 'replace-bg') {
+    if (state.addMode === 'replace-bg' || state.dragMode === 'overlay') {
+      if (state.dragMode === 'overlay') console.log(`[useGridSlice] Overlay mode: detecting background for alpha keying`);
       const checkCanvas = document.createElement('canvas');
       checkCanvas.width = img.naturalWidth; checkCanvas.height = img.naturalHeight;
       const checkCtx = checkCanvas.getContext('2d')!;
       checkCtx.drawImage(img, 0, 0);
-      const fullData = checkCtx.getImageData(0, 0, checkCanvas.width, checkCanvas.height);
+      const fullData = checkCtx.getImageData(0, 0, realW || img.naturalWidth, realH || img.naturalHeight);
       keyColor = detectBackgroundColor(fullData, tolerance);
     }
 
@@ -445,26 +506,32 @@ export function useGridSlice(
              Math.abs(b - keyColor.b) <= tolerance;
     };
 
-    const createCrop = (cx: number, cy: number): string => {
+    const createCrop = (cx: number, cy: number): { url: string, isKeyed: boolean } => {
       ctx.clearRect(0, 0, sourceGeo.cellW, sourceGeo.cellH);
       const { x: sx, y: sy } = sourceGeo.getPosFromCell(cx, cy);
       ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
       
-      if (state.addMode === 'replace-bg') {
+      let isKeyed = false;
+      if (state.addMode === 'replace-bg' || state.dragMode === 'overlay') {
         const imageData = ctx.getImageData(0, 0, sourceGeo.cellW, sourceGeo.cellH);
         const data = imageData.data;
         for (let i = 0; i < data.length; i += 4) {
           if (isMatch(data[i], data[i+1], data[i+2], data[i+3])) {
-            data[i] = targetBg.r;
-            data[i+1] = targetBg.g;
-            data[i+2] = targetBg.b;
-            data[i+3] = 255;
+            if (state.dragMode === 'overlay') {
+              data[i+3] = 0;
+              isKeyed = true;
+            } else {
+              data[i] = targetBg.r;
+              data[i+1] = targetBg.g;
+              data[i+2] = targetBg.b;
+              data[i+3] = 255;
+            }
           }
         }
         ctx.putImageData(imageData, 0, 0);
       }
       
-      return canvas.toDataURL();
+      return { url: canvas.toDataURL(), isKeyed };
     };
 
     const newEntries: TextureAsset[] = [];
@@ -474,9 +541,9 @@ export function useGridSlice(
     for (const key of selectedCells) {
       const [dcx, dcy] = key.split(',').map(Number);
       const { x: dX, y: dY } = mainAtlasGeo.getPosFromCell(dcx, dcy);
-      replacedEntries.push(...state.atlasEntries.filter(t =>
+      replacedEntries.push(...(state.dragMode === 'overlay' ? [] : state.atlasEntries.filter(t =>
         mainAtlasGeo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, dcx, dcy)
-      ));
+      )));
 
       if (!newClearedCells.includes(key)) newClearedCells.push(key);
 
@@ -511,12 +578,14 @@ export function useGridSlice(
         sourceH = finalH;
       }
 
+      const crop = createCrop(scx, scy);
       const newEntry: TextureAsset = {
-        id: generateId(), url: croppedUrl,
+        id: generateId(), url: crop.url,
         name: `${sourceAsset.name}_fill_${scx}_${scy}`,
         width: finalW, height: finalH,
         x: finalX, y: finalY, hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: finalScale, isCrop: true,
-        sourceX, sourceY, sourceW, sourceH
+        sourceX, sourceY, sourceW, sourceH,
+        isKeyed: crop.isKeyed
       };
       tileRegistry.register(newEntry);
       newEntries.push(newEntry);
@@ -529,7 +598,7 @@ export function useGridSlice(
       ),
     ]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId, state.resizeMode,
+  }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId, state.dragMode, state.resizeMode,
       mainAtlasGeo, selectedCells, executeCommand]);
 
 

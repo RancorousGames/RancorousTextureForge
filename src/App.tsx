@@ -8,7 +8,7 @@ import { ChannelPackerMode } from './components/ChannelPackerMode';
 import { LayeringMode } from './components/LayeringMode';
 import { AdjustMode } from './components/AdjustMode';
 import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon, ExternalLink, Type } from 'lucide-react';
-import { cn, checkGridDensity } from './lib/utils';
+import { cn, checkGridDensity, hexToRgb } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
 import { useAtlas } from './hooks/useAtlas';
 import { useGridSlice } from './hooks/useGridSlice';
@@ -18,7 +18,7 @@ import { useAssetLibrary } from './hooks/useAssetLibrary';
 import { AddTilesCommand, PatchCommand, SetMainTilesCommand, RemoveTilesCommand } from './lib/Commands';
 import potpack from 'potpack';
 import { tileRegistry } from './lib/TileRegistry';
-import { generateId, renderTilesToCanvas } from './lib/canvas';
+import { generateId, renderTilesToCanvas, applyAlphaKey, loadImage } from './lib/canvas';
 
 const FORGE_CONFIG_KEY = 'forge_config_v1';
 
@@ -47,7 +47,7 @@ const getInitialState = (): AppState => {
     packerMapping: initialPackerMapping,
     pbrSet: initialPBRSet,
     layeringLayers: [],
-    atlasSwapMode: false,
+    dragMode: 'replace',
     resizeMode: 'fill',
     addMode: 'replace-bg',
     atlasStatus: 'parametric',
@@ -377,7 +377,7 @@ export default function App() {
     }
   }, [mode, state.libraryAssets, state.modifiedAssets, state.autoDetectEnabled, state.gridSettings, handleGetMainAtlasSnapshot, handleAutoDetectMainGrid, handleAutoDetectSourceGrid, performGridSlice, set]);
 
-  const handleMainAtlasDrop = useCallback((assetOrId: string | TextureAsset, x: number, y: number) => {
+  const handleMainAtlasDrop = useCallback(async (assetOrId: string | TextureAsset, x: number, y: number) => {
     console.log(`[Forge] handleMainAtlasDrop: assetOrId=${typeof assetOrId === 'string' ? assetOrId : assetOrId.id}, x=${x}, y=${y}`);
     let asset: TextureAsset | undefined;
     
@@ -456,6 +456,10 @@ export default function App() {
     let entryX = finalX;
     let entryY = finalY;
     let entryScale = asset.scale || 1;
+    let sourceX: number | undefined;
+    let sourceY: number | undefined;
+    let sourceW: number | undefined;
+    let sourceH: number | undefined;
 
     if (!isPacking) {
       const cellW = mainAtlas.geo.cellW;
@@ -478,58 +482,39 @@ export default function App() {
         entryX = finalX + Math.max(0, (cellW - asset.width) / 2);
         entryY = finalY + Math.max(0, (cellH - asset.height) / 2);
         
-        const sourceX = Math.max(0, (asset.width - cellW) / 2);
-        const sourceY = Math.max(0, (asset.height - cellH) / 2);
-
-        const newEntry: TextureAsset = {
-          ...asset,
-          id: generateId(),
-          x: entryX, 
-          y: entryY,
-          width: entryW,
-          height: entryH,
-          scale: entryScale,
-          sourceX,
-          sourceY,
-          sourceW: entryW,
-          sourceH: entryH,
-          isCrop: true,
-        };
-        tileRegistry.register(newEntry);
-        
-        let replacedEntries: TextureAsset[] = [];
-        let cellKey: string | null = null;
-
-        const { cx, cy } = mainAtlas.geo.getCellAtPos(finalX, finalY);
-        replacedEntries = state.atlasEntries.filter(t =>
-          mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy)
-        );
-        cellKey = `${cx},${cy}`;
-
-        const nextClearedCells = (cellKey && !state.clearedCells.includes(cellKey))
-          ? [...state.clearedCells, cellKey]
-          : state.clearedCells;
-
-        executeCommand([
-          new AddTilesCommand([newEntry], replacedEntries),
-          new PatchCommand(
-            { lastSourceAssetId: null, clearedCells: nextClearedCells }, 
-            { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
-          ),
-        ]);
-        return;
+        sourceX = Math.max(0, (asset.width - cellW) / 2);
+        sourceY = Math.max(0, (asset.height - cellH) / 2);
+        sourceW = entryW;
+        sourceH = entryH;
       }
+    }
+
+    let finalUrl = asset.url;
+    let isKeyed = asset.isKeyed || false;
+    if (state.dragMode === 'overlay') {
+      console.log(`[Forge] Overlay mode drop: applying alpha key to ${asset.name}`);
+      const img = await loadImage(asset.url);
+      const tolerance = state.gridSettings.clearTolerance;
+      const keyColor = hexToRgb(state.gridSettings.clearColor);
+      finalUrl = applyAlphaKey(img, keyColor, tolerance);
+      isKeyed = true;
     }
 
     const newEntry: TextureAsset = {
       ...asset,
       id: generateId(),
+      url: finalUrl,
       x: entryX, 
       y: entryY,
       width: entryW,
       height: entryH,
       scale: entryScale,
+      sourceX,
+      sourceY,
+      sourceW,
+      sourceH,
       isCrop: true,
+      isKeyed
     };
     tileRegistry.register(newEntry);
     
@@ -540,7 +525,7 @@ export default function App() {
       const { cx, cy } = mainAtlas.geo.getCellAtPos(finalX, finalY);
       console.log(`[Forge] Placing Entry: id=${newEntry.id}, cell=(${cx},${cy}), pos=(${finalX},${finalY})`);
 
-      replacedEntries = state.atlasEntries.filter(t =>
+      replacedEntries = state.dragMode === 'overlay' ? [] : state.atlasEntries.filter(t =>
         mainAtlas.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy)
       );
       cellKey = `${cx},${cy}`;
@@ -557,10 +542,44 @@ export default function App() {
         { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
       ),
     ]);
-  }, [state.libraryAssets, state.modifiedAssets, state.atlasEntries, state.gridSettings,
-      state.lastSourceAssetId, state.clearedCells, activeAssets, mainAtlas.geo, handleAssetClick, executeCommand]);
+  }, [state.libraryAssets, state.modifiedAssets, state.atlasEntries, state.gridSettings, state.dragMode, state.resizeMode, state.clearedCells, state.lastSourceAssetId, state.canvasHeight, state.canvasWidth, mainAtlas.geo, executeCommand, handleAssetClick]);
 
   // ── Effects ────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (state.dragMode !== 'overlay') return;
+    
+    const unkeyed = state.atlasEntries.filter(t => !t.isKeyed);
+    if (unkeyed.length === 0) return;
+
+    const process = async () => {
+      console.log(`[Forge] Auto-keying ${unkeyed.length} unkeyed entries for Overlay mode`);
+      const keyColor = hexToRgb(state.gridSettings.clearColor);
+      const tolerance = state.gridSettings.clearTolerance;
+      
+      const updates: Record<string, string> = {};
+      for (const t of unkeyed) {
+        try {
+          const img = await loadImage(t.url);
+          updates[t.id] = applyAlphaKey(img, keyColor, tolerance);
+        } catch (e) {
+          console.error(`[Forge] Auto-key failed for ${t.id}`, e);
+        }
+      }
+
+      if (Object.keys(updates).length > 0) {
+        set(prev => ({
+          ...prev,
+          atlasEntries: prev.atlasEntries.map(t => updates[t.id] 
+            ? { ...t, url: updates[t.id], isKeyed: true } 
+            : t
+          )
+        }));
+      }
+    };
+
+    process();
+  }, [state.dragMode, state.atlasEntries, state.gridSettings.clearColor, state.gridSettings.clearTolerance, set]);
 
   useEffect(() => {
     localStorage.setItem(FORGE_CONFIG_KEY, JSON.stringify({
@@ -782,8 +801,8 @@ export default function App() {
                    }
                 }
               }}
-              atlasSwapMode={state.atlasSwapMode}
-              setAtlasSwapMode={(val) => set(prev => ({ ...prev, atlasSwapMode: val }))}
+              dragMode={state.dragMode}
+              setDragMode={(val) => set(prev => ({ ...prev, dragMode: val }))}
               resizeMode={state.resizeMode}
               onResizeModeChange={(rm) => set(prev => ({ ...prev, resizeMode: rm }))}
               addMode={state.addMode}
@@ -808,7 +827,7 @@ export default function App() {
                     gridSettings={state.gridSettings}
                     selectedCells={selectedCells}
                     onSelectedCellsChange={setSelectedCells}
-                    atlasSwapMode={state.atlasSwapMode}
+                    dragMode={state.dragMode}
                     canvasWidth={canvasWidth}
                     canvasHeight={canvasHeight}
                     tooltip="MMB: Pan | L-Click: Select | R-Drag: Move | R-Click: Clear | Ctrl+Z/Y: Undo/Redo"

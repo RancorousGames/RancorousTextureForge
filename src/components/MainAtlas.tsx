@@ -1,5 +1,5 @@
 import React from 'react';
-import { TextureAsset, GridSettings, AtlasStatus } from '../types';
+import { TextureAsset, GridSettings, AtlasStatus, DragMode } from '../types';
 import { AtlasCanvas } from './AtlasCanvas';
 interface MainAtlasProps {
   entries: TextureAsset[];
@@ -9,7 +9,7 @@ interface MainAtlasProps {
   gridSettings: GridSettings;
   selectedCells: string[];
   onSelectedCellsChange: (cells: string[]) => void;
-  atlasSwapMode: boolean;
+  dragMode: DragMode;
   canvasWidth?: number;
   canvasHeight?: number;
   className?: string;
@@ -29,7 +29,7 @@ export function MainAtlas({
   gridSettings,
   selectedCells,
   onSelectedCellsChange,
-  atlasSwapMode,
+  dragMode,
   canvasWidth,
   canvasHeight,
   className,
@@ -50,7 +50,7 @@ export function MainAtlas({
       gridSettings={gridSettings}
       selectedCells={selectedCells}
       onSelectedCellsChange={onSelectedCellsChange}
-      atlasSwapMode={atlasSwapMode}
+      dragMode={dragMode}
       canvasWidth={canvasWidth}
       canvasHeight={canvasHeight}
       className="border-r border-zinc-800"

@@ -13,6 +13,41 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
+export function applyAlphaKey(img: HTMLImageElement, keyColor: { r: number, g: number, b: number, a: number }, tolerance: number): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    console.error('[AlphaKey] Failed to get 2D context');
+    return img.src;
+  }
+
+  ctx.drawImage(img, 0, 0);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  let keyedCount = 0;
+
+  const isMatch = (r: number, g: number, b: number, a: number) => {
+    if (a < 5 && keyColor.a < 5) return true;
+    return Math.abs(r - keyColor.r) <= tolerance &&
+           Math.abs(g - keyColor.g) <= tolerance &&
+           Math.abs(b - keyColor.b) <= tolerance;
+  };
+
+  for (let i = 0; i < data.length; i += 4) {
+    if (isMatch(data[i], data[i + 1], data[i + 2], data[i + 3])) {
+      data[i + 3] = 0;
+      keyedCount++;
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  const result = canvas.toDataURL();
+  console.log(`[AlphaKey] Applied to ${img.width}x${img.height} image. Key: rgb(${keyColor.r},${keyColor.g},${keyColor.b}), Tol: ${tolerance}. Pixels keyed: ${keyedCount}/${data.length/4}`);
+  return result;
+}
+
 export async function renderEntriesToCanvas(
   entries: TextureAsset[],
   width: number,

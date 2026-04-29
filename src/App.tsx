@@ -105,8 +105,8 @@ export default function App() {
     state.layeringLayers.forEach(l => { if (l.asset) activeAssets.push(l.asset); });
 
     // CRITICAL: Include assets from history so they don't disappear on undo/redo
-    past.forEach(cmd => activeAssets.push(...cmd.getAssets()));
-    future.forEach(cmd => activeAssets.push(...cmd.getAssets()));
+    past.forEach(batch => batch.forEach(cmd => activeAssets.push(...cmd.getAssets())));
+    future.forEach(batch => batch.forEach(cmd => activeAssets.push(...cmd.getAssets())));
 
     tileRegistry.garbageCollect(activeAssets);
   }, [state, past, future]);

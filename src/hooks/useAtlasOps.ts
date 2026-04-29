@@ -459,9 +459,11 @@ export function useAtlasOps(
           0, 0, cellW, cellH
         );
         
-        const dataUrl = tempCanvas.toDataURL('image/png');
-        const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
-        zip.file(`${state.textureName || 'cell'}_${row}_${col}.png`, base64Data, {base64: true});
+        const blobUrl = await canvasToBlobURL(tempCanvas);
+        const response = await fetch(blobUrl);
+        const blob = await response.blob();
+        zip.file(`${state.textureName || 'cell'}_${row}_${col}.png`, blob);
+        URL.revokeObjectURL(blobUrl);
       }
     }
     

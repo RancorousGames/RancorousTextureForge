@@ -24,7 +24,6 @@ interface SourceAtlasProps {
   onAutoDetectEnabledChange: (enabled: boolean) => void;
   resizeMode: string;
   addMode: string;
-  dragMode: string;
 }
 
 export function SourceAtlas({ 
@@ -43,8 +42,7 @@ export function SourceAtlas({
   autoDetectEnabled,
   onAutoDetectEnabledChange,
   resizeMode,
-  addMode,
-  dragMode
+  addMode
 }: SourceAtlasProps) {
 
   const [customSelection, setCustomSelection] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
@@ -206,7 +204,7 @@ export function SourceAtlas({
           cropCtx.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, isl.w, isl.h);
           
           let isKeyed = false;
-          if (addMode === 'replace-bg' || dragMode === 'overlay') {
+          if (addMode === 'replace-bg') {
             const imageData = cropCtx.getImageData(0, 0, isl.w, isl.h);
             const data = imageData.data;
             const targetBg = hexToRgb(mainGridSettings.clearColor);
@@ -223,15 +221,10 @@ export function SourceAtlas({
 
             for (let i = 0; i < data.length; i += 4) {
               if (isLocalMatch(data[i], data[i+1], data[i+2], data[i+3])) {
-                if (dragMode === 'overlay') {
-                  data[i+3] = 0;
-                  isKeyed = true;
-                } else {
-                  data[i] = targetBg.r;
-                  data[i+1] = targetBg.g;
-                  data[i+2] = targetBg.b;
-                  data[i+3] = 255;
-                }
+                data[i] = targetBg.r;
+                data[i+1] = targetBg.g;
+                data[i+2] = targetBg.b;
+                data[i+3] = 255;
               }
             }
             cropCtx.putImageData(imageData, 0, 0);
@@ -246,8 +239,7 @@ export function SourceAtlas({
             name: `Island_${Math.round(isl.x)}_${Math.round(isl.y)}`,
             width: isl.w, height: isl.h, x: 0, y: 0,
             hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1,
-            isCrop: true,
-            isKeyed
+            isCrop: true
           });
         }
       }
@@ -348,21 +340,15 @@ export function SourceAtlas({
     cropCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
     const finalCropData = cropCtx.getImageData(0, 0, sw, sh);
     const finalPixels = finalCropData.data;
-    let isKeyed = false;
 
-    if (addMode === 'replace-bg' || dragMode === 'overlay') {
+    if (addMode === 'replace-bg') {
       for (let i = 0; i < finalPixels.length; i += 4) {
         const r = finalPixels[i], g = finalPixels[i+1], b = finalPixels[i+2], a = finalPixels[i+3];
         if (isMatch(r, g, b, a)) {
-          if (dragMode === 'overlay') {
-            finalPixels[i+3] = 0;
-            isKeyed = true;
-          } else {
-            finalPixels[i] = permClearRGB.r;
-            finalPixels[i+1] = permClearRGB.g;
-            finalPixels[i+2] = permClearRGB.b;
-            finalPixels[i+3] = 255; 
-          }
+          finalPixels[i] = permClearRGB.r;
+          finalPixels[i+1] = permClearRGB.g;
+          finalPixels[i+2] = permClearRGB.b;
+          finalPixels[i+3] = 255; 
         }
       }
       cropCtx.putImageData(finalCropData, 0, 0);

@@ -262,8 +262,7 @@ export function useGridSlice(
     let tolerance = state.gridSettings.clearTolerance;
     const targetBg = hexToRgb(state.gridSettings.clearColor);
     
-    if (state.addMode === 'replace-bg' || state.dragMode === 'overlay') {
-      if (state.dragMode === 'overlay') console.log(`[useGridSlice] Overlay mode: detecting background for alpha keying`);
+    if (state.addMode === 'replace-bg') {
       const checkCanvas = document.createElement('canvas');
       checkCanvas.width = img.naturalWidth; checkCanvas.height = img.naturalHeight;
       const checkCtx = checkCanvas.getContext('2d')!;
@@ -285,20 +284,15 @@ export function useGridSlice(
       ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
       
       let isKeyed = false;
-      if (state.addMode === 'replace-bg' || state.dragMode === 'overlay') {
+      if (state.addMode === 'replace-bg') {
         const imageData = ctx.getImageData(0, 0, sourceGeo.cellW, sourceGeo.cellH);
         const data = imageData.data;
         for (let i = 0; i < data.length; i += 4) {
           if (isMatch(data[i], data[i+1], data[i+2], data[i+3])) {
-            if (state.dragMode === 'overlay') {
-              data[i+3] = 0;
-              isKeyed = true;
-            } else {
-              data[i] = targetBg.r;
-              data[i+1] = targetBg.g;
-              data[i+2] = targetBg.b;
-              data[i+3] = 255;
-            }
+            data[i] = targetBg.r;
+            data[i+1] = targetBg.g;
+            data[i+2] = targetBg.b;
+            data[i+3] = 255;
           }
         }
         ctx.putImageData(imageData, 0, 0);
@@ -516,20 +510,15 @@ export function useGridSlice(
       ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
       
       let isKeyed = false;
-      if (state.addMode === 'replace-bg' || state.dragMode === 'overlay') {
+      if (state.addMode === 'replace-bg') {
         const imageData = ctx.getImageData(0, 0, sourceGeo.cellW, sourceGeo.cellH);
         const data = imageData.data;
         for (let i = 0; i < data.length; i += 4) {
           if (isMatch(data[i], data[i+1], data[i+2], data[i+3])) {
-            if (state.dragMode === 'overlay') {
-              data[i+3] = 0;
-              isKeyed = true;
-            } else {
-              data[i] = targetBg.r;
-              data[i+1] = targetBg.g;
-              data[i+2] = targetBg.b;
-              data[i+3] = 255;
-            }
+            data[i] = targetBg.r;
+            data[i+1] = targetBg.g;
+            data[i+2] = targetBg.b;
+            data[i+3] = 255;
           }
         }
         ctx.putImageData(imageData, 0, 0);

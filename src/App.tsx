@@ -1018,6 +1018,8 @@ export default function App() {
                       autoDetectEnabled={state.autoDetectEnabled}
                       onAutoDetectEnabledChange={(enabled) => set(prev => ({ ...prev, autoDetectEnabled: enabled }))}
                       resizeMode={state.resizeMode}
+                      addMode={state.addMode}
+                      dragMode={state.dragMode}
                     />
                   </div>
                 </>

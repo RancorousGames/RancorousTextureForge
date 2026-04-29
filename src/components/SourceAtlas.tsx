@@ -23,6 +23,8 @@ interface SourceAtlasProps {
   autoDetectEnabled: boolean;
   onAutoDetectEnabledChange: (enabled: boolean) => void;
   resizeMode: string;
+  addMode: string;
+  dragMode: string;
 }
 
 export function SourceAtlas({ 
@@ -40,7 +42,9 @@ export function SourceAtlas({
   canvasHeight: targetCanvasH,
   autoDetectEnabled,
   onAutoDetectEnabledChange,
-  resizeMode
+  resizeMode,
+  addMode,
+  dragMode
 }: SourceAtlasProps) {
 
   const [customSelection, setCustomSelection] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
@@ -201,6 +205,38 @@ export function SourceAtlas({
         if (cropCtx) {
           cropCtx.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, isl.w, isl.h);
           
+          let isKeyed = false;
+          if (addMode === 'replace-bg' || dragMode === 'overlay') {
+            const imageData = cropCtx.getImageData(0, 0, isl.w, isl.h);
+            const data = imageData.data;
+            const targetBg = hexToRgb(mainGridSettings.clearColor);
+            
+            // Re-detect background for this specific island or use provided gridSettings?
+            // For packing click, we use the sample logic
+            const clearColor = hexToRgb(gridSettings.clearColor);
+            const isLocalMatch = (r: number, g: number, b: number, a: number) => {
+              if (a < 5) return true;
+              return Math.abs(r - clearColor.r) <= gridSettings.clearTolerance &&
+                     Math.abs(g - clearColor.g) <= gridSettings.clearTolerance &&
+                     Math.abs(b - clearColor.b) <= gridSettings.clearTolerance;
+            };
+
+            for (let i = 0; i < data.length; i += 4) {
+              if (isLocalMatch(data[i], data[i+1], data[i+2], data[i+3])) {
+                if (dragMode === 'overlay') {
+                  data[i+3] = 0;
+                  isKeyed = true;
+                } else {
+                  data[i] = targetBg.r;
+                  data[i+1] = targetBg.g;
+                  data[i+2] = targetBg.b;
+                  data[i+3] = 255;
+                }
+              }
+            }
+            cropCtx.putImageData(imageData, 0, 0);
+          }
+
           const url = await canvasToBlobURL(cropCanvas);
 
           onAddAsset({
@@ -210,7 +246,8 @@ export function SourceAtlas({
             name: `Island_${Math.round(isl.x)}_${Math.round(isl.y)}`,
             width: isl.w, height: isl.h, x: 0, y: 0,
             hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1,
-            isCrop: true
+            isCrop: true,
+            isKeyed
           });
         }
       }
@@ -311,23 +348,25 @@ export function SourceAtlas({
     cropCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
     const finalCropData = cropCtx.getImageData(0, 0, sw, sh);
     const finalPixels = finalCropData.data;
-    let replacedCount = 0;
-    const mismatchSamples: string[] = [];
+    let isKeyed = false;
 
-    for (let i = 0; i < finalPixels.length; i += 4) {
-      const r = finalPixels[i], g = finalPixels[i+1], b = finalPixels[i+2], a = finalPixels[i+3];
-      if (isMatch(r, g, b, a)) {
-        finalPixels[i] = permClearRGB.r;
-        finalPixels[i+1] = permClearRGB.g;
-        finalPixels[i+2] = permClearRGB.b;
-        finalPixels[i+3] = 255; 
-        replacedCount++;
-      } else if (mismatchSamples.length < 5 && Math.random() < 0.01) {
-        const dist = Math.max(Math.abs(r-tempClear.r), Math.abs(g-tempClear.g), Math.abs(b-tempClear.b));
-        mismatchSamples.push(`rgba(${r},${g},${b},${a}) dist:${dist}`);
+    if (addMode === 'replace-bg' || dragMode === 'overlay') {
+      for (let i = 0; i < finalPixels.length; i += 4) {
+        const r = finalPixels[i], g = finalPixels[i+1], b = finalPixels[i+2], a = finalPixels[i+3];
+        if (isMatch(r, g, b, a)) {
+          if (dragMode === 'overlay') {
+            finalPixels[i+3] = 0;
+            isKeyed = true;
+          } else {
+            finalPixels[i] = permClearRGB.r;
+            finalPixels[i+1] = permClearRGB.g;
+            finalPixels[i+2] = permClearRGB.b;
+            finalPixels[i+3] = 255; 
+          }
+        }
       }
+      cropCtx.putImageData(finalCropData, 0, 0);
     }
-    cropCtx.putImageData(finalCropData, 0, 0);
 
     const url = await canvasToBlobURL(cropCanvas);
 
@@ -338,7 +377,8 @@ export function SourceAtlas({
       name: `Crop_${Math.round(sx)}_${Math.round(sy)}`,
       width: sw, height: sh, x: 0, y: 0,
       hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1,
-      isCrop: true
+      isCrop: true,
+      isKeyed
     });
 
     setCustomSelection(null);

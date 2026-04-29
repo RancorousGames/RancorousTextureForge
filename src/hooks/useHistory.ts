@@ -61,5 +61,5 @@ export function useHistory<T>(initialState: T) {
     });
   }, []);
 
-  return { state, set, executeCommand, undo, redo, canUndo: past.length > 0, canRedo: future.length > 0 };
+  return { state, set, executeCommand, undo, redo, canUndo: past.length > 0, canRedo: future.length > 0, past, future };
 }

@@ -86,7 +86,7 @@ const getInitialState = (): AppState => {
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>(() => (localStorage.getItem('forge_mode') as AppMode) || 'atlas');
-  const { state, set, executeCommand, undo, redo, canUndo, canRedo } = useHistory<AppState>(getInitialState());
+  const { state, set, executeCommand, undo, redo, canUndo, canRedo, past, future } = useHistory<AppState>(getInitialState());
 
   // Periodically clean up orphaned blob URLs in the registry
   useEffect(() => {
@@ -104,8 +104,12 @@ export default function App() {
     // Layering assets
     state.layeringLayers.forEach(l => { if (l.asset) activeAssets.push(l.asset); });
 
+    // CRITICAL: Include assets from history so they don't disappear on undo/redo
+    past.forEach(cmd => activeAssets.push(...cmd.getAssets()));
+    future.forEach(cmd => activeAssets.push(...cmd.getAssets()));
+
     tileRegistry.garbageCollect(activeAssets);
-  }, [state]);
+  }, [state, past, future]);
 
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [isResizing, setIsResizing] = useState(false);

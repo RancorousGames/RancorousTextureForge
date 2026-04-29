@@ -3,6 +3,7 @@ import { AppState, TextureAsset, AtlasStatus } from '../types';
 export interface Command {
   execute(state: AppState): AppState;
   undo(state: AppState): AppState;
+  getAssets(): TextureAsset[];
 }
 
 export class PatchCommand implements Command {
@@ -17,6 +18,23 @@ export class PatchCommand implements Command {
 
   undo(state: AppState): AppState {
     return { ...state, ...this.backward };
+  }
+
+  getAssets(): TextureAsset[] {
+    const assets: TextureAsset[] = [];
+    const extract = (obj: any) => {
+      if (!obj) return;
+      if (obj.id && obj.url) {
+        assets.push(obj as TextureAsset);
+      } else if (Array.isArray(obj)) {
+        obj.forEach(extract);
+      } else if (typeof obj === 'object') {
+        Object.values(obj).forEach(extract);
+      }
+    };
+    extract(this.forward);
+    extract(this.backward);
+    return assets;
   }
 }
 
@@ -39,6 +57,10 @@ export class MoveTileCommand implements Command {
       ...state,
       atlasEntries: state.atlasEntries.map(e => e.id === this.entryId ? { ...e, x: this.oldPos.x, y: this.oldPos.y } : e)
     };
+  }
+
+  getAssets(): TextureAsset[] {
+    return [];
   }
 }
 
@@ -70,6 +92,10 @@ export class AddTilesCommand implements Command {
       lastMainAssetId: this.oldLastId !== undefined ? this.oldLastId : state.lastMainAssetId
     };
   }
+
+  getAssets(): TextureAsset[] {
+    return [...this.newEntries, ...this.replacedEntries];
+  }
 }
 
 export class RemoveTilesCommand implements Command {
@@ -88,6 +114,10 @@ export class RemoveTilesCommand implements Command {
       ...state,
       atlasEntries: [...state.atlasEntries, ...this.removedEntries]
     };
+  }
+
+  getAssets(): TextureAsset[] {
+    return [...this.removedEntries];
   }
 }
 
@@ -118,12 +148,17 @@ export class SetMainTilesCommand implements Command {
       lastMainAssetId: this.oldLastId !== undefined ? this.oldLastId : state.lastMainAssetId
     };
   }
+
+  getAssets(): TextureAsset[] {
+    return [...this.oldEntries, ...this.newEntries];
+  }
 }
 
 export class UpdateStatusCommand implements Command {
   constructor(private oldStatus: AtlasStatus, private newStatus: AtlasStatus) {}
   execute(state: AppState): AppState { return { ...state, atlasStatus: this.newStatus }; }
   undo(state: AppState): AppState { return { ...state, atlasStatus: this.oldStatus }; }
+  getAssets(): TextureAsset[] { return []; }
 }
 
 export class ClearCellCommand implements Command {
@@ -143,6 +178,7 @@ export class ClearCellCommand implements Command {
       atlasStatus: this.oldStatus
     };
   }
+  getAssets(): TextureAsset[] { return []; }
 }
 
 export class MaterializeCommand implements Command {
@@ -170,6 +206,10 @@ export class MaterializeCommand implements Command {
       atlasStatus: this.oldStatus
     };
   }
+
+  getAssets(): TextureAsset[] {
+    return [this.newEntry];
+  }
 }
 
 export class SetSourceAssetCommand implements Command {
@@ -184,5 +224,12 @@ export class SetSourceAssetCommand implements Command {
 
   undo(state: AppState): AppState {
     return { ...state, currentSourceAsset: this.oldAsset };
+  }
+
+  getAssets(): TextureAsset[] {
+    const assets: TextureAsset[] = [];
+    if (this.oldAsset) assets.push(this.oldAsset);
+    if (this.newAsset) assets.push(this.newAsset);
+    return assets;
   }
 }

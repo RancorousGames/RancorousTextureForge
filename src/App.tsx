@@ -18,7 +18,7 @@ import { useAssetLibrary } from './hooks/useAssetLibrary';
 import { AddTilesCommand, PatchCommand, SetMainTilesCommand, RemoveTilesCommand, SetSourceAssetCommand } from './lib/Commands';
 import potpack from 'potpack';
 import { tileRegistry } from './lib/TileRegistry';
-import { generateId, renderTilesToCanvas, applyAlphaKey, loadImage } from './lib/canvas';
+import { generateId, renderTilesToCanvas, applyAlphaKey, loadImage, canvasToBlobURL } from './lib/canvas';
 
 const FORGE_CONFIG_KEY = 'forge_config_v1';
 
@@ -87,6 +87,25 @@ const getInitialState = (): AppState => {
 export default function App() {
   const [mode, setMode] = useState<AppMode>(() => (localStorage.getItem('forge_mode') as AppMode) || 'atlas');
   const { state, set, executeCommand, undo, redo, canUndo, canRedo } = useHistory<AppState>(getInitialState());
+
+  // Periodically clean up orphaned blob URLs in the registry
+  useEffect(() => {
+    const activeAssets = [
+      ...state.libraryAssets,
+      ...state.atlasEntries,
+      ...state.modifiedAssets,
+    ];
+    if (state.currentSourceAsset) activeAssets.push(state.currentSourceAsset);
+    
+    // Channel Packer assets
+    Object.values(state.packerMapping).forEach(m => { if (m.asset) activeAssets.push(m.asset); });
+    // PBR assets
+    Object.values(state.pbrSet).forEach(p => { if (p.asset) activeAssets.push(p.asset); });
+    // Layering assets
+    state.layeringLayers.forEach(l => { if (l.asset) activeAssets.push(l.asset); });
+
+    tileRegistry.garbageCollect(activeAssets);
+  }, [state]);
 
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [isResizing, setIsResizing] = useState(false);
@@ -288,7 +307,7 @@ export default function App() {
         stepY: sh
       }
     );
-    return canvas.toDataURL();
+    return await canvasToBlobURL(canvas);
   }, [state.atlasEntries, state.canvasWidth, state.canvasHeight, state.gridSettings, state.lastSourceAssetId, state.libraryAssets, state.clearedCells]);
 
   const activeAssets = useMemo(() => {
@@ -564,7 +583,7 @@ export default function App() {
       const img = await loadImage(asset.url);
       const tolerance = state.gridSettings.clearTolerance;
       const keyColor = hexToRgb(state.gridSettings.clearColor);
-      finalUrl = applyAlphaKey(img, keyColor, tolerance);
+      finalUrl = await applyAlphaKey(img, keyColor, tolerance);
       isKeyed = true;
     }
 
@@ -629,7 +648,7 @@ export default function App() {
       for (const t of unkeyed) {
         try {
           const img = await loadImage(t.url);
-          updates[t.id] = applyAlphaKey(img, keyColor, tolerance);
+          updates[t.id] = await applyAlphaKey(img, keyColor, tolerance);
         } catch (e) {
           console.error(`[Forge] Auto-key failed for ${t.id}`, e);
         }

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { TextureAsset, Layer, VIRTUAL_MAIN_ATLAS_ID } from '../types';
 import { Download, Layers as LayersIcon, Eye, EyeOff, Trash2, Plus, MoveUp, MoveDown } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { generateId } from '../lib/canvas';
+import { generateId, canvasToBlobURL } from '../lib/canvas';
 
 interface LayeringModeProps {
   availableAssets: TextureAsset[];
@@ -173,7 +173,8 @@ export function LayeringMode({ availableAssets, layers, setLayers, onExport, can
         }
         ctx.globalAlpha = 1;
       }
-      setResultUrl(canvas.toDataURL('image/png'));
+      const url = await canvasToBlobURL(canvas);
+      setResultUrl(url);
     };
     renderCanvas();
   }, [layers]); // removed canvasWidth/Height dependency to be independent of other screens

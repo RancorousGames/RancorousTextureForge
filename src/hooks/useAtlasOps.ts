@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { AppState, TextureAsset, initialPackerMapping, initialPBRSet } from '../types';
 import { GridGeometry } from '../lib/GridGeometry';
 import { hexToRgb, findIslands } from '../lib/utils';
-import { renderTilesToCanvas, loadImage, generateId } from '../lib/canvas';
+import { renderTilesToCanvas, loadImage, generateId, canvasToBlobURL } from '../lib/canvas';
 import { Command, SetMainTilesCommand, PatchCommand } from '../lib/Commands';
 import potpack from 'potpack';
 
@@ -81,7 +81,7 @@ export function useAtlasOps(
 
     console.log(`[FixGrid] Found ${finalIslands.length} islands. Using Geometry: Cell=${geo.cellW}x${geo.cellH}, Pad=${geo.padding}, Step=${geo.stepX}x${geo.stepY}`);
 
-    const newEntries: TextureAsset[] = finalIslands.map((isl, i) => {
+    const newEntries: TextureAsset[] = await Promise.all(finalIslands.map(async (isl, i) => {
       const centerX = isl.x + isl.w / 2;
       const centerY = isl.y + isl.h / 2;
 
@@ -119,10 +119,12 @@ export function useAtlasOps(
       islCanvas.height = finalH;
       islCanvas.getContext('2d')?.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, finalW, finalH);
 
+      const url = await canvasToBlobURL(islCanvas);
+
       return {
         id: `fixed-${i}-${Date.now()}`,
         name: `Island_${i}`,
-        url: islCanvas.toDataURL(),
+        url: url,
         x: finalX,
         y: finalY,
         width: finalW, 
@@ -132,7 +134,7 @@ export function useAtlasOps(
         brightness: 100,
         isCrop: state.resizeMode === 'crop'
       };
-    });
+    }));
 
     console.log(`[FixGrid] Complete. Generated ${newEntries.length} fixed entries.`);
     executeCommand([
@@ -221,7 +223,7 @@ export function useAtlasOps(
       }
     }
 
-    const nextEntries: TextureAsset[] = packItems.map((item, idx) => {
+    const nextEntries: TextureAsset[] = await Promise.all(packItems.map(async (item, idx) => {
       const isl = islands[item.i];
       const blobCanvas = document.createElement('canvas');
       blobCanvas.width = isl.w; blobCanvas.height = isl.h;
@@ -231,13 +233,15 @@ export function useAtlasOps(
         console.log(`[PackElements] Island #${idx}: Original Rect(${isl.x},${isl.y},${isl.w},${isl.h}) -> Packed at ${item.x + item.padX},${item.y + item.padY}`);
       }
 
+      const url = await canvasToBlobURL(blobCanvas);
+
       return {
-        id: generateId(), url: blobCanvas.toDataURL(), name: `Packed_${item.i}`,
+        id: generateId(), url: url, name: `Packed_${item.i}`,
         width: isl.w, height: isl.h,
         x: item.x + item.padX, y: item.y + item.padY,
         hue: 0, brightness: 100, scale: 1, isCrop: true,
       };
-    });
+    }));
 
     console.log(`[PackElements] Complete.`);
     executeCommand(new SetMainTilesCommand(state.atlasEntries, nextEntries, state.atlasStatus, 'baked', state.lastMainAssetId, state.lastMainAssetId));
@@ -247,7 +251,7 @@ export function useAtlasOps(
     const canvas = await renderTilesToCanvas(
       state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings.clearColor
     );
-    const url = canvas.toDataURL('image/png');
+    const url = await canvasToBlobURL(canvas);
     const name = `${state.textureName || 'T_Texture_BC'}.png`;
 
     // Add to library
@@ -330,7 +334,7 @@ export function useAtlasOps(
     const canvas = await renderTilesToCanvas(
       state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings.clearColor
     );
-    const url = canvas.toDataURL('image/png');
+    const url = await canvasToBlobURL(canvas);
     const name = `${state.textureName || 'T_Texture_BC'}.png`;
 
     const link = document.createElement('a');

@@ -4,7 +4,7 @@ import { Command, AddTilesCommand, SetMainTilesCommand, PatchCommand, Materializ
 import { GridGeometry } from '../lib/GridGeometry';
 import { tileRegistry } from '../lib/TileRegistry';
 import { hexToRgb, detectBackgroundColor } from '../lib/utils';
-import { loadImage, generateId } from '../lib/canvas';
+import { loadImage, generateId, canvasToBlobURL } from '../lib/canvas';
 import potpack from 'potpack';
 
 export function useGridSlice(
@@ -113,9 +113,10 @@ export function useGridSlice(
 
           const key = `${col},${row}`;
           newClearedCells.push(key);
+          const sliceUrl = await canvasToBlobURL(sliceCanvas);
           newEntries.push({
             id: generateId(),
-            url: sliceCanvas.toDataURL(),
+            url: sliceUrl,
             sourceUrl: imgUrl,
             name: `Slice_${col}_${row}`,
             width: cellW, height: cellH,
@@ -195,9 +196,11 @@ export function useGridSlice(
       isKeyed = true;
     }
 
+    const url = await canvasToBlobURL(canvas);
+
     const newEntry: TextureAsset = {
       id: generateId(),
-      url: canvas.toDataURL(),
+      url: url,
       sourceUrl: sourceAsset.sourceUrl || sourceAsset.url,
       name: `JIT_${cx}_${cy}`,
       width: geo.cellW, height: geo.cellH,
@@ -276,7 +279,7 @@ export function useGridSlice(
              Math.abs(b - keyColor.b) <= tolerance;
     };
 
-    const createCrop = (cx: number, cy: number): { url: string, isKeyed: boolean } => {
+    const createCrop = async (cx: number, cy: number): Promise<{ url: string, isKeyed: boolean }> => {
       ctx.clearRect(0, 0, sourceGeo.cellW, sourceGeo.cellH);
       const { x: sx, y: sy } = sourceGeo.getPosFromCell(cx, cy);
       ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
@@ -301,7 +304,8 @@ export function useGridSlice(
         ctx.putImageData(imageData, 0, 0);
       }
       
-      return { url: canvas.toDataURL(), isKeyed };
+      const url = await canvasToBlobURL(canvas);
+      return { url, isKeyed };
     };
 
     const calculatePlacement = (dX: number, dY: number, sW: number, sH: number) => {
@@ -403,7 +407,7 @@ export function useGridSlice(
         if (!newClearedCells.includes(key)) newClearedCells.push(key);
 
         const { finalW, finalH, finalX, finalY, finalScale, sourceX, sourceY, sourceW, sourceH } = calculatePlacement(dX, dY, sourceGeo.cellW, sourceGeo.cellH);
-        const crop = createCrop(sourceCX, sourceCY);
+        const crop = await createCrop(sourceCX, sourceCY);
 
         const newEntry: TextureAsset = {
           id: generateId(), url: crop.url,
@@ -440,7 +444,7 @@ export function useGridSlice(
         : state.clearedCells;
 
       const { finalW, finalH, finalX, finalY, finalScale, sourceX, sourceY, sourceW, sourceH } = calculatePlacement(destX, destY, sourceGeo.cellW, sourceGeo.cellH);
-      const crop = createCrop(scx, scy);
+      const crop = await createCrop(scx, scy);
 
       const newEntry: TextureAsset = {
         id: generateId(), url: crop.url,
@@ -506,7 +510,7 @@ export function useGridSlice(
              Math.abs(b - keyColor.b) <= tolerance;
     };
 
-    const createCrop = (cx: number, cy: number): { url: string, isKeyed: boolean } => {
+    const createCrop = async (cx: number, cy: number): Promise<{ url: string, isKeyed: boolean }> => {
       ctx.clearRect(0, 0, sourceGeo.cellW, sourceGeo.cellH);
       const { x: sx, y: sy } = sourceGeo.getPosFromCell(cx, cy);
       ctx.drawImage(img, sx, sy, sourceGeo.cellW, sourceGeo.cellH, 0, 0, sourceGeo.cellW, sourceGeo.cellH);
@@ -531,7 +535,8 @@ export function useGridSlice(
         ctx.putImageData(imageData, 0, 0);
       }
       
-      return { url: canvas.toDataURL(), isKeyed };
+      const url = await canvasToBlobURL(canvas);
+      return { url, isKeyed };
     };
 
     const newEntries: TextureAsset[] = [];
@@ -578,7 +583,7 @@ export function useGridSlice(
         sourceH = finalH;
       }
 
-      const crop = createCrop(scx, scy);
+      const crop = await createCrop(scx, scy);
       const newEntry: TextureAsset = {
         id: generateId(), url: crop.url,
         name: `${sourceAsset.name}_fill_${scx}_${scy}`,

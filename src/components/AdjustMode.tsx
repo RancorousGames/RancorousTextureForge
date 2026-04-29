@@ -3,6 +3,7 @@ import { TextureAsset } from '../types';
 import { SlidersHorizontal, Download, Maximize2 } from 'lucide-react';
 import Pica from 'pica';
 import { cn } from '../lib/utils';
+import { canvasToBlobURL } from '../lib/canvas';
 
 const pica = Pica();
 
@@ -68,7 +69,7 @@ export function AdjustMode({ selectedAsset, updateAsset, onExport, adjustSetting
 
       await pica.resize(fromCanvas, toCanvas);
       
-      const newUrl = toCanvas.toDataURL();
+      const newUrl = await canvasToBlobURL(toCanvas);
       updateAsset(selectedAsset.id, { 
         url: newUrl, 
         width: finalW, 
@@ -118,7 +119,7 @@ export function AdjustMode({ selectedAsset, updateAsset, onExport, adjustSetting
     
     const canvas = document.createElement('canvas');
     const img = new Image();
-    img.onload = () => {
+    img.onload = async () => {
       canvas.width = img.width;
       canvas.height = img.height;
       const ctx = canvas.getContext('2d');
@@ -126,7 +127,8 @@ export function AdjustMode({ selectedAsset, updateAsset, onExport, adjustSetting
       
       ctx.filter = `hue-rotate(${selectedAsset.hue}deg) brightness(${selectedAsset.brightness}%)`;
       ctx.drawImage(img, 0, 0);
-      onExport(canvas.toDataURL(), `adjusted_${selectedAsset.name}`);
+      const url = await canvasToBlobURL(canvas);
+      onExport(url, `adjusted_${selectedAsset.name}`);
     };
     img.src = selectedAsset.url;
   };

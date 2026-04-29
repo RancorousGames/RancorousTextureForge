@@ -3,7 +3,7 @@ import { TextureAsset, ChannelMapping, PBRSet, VIRTUAL_MAIN_ATLAS_ID } from '../
 import { PBRPreview } from './PBRPreview';
 import { Download, Layers, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { generateId } from '../lib/canvas';
+import { generateId, canvasToBlobURL } from '../lib/canvas';
 
 interface ChannelPackerModeProps {
   availableAssets: TextureAsset[];
@@ -99,7 +99,7 @@ export function ChannelPackerMode({ availableAssets, mapping, setMapping, pbrSet
     }
 
     ctx.putImageData(finalImageData, 0, 0);
-    const url = canvas.toDataURL('image/png');
+    const url = await canvasToBlobURL(canvas);
     setPackedUrl(url);
     
     // Auto-assign to ORM preview

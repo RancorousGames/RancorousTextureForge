@@ -5,6 +5,7 @@ import { DeferredNumberInput } from './DeferredNumberInput';
 import { Image as ImageIcon, Wand2, LayoutTemplate, RefreshCw, Grid3X3 } from 'lucide-react';
 import { hexToRgb, findIslands, cn } from '../lib/utils';
 import { GridGeometry } from '../lib/GridGeometry';
+import { canvasToBlobURL } from '../lib/canvas';
 
 interface SourceAtlasProps {
   onAddAsset: (asset: TextureAsset) => void;
@@ -134,7 +135,8 @@ export function SourceAtlas({
       outCtx.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, finalX, finalY, finalW, finalH);
     });
 
-    onSourceAssetChange({ ...sourceAsset, url: outCanvas.toDataURL() });
+    const url = await canvasToBlobURL(outCanvas);
+    onSourceAssetChange({ ...sourceAsset, url });
   };
 
   const handleLoadSource = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,9 +201,11 @@ export function SourceAtlas({
         if (cropCtx) {
           cropCtx.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, isl.w, isl.h);
           
+          const url = await canvasToBlobURL(cropCanvas);
+
           onAddAsset({
             id: Math.random().toString(36).substring(2, 9),
-            url: cropCanvas.toDataURL(),
+            url,
             sourceUrl: sourceAsset.sourceUrl || sourceAsset.url,
             name: `Island_${Math.round(isl.x)}_${Math.round(isl.y)}`,
             width: isl.w, height: isl.h, x: 0, y: 0,
@@ -325,9 +329,11 @@ export function SourceAtlas({
     }
     cropCtx.putImageData(finalCropData, 0, 0);
 
+    const url = await canvasToBlobURL(cropCanvas);
+
     onAddAsset({
       id: Math.random().toString(36).substring(2, 9),
-      url: cropCanvas.toDataURL(),
+      url,
       sourceUrl: sourceAsset.sourceUrl || sourceAsset.url,
       name: `Crop_${Math.round(sx)}_${Math.round(sy)}`,
       width: sw, height: sh, x: 0, y: 0,

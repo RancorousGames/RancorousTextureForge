@@ -3,6 +3,7 @@ import { TextureAsset, GridSettings, AtlasStatus, DragMode } from '../types';
 import { cn, hexToRgb } from '../lib/utils';
 import { GridGeometry } from '../lib/GridGeometry';
 import { InteractionState, DefaultInteractionStrategy } from '../lib/Interactions';
+import { canvasToBlobURL } from '../lib/canvas';
 
 interface AtlasCanvasProps {
   entries: TextureAsset[];
@@ -74,7 +75,7 @@ export function AtlasCanvas({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Submit text and rasterize
-  const submitText = () => {
+  const submitText = async () => {
     if (!textInput || !textValue.trim() || !onEntriesChange) {
       setTextInput(null);
       setTextValue('');
@@ -108,9 +109,10 @@ export function AtlasCanvas({
     ctx.fillText(textValue, w / 2, h / 2);
 
     const newId = Math.random().toString(36).substring(2, 9);
+    const url = await canvasToBlobURL(canvas);
     const newEntry: TextureAsset = {
       id: newId,
-      url: canvas.toDataURL(),
+      url,
       name: `Text_${textValue.substring(0, 10)}`,
       width: w,
       height: h,

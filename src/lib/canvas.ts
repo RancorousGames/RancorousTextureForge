@@ -4,6 +4,18 @@ export function generateId(): string {
   return Math.random().toString(36).substring(2, 9);
 }
 
+export async function canvasToBlobURL(canvas: HTMLCanvasElement, type = 'image/png', quality?: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(URL.createObjectURL(blob));
+      } else {
+        reject(new Error('Canvas toBlob failed'));
+      }
+    }, type, quality);
+  });
+}
+
 export function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -13,7 +25,7 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-export function applyAlphaKey(img: HTMLImageElement, keyColor: { r: number, g: number, b: number, a: number }, tolerance: number): string {
+export async function applyAlphaKey(img: HTMLImageElement, keyColor: { r: number, g: number, b: number, a: number }, tolerance: number): Promise<string> {
   const canvas = document.createElement('canvas');
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
@@ -43,7 +55,7 @@ export function applyAlphaKey(img: HTMLImageElement, keyColor: { r: number, g: n
   }
 
   ctx.putImageData(imageData, 0, 0);
-  const result = canvas.toDataURL();
+  const result = await canvasToBlobURL(canvas);
   console.log(`[AlphaKey] Applied to ${img.width}x${img.height} image. Key: rgb(${keyColor.r},${keyColor.g},${keyColor.b}), Tol: ${tolerance}. Pixels keyed: ${keyedCount}/${data.length/4}`);
   return result;
 }

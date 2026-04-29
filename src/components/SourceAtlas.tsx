@@ -363,8 +363,7 @@ export function SourceAtlas({
       name: `Crop_${Math.round(sx)}_${Math.round(sy)}`,
       width: sw, height: sh, x: 0, y: 0,
       hue: sourceAsset.hue, brightness: sourceAsset.brightness, scale: 1,
-      isCrop: true,
-      isKeyed
+      isCrop: true
     });
 
     setCustomSelection(null);

@@ -73,7 +73,7 @@ export function useGridSlice(
     const permClear = hexToRgb(gs.clearColor);
 
     const isMatch = (r: number, g: number, b: number, a: number) => {
-      if (a < 5 && keyColor.a < 5) return true;
+      if (a < 5) return true;
       return Math.abs(r - keyColor.r) <= tolerance &&
              Math.abs(g - keyColor.g) <= tolerance &&
              Math.abs(b - keyColor.b) <= tolerance;
@@ -142,8 +142,7 @@ export function useGridSlice(
         ),
       ]);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.atlasEntries, state.lastSourceAssetId, state.clearedCells, state.atlasStatus, executeCommand, set]);
+  }, [state.atlasEntries, state.lastSourceAssetId, state.clearedCells, state.atlasStatus, state.addMode, state.gridSettings, executeCommand, set]);
 
   const handleMaterialize = useCallback(async (
     cx: number,
@@ -258,21 +257,16 @@ export function useGridSlice(
     const realH = img.naturalHeight || img.height;
 
     // Prepare background replacement if enabled
-    let keyColor = { r: 0, g: 0, b: 0, a: 0 };
-    let tolerance = state.gridSettings.clearTolerance;
+    let keyColor = hexToRgb(state.sourceGridSettings.clearColor);
+    let tolerance = state.sourceGridSettings.clearTolerance;
     const targetBg = hexToRgb(state.gridSettings.clearColor);
     
-    if (state.addMode === 'replace-bg') {
-      const checkCanvas = document.createElement('canvas');
-      checkCanvas.width = img.naturalWidth; checkCanvas.height = img.naturalHeight;
-      const checkCtx = checkCanvas.getContext('2d')!;
-      checkCtx.drawImage(img, 0, 0);
-      const fullData = checkCtx.getImageData(0, 0, realW || img.naturalWidth, realH || img.naturalHeight);
-      keyColor = detectBackgroundColor(fullData, tolerance);
-    }
+    // We no longer auto-detect if the user has sourceGridSettings available
+    // but we still need the keyColor for isMatch.
+    // If they want auto-detect, it's usually handled by the auto-detect button which updates sourceGridSettings.
 
     const isMatch = (r: number, g: number, b: number, a: number) => {
-      if (a < 5 && keyColor.a < 5) return true;
+      if (a < 5) return true;
       return Math.abs(r - keyColor.r) <= tolerance &&
              Math.abs(g - keyColor.g) <= tolerance &&
              Math.abs(b - keyColor.b) <= tolerance;
@@ -460,7 +454,7 @@ export function useGridSlice(
       ]);
     }
   }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId, state.gridSettings,
-      state.clearedCells, state.libraryAssets, state.modifiedAssets, state.resizeMode,
+      state.clearedCells, state.libraryAssets, state.modifiedAssets, state.resizeMode, state.addMode, state.dragMode,
       mainAtlasGeo, selectedCells, executeCommand]);
 
 
@@ -483,22 +477,12 @@ export function useGridSlice(
     const realH = img.naturalHeight || img.height;
 
     // Prepare background replacement if enabled
-    let keyColor = { r: 0, g: 0, b: 0, a: 0 };
-    let tolerance = state.gridSettings.clearTolerance;
+    let keyColor = hexToRgb(state.sourceGridSettings.clearColor);
+    let tolerance = state.sourceGridSettings.clearTolerance;
     const targetBg = hexToRgb(state.gridSettings.clearColor);
 
-    if (state.addMode === 'replace-bg' || state.dragMode === 'overlay') {
-      if (state.dragMode === 'overlay') console.log(`[useGridSlice] Overlay mode: detecting background for alpha keying`);
-      const checkCanvas = document.createElement('canvas');
-      checkCanvas.width = img.naturalWidth; checkCanvas.height = img.naturalHeight;
-      const checkCtx = checkCanvas.getContext('2d')!;
-      checkCtx.drawImage(img, 0, 0);
-      const fullData = checkCtx.getImageData(0, 0, realW || img.naturalWidth, realH || img.naturalHeight);
-      keyColor = detectBackgroundColor(fullData, tolerance);
-    }
-
     const isMatch = (r: number, g: number, b: number, a: number) => {
-      if (a < 5 && keyColor.a < 5) return true;
+      if (a < 5) return true;
       return Math.abs(r - keyColor.r) <= tolerance &&
              Math.abs(g - keyColor.g) <= tolerance &&
              Math.abs(b - keyColor.b) <= tolerance;
@@ -591,8 +575,8 @@ export function useGridSlice(
         { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
       ),
     ]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId, state.dragMode, state.resizeMode,
+  }, [state.sourceGridSettings, state.atlasEntries, state.lastSourceAssetId, state.gridSettings,
+      state.clearedCells, state.libraryAssets, state.modifiedAssets, state.resizeMode, state.addMode, state.dragMode,
       mainAtlasGeo, selectedCells, executeCommand]);
 
 

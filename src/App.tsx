@@ -150,8 +150,9 @@ export default function App() {
     // Add to library
     const img = new Image();
     img.onload = () => {
+      const id = generateId();
       const newAsset: TextureAsset = {
-        id: generateId(),
+        id,
         url: url,
         name: finalName,
         width: img.naturalWidth,
@@ -162,10 +163,59 @@ export default function App() {
         brightness: 100,
         scale: 1,
       };
-      set(prev => ({
-        ...prev,
-        libraryAssets: [newAsset, ...prev.libraryAssets]
-      }));
+      set(prev => {
+        const existingIdx = prev.libraryAssets.findIndex(a => a.name === finalName);
+        let libraryAssets = [...prev.libraryAssets];
+        let finalId = id;
+        let isReplacement = false;
+        if (existingIdx !== -1) {
+          finalId = libraryAssets[existingIdx].id;
+          isReplacement = true;
+          if (libraryAssets[existingIdx].url.startsWith('blob:')) {
+            URL.revokeObjectURL(libraryAssets[existingIdx].url);
+          }
+          libraryAssets[existingIdx] = { ...newAsset, id: finalId };
+        } else {
+          libraryAssets = [newAsset, ...libraryAssets];
+        }
+
+        if (!isReplacement) {
+          return { ...prev, libraryAssets };
+        }
+
+        const updateRef = (a: TextureAsset) => {
+          if (a.id === finalId) {
+            return {
+              ...a,
+              url: newAsset.url,
+              file: newAsset.file,
+              sourceUrl: newAsset.sourceUrl,
+              width: newAsset.width,
+              height: newAsset.height,
+            };
+          }
+          return a;
+        };
+
+        return {
+          ...prev,
+          libraryAssets,
+          atlasEntries: prev.atlasEntries.map(updateRef),
+          layeringLayers: prev.layeringLayers.map(l => ({ ...l, asset: updateRef(l.asset) })),
+          packerMapping: {
+            r: { ...prev.packerMapping.r, asset: prev.packerMapping.r.asset ? updateRef(prev.packerMapping.r.asset) : null },
+            g: { ...prev.packerMapping.g, asset: prev.packerMapping.g.asset ? updateRef(prev.packerMapping.g.asset) : null },
+            b: { ...prev.packerMapping.b, asset: prev.packerMapping.b.asset ? updateRef(prev.packerMapping.b.asset) : null },
+            a: { ...prev.packerMapping.a, asset: prev.packerMapping.a.asset ? updateRef(prev.packerMapping.a.asset) : null },
+          },
+          pbrSet: {
+            baseColor: { ...prev.pbrSet.baseColor, asset: prev.pbrSet.baseColor.asset ? updateRef(prev.pbrSet.baseColor.asset) : null },
+            normal: { ...prev.pbrSet.normal, asset: prev.pbrSet.normal.asset ? updateRef(prev.pbrSet.normal.asset) : null },
+            orm: { ...prev.pbrSet.orm, asset: prev.pbrSet.orm.asset ? updateRef(prev.pbrSet.orm.asset) : null },
+          },
+          currentSourceAsset: prev.currentSourceAsset ? updateRef(prev.currentSourceAsset) : null
+        };
+      });
     };
     img.src = url;
   }, [set, state.textureName]);
@@ -300,7 +350,7 @@ export default function App() {
     });
   }, [set]);
 
-  const handleAssetClick = useCallback(async (asset: TextureAsset) => {
+  const handleAssetClick = useCallback(async (asset: TextureAsset, isDrag: boolean = false) => {
     let effectiveAsset = asset;
     if (asset.id === VIRTUAL_MAIN_ATLAS_ID) {
       const url = await handleGetMainAtlasSnapshot();
@@ -309,6 +359,9 @@ export default function App() {
     }
 
     if (mode === 'atlas') {
+      // Only allow replacing via click if it's completely empty (Initial State)
+      if (state.canvasWidth > 0 && !isDrag) return;
+
       const shouldSlice = state.gridSettings.mode === 'fixed';
       
       // If auto-detect is enabled, we detect settings first then slice
@@ -383,7 +436,7 @@ export default function App() {
       };
       set(prev => ({ ...prev, layeringLayers: [newLayer, ...prev.layeringLayers] }));
     }
-  }, [mode, state.libraryAssets, state.modifiedAssets, state.autoDetectEnabled, state.gridSettings, handleGetMainAtlasSnapshot, handleAutoDetectMainGrid, handleAutoDetectSourceGrid, performGridSlice, set]);
+  }, [mode, state.libraryAssets, state.modifiedAssets, state.autoDetectEnabled, state.gridSettings, state.canvasWidth, handleGetMainAtlasSnapshot, handleAutoDetectMainGrid, handleAutoDetectSourceGrid, performGridSlice, set]);
 
   const handleMainAtlasDrop = useCallback(async (assetOrId: string | TextureAsset, x: number, y: number) => {
     console.log(`[Forge] handleMainAtlasDrop: assetOrId=${typeof assetOrId === 'string' ? assetOrId : assetOrId.id}, x=${x}, y=${y}`);
@@ -404,7 +457,7 @@ export default function App() {
         state.modifiedAssets.some(t => t.id === asset!.id) || 
         asset.id === VIRTUAL_MAIN_ATLAS_ID) {
       console.log(`[Forge] Browser/Virtual asset dropped. Triggering handleAssetClick (Replace Source mode).`);
-      handleAssetClick(asset);
+      handleAssetClick(asset, true);
       return;
     }
 
@@ -866,7 +919,7 @@ export default function App() {
                     onDrop={(e) => {
                       e.preventDefault();
                       const asset = state.libraryAssets.find(t => t.id === e.dataTransfer.getData('text/plain'));
-                      if (asset) handleAssetClick(asset);
+                      if (asset) handleAssetClick(asset, true);
                     }}
                   >
                     <div className="p-12 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center gap-6 max-w-lg text-center">
@@ -958,7 +1011,7 @@ export default function App() {
               e.preventDefault();
               const id = e.dataTransfer.getData('text/plain');
               const asset = [...state.libraryAssets, ...state.modifiedAssets, ...state.atlasEntries, ...activeAssets].find(t => t.id === id);
-              if (asset) handleAssetClick(asset);
+              if (asset) handleAssetClick(asset, true);
             }}
           >
             <AdjustMode

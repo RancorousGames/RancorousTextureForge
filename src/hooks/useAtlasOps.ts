@@ -263,11 +263,65 @@ export function useAtlasOps(
         x: 0, y: 0,
         hue: 0, brightness: 100, scale: 1,
       };
-      set(prev => ({
-        ...prev,
-        libraryAssets: [newAsset, ...prev.libraryAssets],
-        lastMainAssetId: id
-      }));
+      set(prev => {
+        const existingIdx = prev.libraryAssets.findIndex(a => a.name === name);
+        let libraryAssets = [...prev.libraryAssets];
+        let finalId = id;
+        let isReplacement = false;
+        if (existingIdx !== -1) {
+          finalId = libraryAssets[existingIdx].id;
+          isReplacement = true;
+          if (libraryAssets[existingIdx].url.startsWith('blob:')) {
+            URL.revokeObjectURL(libraryAssets[existingIdx].url);
+          }
+          libraryAssets[existingIdx] = { ...newAsset, id: finalId };
+        } else {
+          libraryAssets = [newAsset, ...libraryAssets];
+        }
+
+        if (!isReplacement) {
+          return {
+            ...prev,
+            libraryAssets,
+            lastMainAssetId: finalId
+          };
+        }
+
+        // Update other references if it was a replacement
+        const updateRef = (a: TextureAsset) => {
+          if (a.id === finalId) {
+            return {
+              ...a,
+              url: newAsset.url,
+              file: newAsset.file,
+              sourceUrl: newAsset.sourceUrl,
+              width: newAsset.width,
+              height: newAsset.height,
+            };
+          }
+          return a;
+        };
+
+        return {
+          ...prev,
+          libraryAssets,
+          lastMainAssetId: finalId,
+          atlasEntries: prev.atlasEntries.map(updateRef),
+          layeringLayers: prev.layeringLayers.map(l => ({ ...l, asset: updateRef(l.asset) })),
+          packerMapping: {
+            r: { ...prev.packerMapping.r, asset: prev.packerMapping.r.asset ? updateRef(prev.packerMapping.r.asset) : null },
+            g: { ...prev.packerMapping.g, asset: prev.packerMapping.g.asset ? updateRef(prev.packerMapping.g.asset) : null },
+            b: { ...prev.packerMapping.b, asset: prev.packerMapping.b.asset ? updateRef(prev.packerMapping.b.asset) : null },
+            a: { ...prev.packerMapping.a, asset: prev.packerMapping.a.asset ? updateRef(prev.packerMapping.a.asset) : null },
+          },
+          pbrSet: {
+            baseColor: { ...prev.pbrSet.baseColor, asset: prev.pbrSet.baseColor.asset ? updateRef(prev.pbrSet.baseColor.asset) : null },
+            normal: { ...prev.pbrSet.normal, asset: prev.pbrSet.normal.asset ? updateRef(prev.pbrSet.normal.asset) : null },
+            orm: { ...prev.pbrSet.orm, asset: prev.pbrSet.orm.asset ? updateRef(prev.pbrSet.orm.asset) : null },
+          },
+          currentSourceAsset: prev.currentSourceAsset ? updateRef(prev.currentSourceAsset) : null
+        };
+      });
     };
     img.src = url;
   }, [state.atlasEntries, state.gridSettings.clearColor, state.textureName, canvasWidth, canvasHeight, set]);
@@ -297,11 +351,64 @@ export function useAtlasOps(
         x: 0, y: 0,
         hue: 0, brightness: 100, scale: 1,
       };
-      set(prev => ({
-        ...prev,
-        libraryAssets: [newAsset, ...prev.libraryAssets],
-        lastMainAssetId: id
-      }));
+      set(prev => {
+        const existingIdx = prev.libraryAssets.findIndex(a => a.name === name);
+        let libraryAssets = [...prev.libraryAssets];
+        let finalId = id;
+        let isReplacement = false;
+        if (existingIdx !== -1) {
+          finalId = libraryAssets[existingIdx].id;
+          isReplacement = true;
+          if (libraryAssets[existingIdx].url.startsWith('blob:')) {
+            URL.revokeObjectURL(libraryAssets[existingIdx].url);
+          }
+          libraryAssets[existingIdx] = { ...newAsset, id: finalId };
+        } else {
+          libraryAssets = [newAsset, ...libraryAssets];
+        }
+
+        if (!isReplacement) {
+          return {
+            ...prev,
+            libraryAssets,
+            lastMainAssetId: finalId
+          };
+        }
+
+        const updateRef = (a: TextureAsset) => {
+          if (a.id === finalId) {
+            return {
+              ...a,
+              url: newAsset.url,
+              file: newAsset.file,
+              sourceUrl: newAsset.sourceUrl,
+              width: newAsset.width,
+              height: newAsset.height,
+            };
+          }
+          return a;
+        };
+
+        return {
+          ...prev,
+          libraryAssets,
+          lastMainAssetId: finalId,
+          atlasEntries: prev.atlasEntries.map(updateRef),
+          layeringLayers: prev.layeringLayers.map(l => ({ ...l, asset: updateRef(l.asset) })),
+          packerMapping: {
+            r: { ...prev.packerMapping.r, asset: prev.packerMapping.r.asset ? updateRef(prev.packerMapping.r.asset) : null },
+            g: { ...prev.packerMapping.g, asset: prev.packerMapping.g.asset ? updateRef(prev.packerMapping.g.asset) : null },
+            b: { ...prev.packerMapping.b, asset: prev.packerMapping.b.asset ? updateRef(prev.packerMapping.b.asset) : null },
+            a: { ...prev.packerMapping.a, asset: prev.packerMapping.a.asset ? updateRef(prev.packerMapping.a.asset) : null },
+          },
+          pbrSet: {
+            baseColor: { ...prev.pbrSet.baseColor, asset: prev.pbrSet.baseColor.asset ? updateRef(prev.pbrSet.baseColor.asset) : null },
+            normal: { ...prev.pbrSet.normal, asset: prev.pbrSet.normal.asset ? updateRef(prev.pbrSet.normal.asset) : null },
+            orm: { ...prev.pbrSet.orm, asset: prev.pbrSet.orm.asset ? updateRef(prev.pbrSet.orm.asset) : null },
+          },
+          currentSourceAsset: prev.currentSourceAsset ? updateRef(prev.currentSourceAsset) : null
+        };
+      });
     };
     img.src = url;
   }, [state.atlasEntries, state.gridSettings.clearColor, state.textureName, canvasWidth, canvasHeight, set]);

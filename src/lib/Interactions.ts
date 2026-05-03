@@ -21,7 +21,7 @@ export interface InteractionResult {
   onEntriesChange?: TextureAsset[];
   onRemoveEntry?: TextureAsset;
   onCellClick?: { x: number, y: number, w: number, h: number, cx: number, cy: number };
-  onCellRightClick?: { x: number, y: number, w: number, h: number, cx: number, cy: number };
+  onCellRightClick?: { x: number, y: number, w: number, h: number, cx: number, cy: number, entry?: TextureAsset };
   onMaterialize?: { cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number } };
   onPan?: { dx: number, dy: number };
 }
@@ -31,7 +31,7 @@ export interface InteractionCallbacks {
   onSelectedCellsChange?: (cells: string[]) => void;
   selectedCells?: string[];
   onCellClick?: (x: number, y: number, w: number, h: number, cx: number, cy: number) => void;
-  onCellRightClick?: (x: number, y: number, w: number, h: number, cx: number, cy: number) => void;
+  onCellRightClick?: (x: number, y: number, w: number, h: number, cx: number, cy: number, entry?: TextureAsset) => void;
   dragMode?: DragMode;
 }
 
@@ -232,14 +232,9 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
           entry = [...entries].reverse().find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
         }
 
-        if (callbacks.onMaterialize && this.geo.settings.mode !== 'packing') {
-          result.onMaterialize = { cx, cy, reason: 'clear' };
-        }
-        if (entry && callbacks.onRemoveEntry) {
-          result.onRemoveEntry = entry;
-        } else if (!entry && this.geo.settings.mode !== 'packing' && !callbacks.onMaterialize && callbacks.onCellRightClick) {
+        if (callbacks.onCellRightClick) {
           const cellPos = this.geo.getPosFromCell(cx, cy);
-          result.onCellRightClick = { ...cellPos, w: this.geo.cellW, h: this.geo.cellH, cx, cy };
+          result.onCellRightClick = { ...cellPos, w: this.geo.cellW, h: this.geo.cellH, cx, cy, entry };
         }
       }
       else if (state.draggingId && state.draggingPos) {

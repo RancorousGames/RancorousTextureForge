@@ -19,9 +19,11 @@ interface MainAtlasProps {
   atlasStatus: AtlasStatus;
   onMaterialize?: (cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number }) => void;
   onHoverChange?: (pos: { x: number, y: number } | null, cell: { cx: number, cy: number } | null) => void;
+  onCellRightClick?: (x: number, y: number, width: number, height: number, cx: number, cy: number, entry?: TextureAsset) => void;
   debugIslands?: { x: number; y: number; w: number; h: number }[];
   addTextEnabled?: boolean;
   textColor?: string;
+  lastMainAssetId?: string | null;
 }
 
 export function MainAtlas({
@@ -42,9 +44,11 @@ export function MainAtlas({
   atlasStatus,
   onMaterialize,
   onHoverChange,
+  onCellRightClick,
   debugIslands,
   addTextEnabled,
-  textColor
+  textColor,
+  lastMainAssetId
 }: MainAtlasProps) {
   return (
     <AtlasCanvas
@@ -67,9 +71,11 @@ export function MainAtlas({
       uniqueId="main"
       onMaterialize={onMaterialize}
       onHoverChange={onHoverChange}
+      onCellRightClick={onCellRightClick}
       debugIslands={debugIslands}
       addTextEnabled={addTextEnabled}
       textColor={textColor}
+      lastMainAssetId={lastMainAssetId}
     />
   );
 }

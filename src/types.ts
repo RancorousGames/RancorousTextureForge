@@ -35,6 +35,9 @@ export interface TextureAsset {
   sourceH?: number;
   isKeyed?: boolean;
   originalId?: string;
+  rotation?: number; // 0, 90, 180, 270
+  internalPadding?: number;
+  backgroundColor?: string; // hex or 'transparent'
 }
 
 export type AppMode = 'atlas' | 'adjust' | 'channel-pack' | 'layering';

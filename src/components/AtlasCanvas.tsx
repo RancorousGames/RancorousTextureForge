@@ -12,7 +12,7 @@ interface AtlasCanvasProps {
   onRemoveEntry?: (entry: TextureAsset) => void;
   gridSettings: GridSettings;
   onCellClick?: (x: number, y: number, width: number, height: number, cx: number, cy: number) => void;
-  onCellRightClick?: (x: number, y: number, width: number, height: number, cx: number, cy: number) => void;
+  onCellRightClick?: (x: number, y: number, width: number, height: number, cx: number, cy: number, entry?: TextureAsset, screenX?: number, screenY?: number) => void;
   onDrop?: (assetId: string, x: number, y: number) => void;
   className?: string;
   canvasWidth?: number;
@@ -347,7 +347,7 @@ export function AtlasCanvas({
     }
     if (result.onCellRightClick && onCellRightClick) {
       const c = result.onCellRightClick;
-      onCellRightClick(c.x, c.y, c.w, c.h, c.cx, c.cy);
+      onCellRightClick(c.x, c.y, c.w, c.h, c.cx, c.cy, c.entry, e.clientX, e.clientY);
     }
     if (result.onRemoveEntry && onRemoveEntry) onRemoveEntry(result.onRemoveEntry);
 

@@ -133,10 +133,26 @@ export async function renderEntriesToCanvas(
 
     ctx.save();
     ctx.translate(entry.x, entry.y);
+
+    if (entry.backgroundColor && entry.backgroundColor !== 'transparent') {
+      ctx.fillStyle = entry.backgroundColor;
+      ctx.fillRect(0, 0, dw, dh);
+    }
+
     if (entry.hue !== 0 || entry.brightness !== 100) {
       ctx.filter = `hue-rotate(${entry.hue}deg) brightness(${entry.brightness}%)`;
     }
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+
+    const rotation = entry.rotation ?? 0;
+    const p = entry.internalPadding ?? 0;
+
+    if (rotation !== 0) {
+      ctx.translate(dw / 2, dh / 2);
+      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.translate(-dw / 2, -dh / 2);
+    }
+
+    ctx.drawImage(img, sx, sy, sw, sh, p, p, dw - 2 * p, dh - 2 * p);
     ctx.restore();
   }
 

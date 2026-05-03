@@ -251,7 +251,7 @@ export function SourceAtlas({
     }
   };
 
-  const handleCellRightClick = (x: number, y: number, width: number, height: number, cx: number, cy: number) => {
+  const handleCellRightClick = (x: number, y: number, width: number, height: number, cx: number, cy: number, entry?: TextureAsset, screenX?: number, screenY?: number) => {
     if (!sourceAsset) return;
     if (mainGridSettings.mode === 'packing') return; // Right-click fill not relevant in packing mode
     if (onSourceCellRightClick) {

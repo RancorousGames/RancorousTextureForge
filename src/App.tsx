@@ -7,7 +7,7 @@ import { Toolbox } from './components/Toolbox';
 import { ChannelPackerMode } from './components/ChannelPackerMode';
 import { LayeringMode } from './components/LayeringMode';
 import { AdjustMode } from './components/AdjustMode';
-import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon, ExternalLink, Type, MousePointer, Grid3X3 } from 'lucide-react';
+import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon, ExternalLink, Type, MousePointer, Grid3X3, RotateCw, Trash2, Minus } from 'lucide-react';
 import { cn, checkGridDensity, hexToRgb } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
 import { useAtlas } from './hooks/useAtlas';
@@ -76,6 +76,98 @@ const getInitialState = (): AppState => {
   return baseState;
 };
 
+interface ContextMenuProps {
+  x: number;
+  y: number;
+  selectedEntries: TextureAsset[];
+  onAction: (action: string, value?: any) => void;
+  onClose: () => void;
+}
+
+function ContextMenu({ x, y, selectedEntries, onAction, onClose }: ContextMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose]);
+
+  if (selectedEntries.length === 0) return null;
+
+  return (
+    <div 
+      ref={menuRef}
+      className="fixed z-[1000] bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl py-1 min-w-[180px] animate-in fade-in zoom-in duration-100"
+      style={{ left: Math.min(x, window.innerWidth - 200), top: Math.min(y, window.innerHeight - 300) }}
+    >
+      <div className="px-3 py-1.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-800 mb-1">
+        {selectedEntries.length > 1 ? `${selectedEntries.length} items selected` : 'Cell Options'}
+      </div>
+
+      <button
+        onClick={() => onAction('rotate')}
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
+      >
+        <RotateCw className="w-4 h-4 text-zinc-500" />
+        <span>Rotate 90°</span>
+      </button>
+
+      <div className="flex items-center justify-between px-3 py-2 text-sm text-zinc-300">
+        <div className="flex items-center gap-2">
+          <LayoutTemplate className="w-4 h-4 text-zinc-500" />
+          <span>Padding</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={() => onAction('padding', -1)} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white"><Minus className="w-3.5 h-3.5" /></button>
+          <span className="min-w-[1.5rem] text-center font-mono text-xs">{selectedEntries[0].internalPadding || 0}</span>
+          <button onClick={() => onAction('padding', 1)} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white"><Plus className="w-3.5 h-3.5" /></button>
+        </div>
+      </div>
+
+      <div className="px-3 py-2">
+        <div className="flex items-center gap-2 text-sm text-zinc-300 mb-2">
+          <Palette className="w-4 h-4 text-zinc-500" />
+          <span>Background</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5 px-1">
+          {['transparent', '#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff', '#ffff00'].map(color => (
+            <button
+              key={color}
+              onClick={() => onAction('background', color)}
+              className={cn(
+                "w-5 h-5 rounded-sm border border-zinc-700 hover:scale-110 transition-transform",
+                color === 'transparent' ? "checkerboard" : ""
+              )}
+              style={color === 'transparent' ? {} : { backgroundColor: color }}
+              title={color}
+            />
+          ))}
+          <input 
+            type="color" 
+            className="w-5 h-5 bg-transparent border-0 p-0 cursor-pointer"
+            onChange={(e) => onAction('background', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="border-t border-zinc-800 mt-1 pt-1">
+        <button
+          onClick={() => onAction('remove')}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-950/30 hover:text-red-300 transition-colors"
+        >
+          <Trash2 className="w-4 h-4" />
+          <span>Remove</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [mode, setMode] = useState<AppMode>(() => loadAppMode() || 'atlas');
   const { state, set, executeCommand, undo, redo, canUndo, canRedo, past, future } = useHistory<AppState>(getInitialState());
@@ -135,9 +227,44 @@ export default function App() {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [selectedCells, setSelectedCells] = useState<string[]>([]);
   const [hoverInfo, setHoverInfo] = useState<{ pos: { x: number, y: number } | null, cell: { cx: number, cy: number } | null, source: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number,
+    y: number,
+    cx: number,
+    cy: number,
+    entry?: TextureAsset,
+    selectedEntries: TextureAsset[]
+  } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prevGridModeRef = useRef(state.gridSettings.mode);
+
+  const handleMainCellRightClick = useCallback((x: number, y: number, w: number, h: number, cx: number, cy: number, entry?: TextureAsset, screenX?: number, screenY?: number) => {
+    if (screenX !== undefined && screenY !== undefined) {
+      // Find selected entries if the clicked cell is part of selection
+      let selectedEntries: TextureAsset[] = [];
+      if (selectedCells.includes(`${cx},${cy}`)) {
+        selectedEntries = state.atlasEntries.filter(e => {
+          const ec = checkGridDensity(e.x + (e.width * (e.scaleX ?? e.scale) / 2), e.y + (e.height * (e.scaleY ?? e.scale) / 2), state.gridSettings.cellSize, state.gridSettings.cellY || state.gridSettings.cellSize, state.gridSettings.padding);
+          return selectedCells.includes(`${ec.cx},${ec.cy}`);
+        });
+      }
+
+      setContextMenu({
+        x: screenX,
+        y: screenY,
+        cx,
+        cy,
+        entry,
+        selectedEntries: selectedEntries.length > 0 ? selectedEntries : (entry ? [entry] : [])
+      });
+    }
+  }, [state.atlasEntries, selectedCells, state.gridSettings]);
+
+  const handleSourceCellRightClick = useCallback((x: number, y: number, w: number, h: number, scx: number, scy: number, sourceAsset: TextureAsset) => {
+    // For now, source right-click still does "Fill" (materialize clear)
+    handleMaterialize(scx, scy, 'clear');
+  }, [handleMaterialize]);
 
   const handleHoverChange = useCallback((source: string, pos: { x: number, y: number } | null, cell: { cx: number, cy: number } | null) => {
     if (pos) {
@@ -146,6 +273,44 @@ export default function App() {
       setHoverInfo(prev => prev?.source === source ? null : prev);
     }
   }, []);
+
+  const handleContextMenuAction = useCallback((action: string, value?: any) => {
+    if (!contextMenu) return;
+
+    if (action === 'remove') {
+      executeCommand(new RemoveTilesCommand(contextMenu.selectedEntries));
+      setContextMenu(null);
+      return;
+    }
+
+    const ids = contextMenu.selectedEntries.map(e => e.id);
+    const nextEntries = state.atlasEntries.map(e => {
+      if (ids.includes(e.id)) {
+        if (action === 'rotate') {
+          return { ...e, rotation: ((e.rotation || 0) + 90) % 360 };
+        }
+        if (action === 'padding') {
+          return { ...e, internalPadding: Math.max(0, (e.internalPadding || 0) + value) };
+        }
+        if (action === 'background') {
+          return { ...e, backgroundColor: value };
+        }
+      }
+      return e;
+    });
+
+    executeCommand(new SetMainTilesCommand(state.atlasEntries, nextEntries, state.atlasStatus, state.atlasStatus, state.lastMainAssetId, state.lastMainAssetId));
+    
+    // Update local context menu state to reflect changes if it stays open
+    if (action === 'rotate' || action === 'padding' || action === 'background') {
+        setContextMenu(prev => prev ? {
+            ...prev,
+            selectedEntries: nextEntries.filter(e => ids.includes(e.id))
+        } : null);
+    } else {
+        setContextMenu(null);
+    }
+  }, [contextMenu, state.atlasEntries, state.atlasStatus, state.lastMainAssetId, executeCommand]);
 
   const { canvasWidth, canvasHeight } = state;
 
@@ -951,6 +1116,7 @@ export default function App() {
                     clearedCells={state.clearedCells}                    atlasStatus={state.atlasStatus}
                     onMaterialize={handleMaterialize}
                     onHoverChange={(pos, cell) => handleHoverChange('main', pos, cell)}
+                    onCellRightClick={handleMainCellRightClick}
                     debugIslands={state.debugIslands}
                     addTextEnabled={state.addTextEnabled}
                     textColor={state.textColor}
@@ -1134,6 +1300,16 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          selectedEntries={contextMenu.selectedEntries}
+          onAction={handleContextMenuAction}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

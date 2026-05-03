@@ -431,15 +431,20 @@ export function AtlasCanvas({
              y = entry.y + deltaY;
           }
           
+          const rotation = entry.rotation ?? 0;
+          const p = entry.internalPadding ?? 0;
+          const bg = (entry.backgroundColor && entry.backgroundColor !== 'transparent') ? entry.backgroundColor : undefined;
+          
           return (
             <div 
               key={entry.id} 
-              className="absolute select-none pointer-events-none" 
+              className="absolute select-none pointer-events-none overflow-hidden" 
               style={{ 
                 left: x, 
                 top: y, 
                 width: entry.width * sX, 
                 height: entry.height * sY, 
+                backgroundColor: bg,
                 filter: `hue-rotate(${entry.hue}deg) brightness(${entry.brightness}%)`, 
                 zIndex: isDragging ? 50 : 5, 
                 opacity: isDragging ? 0.8 : 1 
@@ -449,7 +454,15 @@ export function AtlasCanvas({
               <img 
                 src={entry.url} 
                 alt={entry.name} 
-                className="w-full h-full object-fill" 
+                className="absolute object-fill" 
+                style={{
+                  left: p,
+                  top: p,
+                  width: entry.width * sX - 2 * p,
+                  height: entry.height * sY - 2 * p,
+                  transform: `rotate(${rotation}deg)`,
+                  transformOrigin: 'center'
+                }}
                 draggable={false} 
               />
             </div>

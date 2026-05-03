@@ -290,7 +290,7 @@ export default function App() {
           return { ...e, rotation: ((e.rotation || 0) + 90) % 360 };
         }
         if (action === 'padding') {
-          return { ...e, internalPadding: Math.max(0, (e.internalPadding || 0) + value) };
+          return { ...e, internalPadding: (e.internalPadding || 0) + value };
         }
         if (action === 'background') {
           return { ...e, backgroundColor: value };

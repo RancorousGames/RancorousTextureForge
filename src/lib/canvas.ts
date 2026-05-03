@@ -134,6 +134,11 @@ export async function renderEntriesToCanvas(
     ctx.save();
     ctx.translate(entry.x, entry.y);
 
+    // Clip to cell bounds so negative padding correctly clips the image
+    ctx.beginPath();
+    ctx.rect(0, 0, dw, dh);
+    ctx.clip();
+
     if (entry.backgroundColor && entry.backgroundColor !== 'transparent') {
       ctx.fillStyle = entry.backgroundColor;
       ctx.fillRect(0, 0, dw, dh);

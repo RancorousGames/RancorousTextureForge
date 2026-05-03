@@ -18,6 +18,7 @@ import { useAssetLibrary } from './hooks/useAssetLibrary';
 import { AddTilesCommand, PatchCommand, SetMainTilesCommand, RemoveTilesCommand, SetSourceAssetCommand } from './lib/Commands';
 import potpack from 'potpack';
 import { tileRegistry } from './lib/TileRegistry';
+import { GridGeometry } from './lib/GridGeometry';
 import { generateId, renderTilesToCanvas, applyAlphaKey, loadImage, canvasToBlobURL } from './lib/canvas';
 import { persistAppState, loadPersistedAppState, restoreAssetUrls, persistAppMode, loadAppMode, cleanupAssetBlobs } from './lib/Storage';
 
@@ -244,9 +245,13 @@ export default function App() {
       // Find selected entries if the clicked cell is part of selection
       let selectedEntries: TextureAsset[] = [];
       if (selectedCells.includes(`${cx},${cy}`)) {
+        const geo = new GridGeometry(state.gridSettings, state.canvasWidth, state.canvasHeight);
         selectedEntries = state.atlasEntries.filter(e => {
-          const ec = checkGridDensity(e.x + (e.width * (e.scaleX ?? e.scale) / 2), e.y + (e.height * (e.scaleY ?? e.scale) / 2), state.gridSettings.cellSize, state.gridSettings.cellY || state.gridSettings.cellSize, state.gridSettings.padding);
-          return selectedCells.includes(`${ec.cx},${ec.cy}`);
+          // Check if this entry's center is in any of the selected cells
+          return selectedCells.some(cellKey => {
+            const [scx, scy] = cellKey.split(',').map(Number);
+            return geo.isTileInCell(e.x, e.y, e.width, e.height, e.scale, scx, scy);
+          });
         });
       }
 
@@ -259,12 +264,7 @@ export default function App() {
         selectedEntries: selectedEntries.length > 0 ? selectedEntries : (entry ? [entry] : [])
       });
     }
-  }, [state.atlasEntries, selectedCells, state.gridSettings]);
-
-  const handleSourceCellRightClick = useCallback((x: number, y: number, w: number, h: number, scx: number, scy: number, sourceAsset: TextureAsset) => {
-    // For now, source right-click still does "Fill" (materialize clear)
-    handleMaterialize(scx, scy, 'clear');
-  }, [handleMaterialize]);
+  }, [state.atlasEntries, selectedCells, state.gridSettings, state.canvasWidth, state.canvasHeight]);
 
   const handleHoverChange = useCallback((source: string, pos: { x: number, y: number } | null, cell: { cx: number, cy: number } | null) => {
     if (pos) {
@@ -1206,6 +1206,7 @@ export default function App() {
                       onAutoDetectEnabledChange={(enabled) => set(prev => ({ ...prev, autoDetectEnabled: enabled }))}
                       onHoverChange={(pos, cell) => handleHoverChange('source', pos, cell)}
                       resizeMode={state.resizeMode}
+                      addMode={state.addMode}
                       dragMode={state.dragMode}
                     />
                   </div>

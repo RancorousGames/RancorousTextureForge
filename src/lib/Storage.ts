@@ -47,7 +47,7 @@ export async function cleanupAssetBlobs(activeIds: Set<string>) {
   const store = tx.objectStore(STORE_NAME);
   const keys = await store.getAllKeys();
   for (const key of keys) {
-    if (!activeIds.has(key)) {
+    if (typeof key === 'string' && !activeIds.has(key)) {
       await store.delete(key);
     }
   }

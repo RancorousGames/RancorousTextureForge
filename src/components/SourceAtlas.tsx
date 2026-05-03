@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { TextureAsset, GridSettings } from '../types';
+import { TextureAsset, GridSettings, DragMode } from '../types';
 import { AtlasCanvas } from './AtlasCanvas';
 import { DeferredNumberInput } from './DeferredNumberInput';
 import { Image as ImageIcon, Wand2, LayoutTemplate, RefreshCw, Grid3X3 } from 'lucide-react';
@@ -25,6 +25,7 @@ interface SourceAtlasProps {
   onHoverChange?: (pos: { x: number, y: number } | null, cell: { cx: number, cy: number } | null) => void;
   resizeMode: string;
   addMode: string;
+  dragMode: DragMode;
 }
 
 export function SourceAtlas({ 
@@ -44,7 +45,8 @@ export function SourceAtlas({
   onAutoDetectEnabledChange,
   onHoverChange,
   resizeMode,
-  addMode
+  addMode,
+  dragMode
 }: SourceAtlasProps) {
 
   const [customSelection, setCustomSelection] = useState<{ x: number, y: number, w: number, h: number } | null>(null);

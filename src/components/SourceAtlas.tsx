@@ -22,6 +22,7 @@ interface SourceAtlasProps {
   canvasHeight: number;
   autoDetectEnabled: boolean;
   onAutoDetectEnabledChange: (enabled: boolean) => void;
+  onHoverChange?: (pos: { x: number, y: number } | null, cell: { cx: number, cy: number } | null) => void;
   resizeMode: string;
   addMode: string;
 }
@@ -41,6 +42,7 @@ export function SourceAtlas({
   canvasHeight: targetCanvasH,
   autoDetectEnabled,
   onAutoDetectEnabledChange,
+  onHoverChange,
   resizeMode,
   addMode
 }: SourceAtlasProps) {
@@ -498,6 +500,7 @@ export function SourceAtlas({
             canvasHeight={sourceAsset.height}
             customSelection={customSelection}
             onCustomSelectionChange={handleCustomSelection}
+            onHoverChange={onHoverChange}
             uniqueId="source"
             disableHover={mainGridSettings.mode === 'packing'}
             tooltip={mainGridSettings.mode === 'packing' 
@@ -506,7 +509,15 @@ export function SourceAtlas({
             }
           />
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 p-8 text-center">
+          <div 
+            className="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 p-8 text-center"
+            onPointerMove={(e) => {
+              if (onHoverChange) onHoverChange({ x: e.clientX, y: e.clientY }, null);
+            }}
+            onPointerLeave={() => {
+              if (onHoverChange) onHoverChange(null, null);
+            }}
+          >
             <ImageIcon className="w-12 h-12 mb-4 opacity-20" />
             <p className="text-sm">Load a source image to pick tiles from it.</p>
             <p className="text-xs mt-2 opacity-60">Click a grid cell or drag a box to add it to the Main Atlas.</p>

@@ -7,7 +7,7 @@ import { Toolbox } from './components/Toolbox';
 import { ChannelPackerMode } from './components/ChannelPackerMode';
 import { LayeringMode } from './components/LayeringMode';
 import { AdjustMode } from './components/AdjustMode';
-import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon, ExternalLink, Type } from 'lucide-react';
+import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon, ExternalLink, Type, MousePointer, Grid3X3 } from 'lucide-react';
 import { cn, checkGridDensity, hexToRgb } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
 import { useAtlas } from './hooks/useAtlas';
@@ -19,6 +19,7 @@ import { AddTilesCommand, PatchCommand, SetMainTilesCommand, RemoveTilesCommand,
 import potpack from 'potpack';
 import { tileRegistry } from './lib/TileRegistry';
 import { generateId, renderTilesToCanvas, applyAlphaKey, loadImage, canvasToBlobURL } from './lib/canvas';
+import { persistAppState, loadPersistedAppState, restoreAssetUrls, persistAppMode, loadAppMode, cleanupAssetBlobs } from './lib/Storage';
 
 const FORGE_CONFIG_KEY = 'forge_config_v1';
 
@@ -64,31 +65,42 @@ const getInitialState = (): AppState => {
     textureName: 'T_Texture_BC',
   };
 
-  try {
-    const saved = localStorage.getItem(FORGE_CONFIG_KEY);
-    if (saved) {
-      const config = JSON.parse(saved);
-      return {
-        ...baseState,
-        gridSettings: { ...baseState.gridSettings, ...config.gridSettings },
-        sourceGridSettings: { ...baseState.sourceGridSettings, ...config.sourceGridSettings },
-        adjustSettings: { ...baseState.adjustSettings, ...config.adjustSettings },
-        resizeMode: config.resizeMode ?? 'fill',
-        autoDetectEnabled: config.autoDetectEnabled ?? false,
-        textureName: config.textureName ?? 'T_Texture_BC',
-      };
-    }
-  } catch (e) {
-    console.error('Failed to load forge config', e);
+  const persisted = loadPersistedAppState();
+  if (persisted) {
+    return {
+      ...baseState,
+      ...persisted,
+      // atlasEntries and currentSourceAsset will have URLs restored via useEffect
+    };
   }
   return baseState;
 };
 
 export default function App() {
-  const [mode, setMode] = useState<AppMode>(() => (localStorage.getItem('forge_mode') as AppMode) || 'atlas');
+  const [mode, setMode] = useState<AppMode>(() => loadAppMode() || 'atlas');
   const { state, set, executeCommand, undo, redo, canUndo, canRedo, past, future } = useHistory<AppState>(getInitialState());
 
-  // Periodically clean up orphaned blob URLs in the registry
+  // Restore Blob URLs on boot
+  useEffect(() => {
+    const restore = async () => {
+      const persisted = loadPersistedAppState();
+      if (persisted) {
+        const restored = await restoreAssetUrls(persisted);
+        set(prev => ({
+          ...prev,
+          atlasEntries: restored.atlasEntries || prev.atlasEntries,
+          currentSourceAsset: restored.currentSourceAsset || prev.currentSourceAsset,
+        }));
+        
+        // Register restored assets in the tile registry
+        if (restored.atlasEntries) tileRegistry.registerMany(restored.atlasEntries);
+        if (restored.currentSourceAsset) tileRegistry.register(restored.currentSourceAsset);
+      }
+    };
+    restore();
+  }, []);
+
+  // Periodically clean up orphaned blob URLs and IndexedDB assets
   useEffect(() => {
     const activeAssets = [
       ...state.libraryAssets,
@@ -109,6 +121,11 @@ export default function App() {
     future.forEach(batch => batch.forEach(cmd => activeAssets.push(...cmd.getAssets())));
 
     tileRegistry.garbageCollect(activeAssets);
+    
+    // Cleanup IndexedDB
+    const activeIds = new Set(activeAssets.map(a => a.id));
+    cleanupAssetBlobs(activeIds);
+
   }, [state, past, future]);
 
   const [splitRatio, setSplitRatio] = useState(0.5);
@@ -117,9 +134,18 @@ export default function App() {
 
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [selectedCells, setSelectedCells] = useState<string[]>([]);
+  const [hoverInfo, setHoverInfo] = useState<{ pos: { x: number, y: number } | null, cell: { cx: number, cy: number } | null, source: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prevGridModeRef = useRef(state.gridSettings.mode);
+
+  const handleHoverChange = useCallback((source: string, pos: { x: number, y: number } | null, cell: { cx: number, cy: number } | null) => {
+    if (pos) {
+      setHoverInfo({ pos, cell, source });
+    } else {
+      setHoverInfo(prev => prev?.source === source ? null : prev);
+    }
+  }, []);
 
   const { canvasWidth, canvasHeight } = state;
 
@@ -673,17 +699,11 @@ export default function App() {
   }, [state.dragMode, state.atlasEntries, state.gridSettings.clearColor, state.gridSettings.clearTolerance, set]);
 
   useEffect(() => {
-    localStorage.setItem(FORGE_CONFIG_KEY, JSON.stringify({
-      gridSettings: state.gridSettings,
-      sourceGridSettings: state.sourceGridSettings,
-      adjustSettings: state.adjustSettings,
-      autoDetectEnabled: state.autoDetectEnabled,
-      textureName: state.textureName,
-    }));
-  }, [state.gridSettings, state.sourceGridSettings, state.adjustSettings, state.autoDetectEnabled, state.textureName]);
+    persistAppState(state);
+  }, [state.gridSettings, state.sourceGridSettings, state.adjustSettings, state.autoDetectEnabled, state.textureName, state.atlasEntries, state.clearedCells, state.canvasWidth, state.canvasHeight, state.atlasStatus, state.currentSourceAsset]);
 
   useEffect(() => {
-    localStorage.setItem('forge_mode', mode);
+    persistAppMode(mode);
   }, [mode]);
 
   // Handle auto-slicing ONLY when switching grid modes
@@ -930,6 +950,7 @@ export default function App() {
                     sourceAsset={state.currentSourceAsset}
                     clearedCells={state.clearedCells}                    atlasStatus={state.atlasStatus}
                     onMaterialize={handleMaterialize}
+                    onHoverChange={(pos, cell) => handleHoverChange('main', pos, cell)}
                     debugIslands={state.debugIslands}
                     addTextEnabled={state.addTextEnabled}
                     textColor={state.textColor}
@@ -1017,8 +1038,8 @@ export default function App() {
                       canvasHeight={canvasHeight}
                       autoDetectEnabled={state.autoDetectEnabled}
                       onAutoDetectEnabledChange={(enabled) => set(prev => ({ ...prev, autoDetectEnabled: enabled }))}
+                      onHoverChange={(pos, cell) => handleHoverChange('source', pos, cell)}
                       resizeMode={state.resizeMode}
-                      addMode={state.addMode}
                       dragMode={state.dragMode}
                     />
                   </div>
@@ -1084,6 +1105,35 @@ export default function App() {
            lastMainAssetId={state.lastMainAssetId}
            lastSourceAssetId={state.lastSourceAssetId}
          />      </div>
+      
+      {/* Status Bar */}
+      <footer className="h-8 border-t border-zinc-800 bg-zinc-900 flex items-center justify-between px-4 shrink-0 text-[11px] text-zinc-400 font-medium">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <MousePointer className="w-3.5 h-3.5 text-zinc-500" />
+            <span className="text-zinc-500">Pixel:</span>
+            <span className="font-mono text-zinc-200 min-w-[80px]">
+              {hoverInfo?.pos ? `${Math.round(hoverInfo.pos.x)}, ${Math.round(hoverInfo.pos.y)}` : '---, ---'}
+            </span>
+          </div>
+          
+          {state.gridSettings.mode === 'fixed' && (
+            <div className="flex items-center gap-1.5 border-l border-zinc-800 pl-4">
+              <Grid3X3 className="w-3.5 h-3.5 text-zinc-500" />
+              <span className="text-zinc-500">Grid Cell:</span>
+              <span className="font-mono text-zinc-200 min-w-[60px]">
+                {hoverInfo?.cell ? `${hoverInfo.cell.cx}, ${hoverInfo.cell.cy}` : '--, --'}
+              </span>
+            </div>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <div className="text-zinc-500 uppercase tracking-wider text-[9px] font-bold">
+            {mode} mode
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

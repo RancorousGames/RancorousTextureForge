@@ -22,6 +22,7 @@ interface AtlasCanvasProps {
   customSelection?: { x: number, y: number, w: number, h: number } | null;
   onCustomSelectionChange?: (rect: { x: number, y: number, w: number, h: number } | null, screenPos?: { x: number, y: number }) => void;
   onMaterialize?: (cx: number, cy: number, reason: 'move' | 'clear', draggingPos?: { x: number, y: number }) => void;
+  onHoverChange?: (pos: { x: number, y: number } | null, cell: { cx: number, cy: number } | null) => void;
   dragMode?: DragMode;
   tooltip?: string;
   sourceAsset?: TextureAsset | null;
@@ -52,6 +53,7 @@ export function AtlasCanvas({
   customSelection,
   onCustomSelectionChange,
   onMaterialize,
+  onHoverChange,
   dragMode = 'replace',
   tooltip,
   sourceAsset,
@@ -169,6 +171,7 @@ export function AtlasCanvas({
     draggingPos: null,
     dragOffset: { x: 0, y: 0, originalX: 0, originalY: 0 },
     hoveredCell: null,
+    hoveredPos: null,
     isPanning: false,
     panStart: null
   });
@@ -257,6 +260,10 @@ export function AtlasCanvas({
     
     const result = strategy.onPointerMove(e, pos, interactionState, entries, { onCustomSelectionChange, onSelectedCellsChange, selectedCells });
     setInteractionState(prev => ({ ...prev, ...result.state }));
+
+    if (onHoverChange) {
+      onHoverChange(pos, result.state.hoveredCell || null);
+    }
 
     if (result.onPan) {
       setPanOffset(prev => ({
@@ -398,7 +405,10 @@ export function AtlasCanvas({
   };
 
   return (
-    <div ref={viewportRef} className={cn("flex-1 h-full bg-zinc-950 relative overflow-hidden checkerboard", className)} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setInteractionState(prev => ({ ...prev, hoveredCell: null }))} onContextMenu={e => e.preventDefault()} onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
+    <div ref={viewportRef} className={cn("flex-1 h-full bg-zinc-950 relative overflow-hidden checkerboard", className)} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => {
+      setInteractionState(prev => ({ ...prev, hoveredCell: null, hoveredPos: null }));
+      if (onHoverChange) onHoverChange(null, null);
+    }} onContextMenu={e => e.preventDefault()} onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
       <div ref={containerRef} className="relative origin-top-left shadow-2xl transition-transform duration-75 ease-out" style={{ width: canvasWidth, height: canvasHeight, transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})` }}>
         <div className="absolute inset-0 pointer-events-none z-0" style={{ backgroundColor: gridSettings.clearColor }} />
         

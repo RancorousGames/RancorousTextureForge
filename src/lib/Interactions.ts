@@ -9,6 +9,7 @@ export interface InteractionState {
   draggingPos: { x: number, y: number } | null;
   dragOffset: { x: number, y: number, originalX: number, originalY: number };
   hoveredCell: { cx: number, cy: number } | null;
+  hoveredPos: { x: number, y: number } | null;
   isPanning: boolean;
   panStart: { x: number, y: number } | null;
 }
@@ -121,19 +122,22 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
 
   onPointerMove(e: React.PointerEvent, pos: { x: number, y: number }, state: InteractionState, entries: TextureAsset[], callbacks: InteractionCallbacksExt): InteractionResult {
     const { cx, cy } = this.geo.getCellAtPos(pos.x, pos.y);
-    const result: InteractionResult = { state: { hoveredCell: { cx, cy } } };
-
-    if (!this.dragStartCanvas || !this.dragStartMouse) return result;
-
-    const dist = Math.sqrt(Math.pow(e.clientX - this.dragStartMouse.x, 2) + Math.pow(e.clientY - this.dragStartMouse.y, 2));
+    const result: InteractionResult = { state: { hoveredCell: { cx, cy }, hoveredPos: pos } };
 
     if (state.isPanning) {
       const dx = e.clientX - state.panStart!.x;
       const dy = e.clientY - state.panStart!.y;
       result.onPan = { dx, dy };
       result.state.panStart = { x: e.clientX, y: e.clientY };
+      // Maintain hover info even during pan
+      result.state.hoveredCell = { cx, cy };
+      result.state.hoveredPos = pos;
       return result;
     }
+
+    if (!this.dragStartCanvas || !this.dragStartMouse) return result;
+
+    const dist = Math.sqrt(Math.pow(e.clientX - this.dragStartMouse.x, 2) + Math.pow(e.clientY - this.dragStartMouse.y, 2));
 
     if (state.draggingId && dist > this.MOVE_THRESHOLD) {
       let nx = pos.x - state.dragOffset.x;

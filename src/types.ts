@@ -38,6 +38,8 @@ export interface TextureAsset {
   rotation?: number; // 0, 90, 180, 270
   internalPadding?: number;
   backgroundColor?: string; // hex or 'transparent'
+  backgroundMode?: 'contour' | 'all';
+  originalUrl?: string; // To keep track of the un-keyed version
 }
 
 export type AppMode = 'atlas' | 'adjust' | 'channel-pack' | 'layering';

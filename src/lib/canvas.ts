@@ -1,4 +1,5 @@
 import { TextureAsset } from '../types';
+import { hexToRgb } from './utils';
 
 export function generateId(): string {
   return Math.random().toString(36).substring(2, 9);
@@ -19,6 +20,7 @@ export async function canvasToBlobURL(canvas: HTMLCanvasElement, type = 'image/p
 export function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
     img.src = url;
@@ -26,38 +28,76 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
 }
 
 export async function applyAlphaKey(img: HTMLImageElement, keyColor: { r: number, g: number, b: number, a: number }, tolerance: number): Promise<string> {
+  return processImageBackground(img, 'all', `#${((1 << 24) + (keyColor.r << 16) + (keyColor.g << 8) + keyColor.b).toString(16).slice(1)}`, tolerance);
+}
+
+export async function processImageBackground(
+  img: HTMLImageElement, 
+  mode: 'all' | 'contour', 
+  keyColorHex: string, 
+  tolerance: number
+): Promise<string> {
   const canvas = document.createElement('canvas');
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
   const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    console.error('[AlphaKey] Failed to get 2D context');
-    return img.src;
-  }
+  if (!ctx) throw new Error('Failed to get canvas context');
 
   ctx.drawImage(img, 0, 0);
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
-  let keyedCount = 0;
+  const key = hexToRgb(keyColorHex);
+  const width = canvas.width;
+  const height = canvas.height;
 
-  const isMatch = (r: number, g: number, b: number, a: number) => {
-    if (a < 5 && keyColor.a < 5) return true;
-    return Math.abs(r - keyColor.r) <= tolerance &&
-           Math.abs(g - keyColor.g) <= tolerance &&
-           Math.abs(b - keyColor.b) <= tolerance;
-  };
+  if (mode === 'all') {
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 5) continue;
+      if (Math.abs(data[i] - key.r) <= tolerance &&
+          Math.abs(data[i+1] - key.g) <= tolerance &&
+          Math.abs(data[i+2] - key.b) <= tolerance) {
+        data[i + 3] = 0;
+      }
+    }
+  } else {
+    // Contour mode: anything reachable from border matching key color is gone
+    const reachable = new Uint8Array(width * height);
+    const queue: [number, number][] = [];
 
-  for (let i = 0; i < data.length; i += 4) {
-    if (isMatch(data[i], data[i + 1], data[i + 2], data[i + 3])) {
-      data[i + 3] = 0;
-      keyedCount++;
+    const isMatch = (x: number, y: number) => {
+      const idx = (y * width + x) * 4;
+      if (data[idx + 3] < 5) return true;
+      return Math.abs(data[idx] - key.r) <= tolerance &&
+             Math.abs(data[idx+1] - key.g) <= tolerance &&
+             Math.abs(data[idx+2] - key.b) <= tolerance;
+    };
+
+    const check = (x: number, y: number) => {
+      if (x < 0 || x >= width || y < 0 || y >= height) return;
+      const idx = y * width + x;
+      if (!reachable[idx] && isMatch(x, y)) {
+        reachable[idx] = 1;
+        queue.push([x, y]);
+      }
+    };
+
+    for (let x = 0; x < width; x++) { check(x, 0); check(x, height - 1); }
+    for (let y = 0; y < height; y++) { check(0, y); check(width - 1, y); }
+
+    let head = 0;
+    while (head < queue.length) {
+      const [cx, cy] = queue[head++];
+      check(cx + 1, cy); check(cx - 1, cy);
+      check(cx, cy + 1); check(cx, cy - 1);
+    }
+
+    for (let i = 0; i < reachable.length; i++) {
+      if (reachable[i]) data[i * 4 + 3] = 0;
     }
   }
 
   ctx.putImageData(imageData, 0, 0);
-  const result = await canvasToBlobURL(canvas);
-  console.log(`[AlphaKey] Applied to ${img.width}x${img.height} image. Key: rgb(${keyColor.r},${keyColor.g},${keyColor.b}), Tol: ${tolerance}. Pixels keyed: ${keyedCount}/${data.length/4}`);
-  return result;
+  return await canvasToBlobURL(canvas);
 }
 
 export async function renderEntriesToCanvas(
@@ -134,7 +174,7 @@ export async function renderEntriesToCanvas(
     ctx.save();
     ctx.translate(entry.x, entry.y);
 
-    // Clip to cell bounds so negative padding correctly clips the image
+    // Clip to cell bounds
     ctx.beginPath();
     ctx.rect(0, 0, dw, dh);
     ctx.clip();
@@ -151,13 +191,14 @@ export async function renderEntriesToCanvas(
     const rotation = entry.rotation ?? 0;
     const p = entry.internalPadding ?? 0;
 
+    // Center of the cell
+    ctx.translate(dw / 2, dh / 2);
     if (rotation !== 0) {
-      ctx.translate(dw / 2, dh / 2);
       ctx.rotate((rotation * Math.PI) / 180);
-      ctx.translate(-dw / 2, -dh / 2);
     }
 
-    ctx.drawImage(img, sx, sy, sw, sh, p, p, dw - 2 * p, dh - 2 * p);
+    // Draw centered with padding
+    ctx.drawImage(img, sx, sy, sw, sh, -dw / 2 + p, -dh / 2 + p, dw - 2 * p, dh - 2 * p);
     ctx.restore();
   }
 

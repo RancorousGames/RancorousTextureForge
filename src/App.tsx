@@ -19,7 +19,7 @@ import { AddTilesCommand, PatchCommand, SetMainTilesCommand, RemoveTilesCommand,
 import potpack from 'potpack';
 import { tileRegistry } from './lib/TileRegistry';
 import { GridGeometry } from './lib/GridGeometry';
-import { generateId, renderTilesToCanvas, applyAlphaKey, loadImage, canvasToBlobURL } from './lib/canvas';
+import { generateId, renderTilesToCanvas, applyAlphaKey, loadImage, canvasToBlobURL, processImageBackground } from './lib/canvas';
 import { persistAppState, loadPersistedAppState, restoreAssetUrls, persistAppMode, loadAppMode, cleanupAssetBlobs } from './lib/Storage';
 
 const FORGE_CONFIG_KEY = 'forge_config_v1';
@@ -131,9 +131,23 @@ function ContextMenu({ x, y, selectedEntries, onAction, onClose }: ContextMenuPr
       </div>
 
       <div className="px-3 py-2">
-        <div className="flex items-center gap-2 text-sm text-zinc-300 mb-2">
-          <Palette className="w-4 h-4 text-zinc-500" />
-          <span>Background</span>
+        <div className="flex items-center justify-between text-sm text-zinc-300 mb-2">
+          <div className="flex items-center gap-2">
+            <Palette className="w-4 h-4 text-zinc-500" />
+            <span>Background</span>
+          </div>
+          <label className="flex items-center gap-1.5 cursor-pointer group">
+            <input 
+              type="checkbox" 
+              className="sr-only peer"
+              checked={selectedEntries[0].backgroundMode === 'contour'}
+              onChange={() => onAction('background-mode')}
+            />
+            <div className="w-7 h-4 bg-zinc-800 rounded-full peer peer-checked:bg-blue-600 relative transition-colors border border-zinc-700">
+              <div className="absolute top-0.5 left-0.5 w-2.5 h-2.5 bg-zinc-400 rounded-full transition-transform peer-checked:translate-x-3 peer-checked:bg-white" />
+            </div>
+            <span className="text-[10px] text-zinc-500 group-hover:text-zinc-300 transition-colors uppercase font-bold">Contour</span>
+          </label>
         </div>
         <div className="flex flex-wrap gap-1.5 px-1">
           {['transparent', '#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff', '#ffff00'].map(color => (
@@ -274,7 +288,7 @@ export default function App() {
     }
   }, []);
 
-  const handleContextMenuAction = useCallback((action: string, value?: any) => {
+  const handleContextMenuAction = useCallback(async (action: string, value?: any) => {
     if (!contextMenu) return;
 
     if (action === 'remove') {
@@ -284,33 +298,63 @@ export default function App() {
     }
 
     const ids = contextMenu.selectedEntries.map(e => e.id);
-    const nextEntries = state.atlasEntries.map(e => {
-      if (ids.includes(e.id)) {
-        if (action === 'rotate') {
-          return { ...e, rotation: ((e.rotation || 0) + 90) % 360 };
-        }
-        if (action === 'padding') {
-          return { ...e, internalPadding: (e.internalPadding || 0) + value };
-        }
-        if (action === 'background') {
-          return { ...e, backgroundColor: value };
-        }
-      }
-      return e;
-    });
+    let updatedEntries = [...state.atlasEntries];
+    let changed = false;
 
-    executeCommand(new SetMainTilesCommand(state.atlasEntries, nextEntries, state.atlasStatus, state.atlasStatus, state.lastMainAssetId, state.lastMainAssetId));
-    
-    // Update local context menu state to reflect changes if it stays open
-    if (action === 'rotate' || action === 'padding' || action === 'background') {
-        setContextMenu(prev => prev ? {
-            ...prev,
-            selectedEntries: nextEntries.filter(e => ids.includes(e.id))
-        } : null);
-    } else {
-        setContextMenu(null);
+    if (action === 'rotate' || action === 'padding' || action === 'background-mode') {
+      updatedEntries = state.atlasEntries.map(e => {
+        if (ids.includes(e.id)) {
+          changed = true;
+          if (action === 'rotate') return { ...e, rotation: ((e.rotation || 0) + 90) % 360 };
+          if (action === 'padding') return { ...e, internalPadding: (e.internalPadding || 0) + value };
+          if (action === 'background-mode') return { ...e, backgroundMode: e.backgroundMode === 'contour' ? 'all' : 'contour' };
+        }
+        return e;
+      });
     }
-  }, [contextMenu, state.atlasEntries, state.atlasStatus, state.lastMainAssetId, executeCommand]);
+
+    if (action === 'background') {
+      const targetColor = value; // hex or 'transparent'
+      const mode = contextMenu.selectedEntries[0].backgroundMode || 'all';
+
+      const results = await Promise.all(contextMenu.selectedEntries.map(async (e) => {
+        // To avoid cumulative degradation, always process from the original if available
+        const sourceUrl = e.originalUrl || e.url;
+        const img = await loadImage(sourceUrl);
+        
+        // Use the grid clear color as the key to remove
+        const keyColor = state.gridSettings.clearColor;
+        const tolerance = state.gridSettings.clearTolerance;
+
+        const processedUrl = await processImageBackground(img, mode, keyColor, tolerance);
+        return { 
+          id: e.id, 
+          url: processedUrl, 
+          originalUrl: e.originalUrl || e.url,
+          backgroundColor: targetColor,
+          isKeyed: true 
+        };
+      }));
+
+      updatedEntries = state.atlasEntries.map(e => {
+        const res = results.find(r => r.id === e.id);
+        if (res) {
+          changed = true;
+          return { ...e, ...res };
+        }
+        return e;
+      });
+    }
+
+    if (changed) {
+      executeCommand(new SetMainTilesCommand(state.atlasEntries, updatedEntries, state.atlasStatus, state.atlasStatus, state.lastMainAssetId, state.lastMainAssetId));
+      
+      setContextMenu(prev => prev ? {
+          ...prev,
+          selectedEntries: updatedEntries.filter(e => ids.includes(e.id))
+      } : null);
+    }
+  }, [contextMenu, state.atlasEntries, state.atlasStatus, state.lastMainAssetId, state.gridSettings, executeCommand]);
 
   const { canvasWidth, canvasHeight } = state;
 

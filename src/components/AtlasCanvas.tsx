@@ -456,12 +456,11 @@ export function AtlasCanvas({
                 alt={entry.name} 
                 className="absolute object-fill" 
                 style={{
-                  left: p,
-                  top: p,
+                  left: '50%',
+                  top: '50%',
                   width: entry.width * sX - 2 * p,
                   height: entry.height * sY - 2 * p,
-                  transform: `rotate(${rotation}deg)`,
-                  transformOrigin: 'center'
+                  transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
                 }}
                 draggable={false} 
               />

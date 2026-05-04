@@ -12,6 +12,7 @@ export interface InteractionState {
   hoveredPos: { x: number, y: number } | null;
   isPanning: boolean;
   panStart: { x: number, y: number } | null;
+  lastRightClick?: { time: number, cx: number, cy: number };
 }
 
 export interface InteractionResult {
@@ -221,6 +222,12 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
       }
     }
     else if (e.button === 2) { // Right Click
+      const now = Date.now();
+      const isDoubleClick = state.lastRightClick && 
+                            now - state.lastRightClick.time < 300 && 
+                            state.lastRightClick.cx === cx && 
+                            state.lastRightClick.cy === cy;
+
       if (dist <= this.MOVE_THRESHOLD) {
         let entry: TextureAsset | undefined;
         if (this.geo.settings.mode === 'packing') {
@@ -232,9 +239,21 @@ export class DefaultInteractionStrategy implements InteractionStrategy {
           entry = [...entries].reverse().find(t => this.geo.isTileInCell(t.x, t.y, t.width, t.height, t.scale, cx, cy));
         }
 
-        if (callbacks.onCellRightClick) {
-          const cellPos = this.geo.getPosFromCell(cx, cy);
-          result.onCellRightClick = { ...cellPos, w: this.geo.cellW, h: this.geo.cellH, cx, cy, entry };
+        if (isDoubleClick) {
+          // Double Right Click -> CLEAR
+          if (entry && callbacks.onRemoveEntry) {
+            result.onRemoveEntry = entry;
+          } else if (!entry && callbacks.onMaterialize) {
+            result.onMaterialize = { cx, cy, reason: 'clear' };
+          }
+          result.state.lastRightClick = undefined; // Reset
+        } else {
+          // Single Right Click -> Context Menu
+          if (callbacks.onCellRightClick) {
+            const cellPos = this.geo.getPosFromCell(cx, cy);
+            result.onCellRightClick = { ...cellPos, w: this.geo.cellW, h: this.geo.cellH, cx, cy, entry };
+          }
+          result.state.lastRightClick = { time: now, cx, cy };
         }
       }
       else if (state.draggingId && state.draggingPos) {

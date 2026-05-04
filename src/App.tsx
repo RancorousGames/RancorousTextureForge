@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo, useLayoutEffect } from 'react';
 import { TextureAsset, AppMode, GridSettings, ChannelMapping, PBRSet, Layer, AppState, VIRTUAL_MAIN_ATLAS_ID, ResizeMode, initialPackerMapping, initialPBRSet } from './types';
 import { MainAtlas } from './components/MainAtlas';
 import { SourceAtlas } from './components/SourceAtlas';
@@ -7,8 +7,8 @@ import { Toolbox } from './components/Toolbox';
 import { ChannelPackerMode } from './components/ChannelPackerMode';
 import { LayeringMode } from './components/LayeringMode';
 import { AdjustMode } from './components/AdjustMode';
-import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon, ExternalLink, Type, MousePointer, Grid3X3, RotateCw, Trash2, Minus } from 'lucide-react';
-import { cn, checkGridDensity, hexToRgb } from './lib/utils';
+import { FolderOpen, LayoutTemplate, Layers, Palette, SlidersHorizontal, Undo2, Redo2, Plus, Image as ImageIcon, ExternalLink, Type, MousePointer, Grid3X3, RotateCw, Trash2, Minus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
+import { cn, checkGridDensity, hexToRgb, detectContentBounds } from './lib/utils';
 import { useHistory } from './hooks/useHistory';
 import { useAtlas } from './hooks/useAtlas';
 import { useGridSlice } from './hooks/useGridSlice';
@@ -34,17 +34,19 @@ const getInitialState = (): AppState => {
       keepSquare: true,
       cellSize: 128, cellY: 128,
       padding: 0,
-      clearColor: '#000000',
+      backgroundColor: '#000000',
       clearTolerance: 10,
       packingAlgo: 'potpack',
+      backgroundFillMode: 'transparent',
     },
     sourceGridSettings: {
       mode: 'fixed',
       keepSquare: true,
       cellSize: 128, cellY: 128,
       padding: 0,
-      clearColor: '#000000',
+      backgroundColor: '#000000',
       clearTolerance: 10,
+      backgroundFillMode: 'transparent',
     },
     packerMapping: initialPackerMapping,
     pbrSet: initialPBRSet,
@@ -81,12 +83,32 @@ interface ContextMenuProps {
   x: number;
   y: number;
   selectedEntries: TextureAsset[];
+  rightClickedEntry?: TextureAsset;
+  hasSelection: boolean;
   onAction: (action: string, value?: any) => void;
   onClose: () => void;
 }
 
-function ContextMenu({ x, y, selectedEntries, onAction, onClose }: ContextMenuProps) {
+function ContextMenu({ x, y, selectedEntries, rightClickedEntry, hasSelection, onAction, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ x: -1000, y: -1000 });
+
+  useLayoutEffect(() => {
+    if (menuRef.current) {
+      const rect = menuRef.current.getBoundingClientRect();
+      let nextX = x;
+      let nextY = y;
+
+      if (x + rect.width > window.innerWidth) {
+        nextX = window.innerWidth - rect.width - 10;
+      }
+      if (y + rect.height > window.innerHeight) {
+        nextY = window.innerHeight - rect.height - 10;
+      }
+      
+      setPos({ x: nextX, y: nextY });
+    }
+  }, [x, y]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -98,77 +120,191 @@ function ContextMenu({ x, y, selectedEntries, onAction, onClose }: ContextMenuPr
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onClose]);
 
-  if (selectedEntries.length === 0) return null;
+  const canCopy = hasSelection && !!rightClickedEntry;
+  const hasEntries = selectedEntries.length > 0 || !!rightClickedEntry;
+
+  if (!hasEntries && !hasSelection) return null;
 
   return (
     <div 
       ref={menuRef}
       className="fixed z-[1000] bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl py-1 min-w-[180px] animate-in fade-in zoom-in duration-100"
-      style={{ left: Math.min(x, window.innerWidth - 200), top: Math.min(y, window.innerHeight - 300) }}
+      style={{ left: pos.x, top: pos.y }}
     >
       <div className="px-3 py-1.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-800 mb-1">
         {selectedEntries.length > 1 ? `${selectedEntries.length} items selected` : 'Cell Options'}
       </div>
 
-      <button
-        onClick={() => onAction('rotate')}
-        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-      >
-        <RotateCw className="w-4 h-4 text-zinc-500" />
-        <span>Rotate 90°</span>
-      </button>
+      {selectedEntries.length > 0 && (
+        <button
+          onClick={() => onAction('rotate')}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
+        >
+          <RotateCw className="w-4 h-4 text-zinc-500" />
+          <span>Rotate 90°</span>
+        </button>
+      )}
 
-      <div className="flex items-center justify-between px-3 py-2 text-sm text-zinc-300">
-        <div className="flex items-center gap-2">
-          <LayoutTemplate className="w-4 h-4 text-zinc-500" />
-          <span>Padding</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => onAction('padding', -1)} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white"><Minus className="w-3.5 h-3.5" /></button>
-          <span className="min-w-[1.5rem] text-center font-mono text-xs">{selectedEntries[0].internalPadding || 0}</span>
-          <button onClick={() => onAction('padding', 1)} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white"><Plus className="w-3.5 h-3.5" /></button>
-        </div>
-      </div>
+      {canCopy && (
+        <button
+          onClick={() => onAction('copy-to-selected', rightClickedEntry)}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-blue-400 hover:bg-blue-900/20 hover:text-blue-300 transition-colors border-t border-zinc-800/50"
+        >
+          <Copy className="w-4 h-4" />
+          <span>Copy to Selected</span>
+        </button>
+      )}
 
-      <div className="px-3 py-2">
-        <div className="flex items-center justify-between text-sm text-zinc-300 mb-2">
-          <div className="flex items-center gap-2">
-            <Palette className="w-4 h-4 text-zinc-500" />
-            <span>Background</span>
-          </div>
-          <label className="flex items-center gap-1.5 cursor-pointer group">
-            <input 
-              type="checkbox" 
-              className="sr-only peer"
-              checked={selectedEntries[0].backgroundMode === 'contour'}
-              onChange={() => onAction('background-mode')}
-            />
-            <div className="w-7 h-4 bg-zinc-800 rounded-full peer peer-checked:bg-blue-600 relative transition-colors border border-zinc-700">
-              <div className="absolute top-0.5 left-0.5 w-2.5 h-2.5 bg-zinc-400 rounded-full transition-transform peer-checked:translate-x-3 peer-checked:bg-white" />
+      {selectedEntries.length > 0 && (
+        <>
+          <div className="flex items-center justify-between px-3 py-2 text-sm text-zinc-300">
+            <div className="flex items-center gap-2">
+              <LayoutTemplate className="w-4 h-4 text-zinc-500" />
+              <span>Padding X</span>
             </div>
-            <span className="text-[10px] text-zinc-500 group-hover:text-zinc-300 transition-colors uppercase font-bold">Contour</span>
-          </label>
-        </div>
-        <div className="flex flex-wrap gap-1.5 px-1">
-          {['transparent', '#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff', '#ffff00'].map(color => (
-            <button
-              key={color}
-              onClick={() => onAction('background', color)}
-              className={cn(
-                "w-5 h-5 rounded-sm border border-zinc-700 hover:scale-110 transition-transform",
-                color === 'transparent' ? "checkerboard" : ""
-              )}
-              style={color === 'transparent' ? {} : { backgroundColor: color }}
-              title={color}
-            />
-          ))}
-          <input 
-            type="color" 
-            className="w-5 h-5 bg-transparent border-0 p-0 cursor-pointer"
-            onChange={(e) => onAction('background', e.target.value)}
-          />
-        </div>
-      </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => onAction('paddingX', -1)} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white"><Minus className="w-3.5 h-3.5" /></button>
+              <span className="min-w-[1.5rem] text-center font-mono text-xs">{selectedEntries[0]?.paddingX || 0}</span>
+              <button onClick={() => onAction('paddingX', 1)} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white"><Plus className="w-3.5 h-3.5" /></button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between px-3 py-2 text-sm text-zinc-300">
+            <div className="flex items-center gap-2">
+              <LayoutTemplate className="w-4 h-4 text-zinc-500" />
+              <span>Padding Y</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => onAction('paddingY', -1)} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white"><Minus className="w-3.5 h-3.5" /></button>
+              <span className="min-w-[1.5rem] text-center font-mono text-xs">{selectedEntries[0]?.paddingY || 0}</span>
+              <button onClick={() => onAction('paddingY', 1)} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white"><Plus className="w-3.5 h-3.5" /></button>
+            </div>
+          </div>
+
+          <div className="px-3 py-2">
+            <div className="flex items-center justify-between text-sm text-zinc-300 mb-2">
+              <div className="flex items-center gap-2">
+                <Palette className="w-4 h-4 text-zinc-500" />
+                <span>Effects</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 mb-2">
+              <label className="flex items-center gap-1.5 cursor-pointer group bg-zinc-800/50 px-2 py-1 rounded border border-zinc-700 hover:bg-zinc-800 transition-colors">
+                <input 
+                  type="checkbox" 
+                  className="sr-only peer"
+                  checked={selectedEntries[0]?.grayscale || false}
+                  onChange={() => onAction('grayscale')}
+                />
+                <span className="text-[10px] text-zinc-400 peer-checked:text-white transition-colors uppercase font-bold">Grayscale</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer group bg-zinc-800/50 px-2 py-1 rounded border border-zinc-700 hover:bg-zinc-800 transition-colors">
+                <input 
+                  type="checkbox" 
+                  className="sr-only peer"
+                  checked={selectedEntries[0]?.inverted || false}
+                  onChange={() => onAction('inverted')}
+                />
+                <span className="text-[10px] text-zinc-400 peer-checked:text-white transition-colors uppercase font-bold">Invert</span>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between text-sm text-zinc-300 mb-2">
+              <div className="flex items-center gap-2">
+                <Palette className="w-4 h-4 text-zinc-500" />
+                <span>Background</span>
+              </div>
+              <label className="flex items-center gap-1.5 cursor-pointer group">
+                <input 
+                  type="checkbox" 
+                  className="sr-only peer"
+                  checked={selectedEntries[0]?.backgroundMode === 'contour'}
+                  onChange={() => onAction('background-mode')}
+                />
+                <div className="w-7 h-4 bg-zinc-800 rounded-full peer peer-checked:bg-blue-600 relative transition-colors border border-zinc-700">
+                  <div className="absolute top-0.5 left-0.5 w-2.5 h-2.5 bg-zinc-400 rounded-full transition-transform peer-checked:translate-x-3 peer-checked:bg-white" />
+                </div>
+                <span className="text-[10px] text-zinc-500 group-hover:text-zinc-300 transition-colors uppercase font-bold">Contour</span>
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-1.5 px-1">
+              {['transparent', '#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff', 'detect'].map(color => (
+                <button
+                  key={color}
+                  onClick={() => onAction(color === 'detect' ? 'background-detect' : 'background', color)}
+                  className={cn(
+                    "w-5 h-5 rounded-sm border transition-all",
+                    color === 'transparent' ? "checkerboard" : (color === 'detect' ? "bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center text-[6px] font-bold text-white" : ""),
+                    (selectedEntries[0]?.backgroundColor === color || (color === 'detect' && selectedEntries[0]?.backgroundColor === null)) ? "border-white ring-1 ring-white/50" : "border-zinc-700 hover:border-zinc-500"
+                  )}
+                  style={color !== 'transparent' && color !== 'detect' ? { backgroundColor: color } : {}}
+                  title={color === 'detect' ? 'Detect background from corners' : color}
+                >
+                  {color === 'detect' && "AUTO"}
+                </button>
+              ))}
+              <input 
+                type="color" 
+                className="w-5 h-5 bg-transparent border-0 p-0 cursor-pointer"
+                onChange={(e) => onAction('background', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="border-t border-zinc-800 mt-1 pt-2 px-3 pb-2">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">
+              <SlidersHorizontal className="w-3 h-3" />
+              <span>Precise Offset</span>
+            </div>
+            <div className="flex items-center justify-center gap-1">
+              <div className="grid grid-cols-3 gap-1">
+                <div />
+                <button 
+                  onClick={() => onAction('offset-y', -1)}
+                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 text-zinc-400 hover:text-white transition-colors"
+                >
+                  <ChevronUp className="w-4 h-4" />
+                </button>
+                <div />
+                
+                <button 
+                  onClick={() => onAction('offset-x', -1)}
+                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 text-zinc-400 hover:text-white transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => onAction('recenter')}
+                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 text-zinc-400 hover:text-white transition-colors flex items-center justify-center"
+                  title="Recenter content"
+                >
+                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full shadow-[0_0_5px_rgba(59,130,246,0.5)]" />
+                </button>
+                <button 
+                  onClick={() => onAction('offset-x', 1)}
+                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 text-zinc-400 hover:text-white transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+
+                <div />
+                <button 
+                  onClick={() => onAction('offset-y', 1)}
+                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 text-zinc-400 hover:text-white transition-colors"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                <div />
+              </div>
+              <div className="flex flex-col gap-1 ml-4 text-[10px] font-mono text-zinc-500">
+                <div>X: {Math.round(selectedEntries[0]?.offsetX || 0)}</div>
+                <div>Y: {Math.round(selectedEntries[0]?.offsetY || 0)}</div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
 
       <div className="border-t border-zinc-800 mt-1 pt-1">
         <button
@@ -297,33 +433,153 @@ export default function App() {
       return;
     }
 
+    if (action === 'copy-to-selected') {
+      const source = value || contextMenu.selectedEntries[0];
+      const geo = new GridGeometry(state.gridSettings, state.canvasWidth, state.canvasHeight);
+      
+      const newEntries: TextureAsset[] = selectedCells.map(cellKey => {
+        const [cx, cy] = cellKey.split(',').map(Number);
+        const pos = geo.getPosFromCell(cx, cy);
+        return {
+          ...source,
+          id: generateId(),
+          x: pos.x,
+          y: pos.y,
+        };
+      });
+
+      const idsToReplace = new Set<string>();
+      if (state.dragMode !== 'overlay') {
+        state.atlasEntries.forEach(e => {
+          if (selectedCells.some(cellKey => {
+            const [cx, cy] = cellKey.split(',').map(Number);
+            return geo.isTileInCell(e.x, e.y, e.width, e.height, e.scale, cx, cy);
+          })) {
+            idsToReplace.add(e.id);
+          }
+        });
+      }
+
+      const nextEntries = [...state.atlasEntries.filter(e => !idsToReplace.has(e.id)), ...newEntries];
+      executeCommand(new SetMainTilesCommand(state.atlasEntries, nextEntries, state.atlasStatus, state.atlasStatus, state.lastMainAssetId, state.lastMainAssetId));
+      setContextMenu(null);
+      return;
+    }
+
     const ids = contextMenu.selectedEntries.map(e => e.id);
     let updatedEntries = [...state.atlasEntries];
     let changed = false;
 
-    if (action === 'rotate' || action === 'padding' || action === 'background-mode') {
-      updatedEntries = state.atlasEntries.map(e => {
+    if (action === 'rotate' || action === 'padding' || action === 'paddingX' || action === 'paddingY' || action === 'grayscale' || action === 'inverted' || action === 'recenter' || action === 'offset-x' || action === 'offset-y') {
+      const geo = new GridGeometry(state.gridSettings, state.canvasWidth, state.canvasHeight);
+      
+      const updatedPromises = state.atlasEntries.map(async (e): Promise<TextureAsset> => {
         if (ids.includes(e.id)) {
           changed = true;
           if (action === 'rotate') return { ...e, rotation: ((e.rotation || 0) + 90) % 360 };
-          if (action === 'padding') return { ...e, internalPadding: (e.internalPadding || 0) + value };
-          if (action === 'background-mode') return { ...e, backgroundMode: e.backgroundMode === 'contour' ? 'all' : 'contour' };
+          if (action === 'padding') return { ...e, paddingX: (e.paddingX || 0) + value, paddingY: (e.paddingY || 0) + value };
+          if (action === 'paddingX') return { ...e, paddingX: (e.paddingX || 0) + value };
+          if (action === 'paddingY') return { ...e, paddingY: (e.paddingY || 0) + value };
+          if (action === 'offset-x') return { ...e, offsetX: (e.offsetX || 0) + value };
+          if (action === 'offset-y') return { ...e, offsetY: (e.offsetY || 0) + value };
+          if (action === 'grayscale') return { ...e, grayscale: !e.grayscale };
+          if (action === 'inverted') return { ...e, inverted: !e.inverted };
+          if (action === 'recenter') {
+             const img = await loadImage(e.url);
+             const canvas = document.createElement('canvas');
+             canvas.width = img.naturalWidth;
+             canvas.height = img.naturalHeight;
+             const ctx = canvas.getContext('2d');
+             if (ctx) {
+               ctx.drawImage(img, 0, 0);
+               const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+               const bounds = detectContentBounds(imageData, e.backgroundColor || null, state.gridSettings.clearTolerance);
+               
+               if (bounds) {
+                 const sX = e.scaleX ?? e.scale;
+                 const sY = e.scaleY ?? e.scale;
+                 const dw = e.width * sX;
+                 const dh = e.height * sY;
+                 
+                 // bounds is in pixel space of the image.
+                 // We want (bounds.x + bounds.w/2) to be at the center of the cell (dw/2).
+                 // However, the image itself is drawn at (-dw/2, -dh/2) relative to (dw/2, dh/2).
+                 // Wait, the DRAW logic in canvas.ts is:
+                 // ctx.translate(dw/2 + ox, dh/2 + oy)
+                 // ctx.drawImage(..., -dw/2 + px, -dh/2 + py, dw - 2*px, dh - 2*py)
+                 
+                 // If px=0, the image center (img.w/2) maps to the cell center (dw/2).
+                 // We want the content center (bounds.x + bounds.w/2) to map to the cell center.
+                 // Content center relative to image center:
+                 const contentCenterX = bounds.x + bounds.w / 2;
+                 const imageCenterX = img.naturalWidth / 2;
+                 const contentCenterY = bounds.y + bounds.h / 2;
+                 const imageCenterY = img.naturalHeight / 2;
+                 
+                 const diffX = (imageCenterX - contentCenterX) * sX;
+                 const diffY = (imageCenterY - contentCenterY) * sY;
+                 
+                 // Snap tile to its current grid cell
+                 const tileCenterX = e.x + dw / 2;
+                 const tileCenterY = e.y + dh / 2;
+                 const { cx, cy } = geo.getCellAtPos(tileCenterX, tileCenterY);
+                 const cellPos = geo.getPosFromCell(cx, cy);
+
+                 return { 
+                   ...e, 
+                   x: cellPos.x,
+                   y: cellPos.y,
+                   offsetX: diffX,
+                   offsetY: diffY
+                 };
+               }
+             }
+             // Fallback to simple snap if island detection fails
+             const { cx, cy } = geo.getCellAtPos(e.x + (e.width * (e.scaleX ?? e.scale)) / 2, e.y + (e.height * (e.scaleY ?? e.scale)) / 2);
+             const cellPos = geo.getPosFromCell(cx, cy);
+             return { ...e, x: cellPos.x, y: cellPos.y, offsetX: 0, offsetY: 0 };
+          }
         }
         return e;
       });
+      updatedEntries = await Promise.all(updatedPromises);
     }
 
-    if (action === 'background') {
-      const targetColor = value; // hex or 'transparent'
-      const mode = contextMenu.selectedEntries[0].backgroundMode || 'all';
+    if (action === 'background-mode') {
+      const updatedPromises = state.atlasEntries.map(async (e): Promise<TextureAsset> => {
+        if (ids.includes(e.id)) {
+          changed = true;
+          const nextMode: 'all' | 'contour' = e.backgroundMode === 'contour' ? 'all' : 'contour';
+          const nextEntry = { ...e, backgroundMode: nextMode };
+
+          if (e.isKeyed) {
+            const sourceUrl = e.originalUrl || e.url;
+            const img = await loadImage(sourceUrl);
+            const keyColor = e.backgroundColor || state.gridSettings.backgroundColor;
+            const tolerance = state.gridSettings.clearTolerance;
+            const processedUrl = await processImageBackground(img, nextMode, keyColor, tolerance);
+            return { ...nextEntry, url: processedUrl, originalUrl: sourceUrl };
+          }
+          return nextEntry;
+        }
+        return e;
+      });
+      updatedEntries = await Promise.all(updatedPromises);
+    }
+
+    if (action === 'background' || action === 'background-detect') {
+      const targetColor = action === 'background-detect' ? null : value; 
 
       const results = await Promise.all(contextMenu.selectedEntries.map(async (e) => {
         // To avoid cumulative degradation, always process from the original if available
         const sourceUrl = e.originalUrl || e.url;
         const img = await loadImage(sourceUrl);
         
-        // Use the grid clear color as the key to remove
-        const keyColor = state.gridSettings.clearColor;
+        // Use the entry's individual background mode if set, or fallback to 'all'
+        const mode = e.backgroundMode || 'all';
+        
+        // Use the grid background color as the key to remove, or null for auto
+        const keyColor = action === 'background-detect' ? null : (state.gridSettings.backgroundColor);
         const tolerance = state.gridSettings.clearTolerance;
 
         const processedUrl = await processImageBackground(img, mode, keyColor, tolerance);
@@ -496,7 +752,7 @@ export default function App() {
     // Generate a lightweight SVG preview of the current main atlas
     const w = state.canvasWidth;
     const h = state.canvasHeight;
-    const bgColor = state.gridSettings.clearColor;
+    const bgColor = state.gridSettings.backgroundColor;
     const sourceAsset = state.lastSourceAssetId ? state.libraryAssets.find(t => t.id === state.lastSourceAssetId) : null;
     
     // We'll use a data URL for the SVG
@@ -536,7 +792,7 @@ export default function App() {
       state.atlasEntries,
       state.canvasWidth,
       state.canvasHeight,
-      state.gridSettings.clearColor,
+      state.gridSettings,
       {
         sourceAsset,
         clearedCells: state.clearedCells,
@@ -821,7 +1077,7 @@ export default function App() {
       console.log(`[Forge] Overlay mode drop: applying alpha key to ${asset.name}`);
       const img = await loadImage(asset.url);
       const tolerance = state.gridSettings.clearTolerance;
-      const keyColor = hexToRgb(state.gridSettings.clearColor);
+      const keyColor = hexToRgb(state.gridSettings.backgroundColor);
       finalUrl = await applyAlphaKey(img, keyColor, tolerance);
       isKeyed = true;
     }
@@ -880,7 +1136,7 @@ export default function App() {
 
     const process = async () => {
       console.log(`[Forge] Auto-keying ${unkeyed.length} unkeyed entries for Overlay mode`);
-      const keyColor = hexToRgb(state.gridSettings.clearColor);
+      const keyColor = hexToRgb(state.gridSettings.backgroundColor);
       const tolerance = state.gridSettings.clearTolerance;
       
       const updates: Record<string, string> = {};
@@ -905,7 +1161,7 @@ export default function App() {
     };
 
     process();
-  }, [state.dragMode, state.atlasEntries, state.gridSettings.clearColor, state.gridSettings.clearTolerance, set]);
+  }, [state.dragMode, state.atlasEntries, state.gridSettings.backgroundColor, state.gridSettings.clearTolerance, set]);
 
   useEffect(() => {
     persistAppState(state);
@@ -1155,7 +1411,8 @@ export default function App() {
                     dragMode={state.dragMode}
                     canvasWidth={canvasWidth}
                     canvasHeight={canvasHeight}
-                    tooltip="MMB: Pan | L-Click: Select | R-Drag: Move | R-Click: Clear | Ctrl+Z/Y: Undo/Redo"
+                    tooltip="MMB: Pan | L-Click: Select | R-Drag: Move | R-Click: Options | Double R-Click: Clear | Ctrl+Z/Y: Undo/Redo"
+
                     sourceAsset={state.currentSourceAsset}
                     clearedCells={state.clearedCells}                    atlasStatus={state.atlasStatus}
                     onMaterialize={handleMaterialize}
@@ -1351,6 +1608,8 @@ export default function App() {
           x={contextMenu.x}
           y={contextMenu.y}
           selectedEntries={contextMenu.selectedEntries}
+          rightClickedEntry={contextMenu.entry}
+          hasSelection={selectedCells.length > 0}
           onAction={handleContextMenuAction}
           onClose={() => setContextMenu(null)}
         />

@@ -113,14 +113,14 @@ export function detectBackgroundColor(imageData: ImageData, tolerance: number = 
 
 export function findIslands(
   imageData: ImageData,
-  clearColorHex: string,
+  backgroundColorHex: string,
   tolerance: number,
   useMedianFilter: boolean = true,
   seedPoint?: { x: number, y: number }
 ): { x: number; y: number; w: number; h: number }[] {
   const startTime = performance.now();
   const { width, height, data } = imageData;
-  const clearColor = hexToRgb(clearColorHex);
+  const clearColor = hexToRgb(backgroundColorHex);
   const visited = new Uint8Array(width * height);
   const reachable = new Uint8Array(width * height);
 
@@ -263,12 +263,12 @@ export function findIslands(
 
 export function detectSettingsFromImage(
   imageData: ImageData,
-  clearColorHex: string,
+  backgroundColorHex: string,
   tolerance: number,
   useMedianFilter: boolean = true
 ): { cellSize: number; padding: number; islands: { x: number; y: number; w: number; h: number }[] } {
   const startTime = performance.now();
-  const islands = findIslands(imageData, clearColorHex, tolerance, useMedianFilter);
+  const islands = findIslands(imageData, backgroundColorHex, tolerance, useMedianFilter);
   if (islands.length === 0) return { cellSize: 128, padding: 0, islands: [] };
 
   const getMedian = (arr: number[]) => {
@@ -383,6 +383,42 @@ export function detectSettingsFromImage(
 
   console.log(`[AutoDetect] FINAL RESULT -> Cell: ${finalSize}, Padding: ${detectedPadding}. Total Time: ${(performance.now() - startTime).toFixed(2)}ms`);
   return { cellSize: finalSize, padding: detectedPadding, islands };
+}
+
+export function detectContentBounds(imageData: ImageData, backgroundColorHex: string | null, tolerance: number = 10): { x: number, y: number, w: number, h: number } | null {
+  const { width, height, data } = imageData;
+  const key = backgroundColorHex ? hexToRgb(backgroundColorHex) : null;
+  
+  let minX = width, minY = height, maxX = -1, maxY = -1;
+  let found = false;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) * 4;
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      const a = data[idx + 3];
+
+      if (a < 5) continue;
+
+      if (key) {
+        const dr = Math.abs(r - key.r);
+        const dg = Math.abs(g - key.g);
+        const db = Math.abs(b - key.b);
+        if (dr <= tolerance && dg <= tolerance && db <= tolerance) continue;
+      }
+
+      found = true;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  if (!found) return null;
+  return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
 }
 
 export function checkGridDensity(

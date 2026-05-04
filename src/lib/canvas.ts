@@ -1,5 +1,5 @@
 import { TextureAsset } from '../types';
-import { hexToRgb } from './utils';
+import { hexToRgb, detectBackgroundColor } from './utils';
 
 export function generateId(): string {
   return Math.random().toString(36).substring(2, 9);
@@ -27,14 +27,15 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-export async function applyAlphaKey(img: HTMLImageElement, keyColor: { r: number, g: number, b: number, a: number }, tolerance: number): Promise<string> {
-  return processImageBackground(img, 'all', `#${((1 << 24) + (keyColor.r << 16) + (keyColor.g << 8) + keyColor.b).toString(16).slice(1)}`, tolerance);
+export async function applyAlphaKey(img: HTMLImageElement, keyColor: { r: number, g: number, b: number, a: number } | null, tolerance: number): Promise<string> {
+  const hex = keyColor ? `#${((1 << 24) + (keyColor.r << 16) + (keyColor.g << 8) + keyColor.b).toString(16).slice(1)}` : null;
+  return processImageBackground(img, 'all', hex, tolerance);
 }
 
 export async function processImageBackground(
   img: HTMLImageElement, 
   mode: 'all' | 'contour', 
-  keyColorHex: string, 
+  keyColorHex: string | null, // null for auto
   tolerance: number
 ): Promise<string> {
   const canvas = document.createElement('canvas');
@@ -46,7 +47,8 @@ export async function processImageBackground(
   ctx.drawImage(img, 0, 0);
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
-  const key = hexToRgb(keyColorHex);
+  
+  const key = keyColorHex ? hexToRgb(keyColorHex) : detectBackgroundColor(imageData, tolerance);
   const width = canvas.width;
   const height = canvas.height;
 
@@ -104,7 +106,11 @@ export async function renderEntriesToCanvas(
   entries: TextureAsset[],
   width: number,
   height: number,
-  bgColor: string,
+  gridSettings: { 
+    backgroundColor: string, 
+    backgroundFillMode?: 'transparent' | 'solid',
+    clearTolerance?: number
+  },
   opts: { 
     willReadFrequently?: boolean, 
     sourceAsset?: TextureAsset | null,
@@ -121,25 +127,34 @@ export async function renderEntriesToCanvas(
   const ctx = canvas.getContext('2d', { willReadFrequently: opts.willReadFrequently ?? false });
   if (!ctx) throw new Error('Could not get 2D context');
 
-  ctx.fillStyle = bgColor;
-  ctx.fillRect(0, 0, width, height);
+  // 1. Initial base coat (if solid)
+  if (gridSettings.backgroundFillMode === 'solid') {
+    ctx.fillStyle = gridSettings.backgroundColor;
+    ctx.fillRect(0, 0, width, height);
+  }
 
-  // 1. Draw source asset if present
+  // 2. Draw source asset if present
   if (opts.sourceAsset) {
     const srcImg = await loadImage(opts.sourceAsset.sourceUrl || opts.sourceAsset.url);
     
-    ctx.save();
-    // If we have holes, we use a temporary canvas to apply them
-    if (opts.clearedCells && opts.clearedCells.length > 0 && opts.stepX && opts.stepY) {
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      const tCtx = tempCanvas.getContext('2d');
-      if (tCtx) {
-        tCtx.drawImage(srcImg, 0, 0, width, height);
-        tCtx.globalCompositeOperation = 'destination-out';
-        const paddingX = (opts.stepX - (opts.cellW || opts.stepX)) / 2;
-        const paddingY = (opts.stepY - (opts.cellH || opts.stepY)) / 2;
+    // Create temporary canvas to draw source then punch holes
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tCtx = tempCanvas.getContext('2d');
+    
+    if (tCtx) {
+      tCtx.drawImage(srcImg, 0, 0, width, height);
+      
+      // Punch holes through the source image for any cells that should be transparent
+      // This includes explicitly cleared cells AND cells where tiles have transparent backgrounds
+      tCtx.globalCompositeOperation = 'destination-out';
+      
+      const paddingX = (opts.stepX && opts.cellW) ? (opts.stepX - opts.cellW) / 2 : 0;
+      const paddingY = (opts.stepY && opts.cellH) ? (opts.stepY - opts.cellH) / 2 : 0;
+
+      // Punch explicitly cleared cells
+      if (opts.clearedCells && opts.clearedCells.length > 0 && opts.stepX && opts.stepY) {
         opts.clearedCells.forEach(key => {
           const [cx, cy] = key.split(',').map(Number);
           tCtx.fillRect(
@@ -149,15 +164,33 @@ export async function renderEntriesToCanvas(
             opts.cellH || opts.stepY!
           );
         });
-        ctx.drawImage(tempCanvas, 0, 0);
       }
-    } else {
-      ctx.drawImage(srcImg, 0, 0, width, height);
+
+      // Punch cells that contain a tile with backgroundColor === 'transparent'
+      // This ensures the source image doesn't show through the transparent tile
+      if (opts.stepX && opts.stepY) {
+        entries.forEach(entry => {
+          if (entry.backgroundColor === 'transparent') {
+            const centerX = entry.x + (entry.width * (entry.scaleX ?? entry.scale)) / 2;
+            const centerY = entry.y + (entry.height * (entry.scaleY ?? entry.scale)) / 2;
+            const cx = Math.floor(centerX / opts.stepX!);
+            const cy = Math.floor(centerY / opts.stepY!);
+            
+            tCtx.fillRect(
+              cx * opts.stepX! + paddingX,
+              cy * opts.stepY! + paddingY,
+              opts.cellW || opts.stepX!,
+              opts.cellH || opts.stepY!
+            );
+          }
+        });
+      }
+
+      ctx.drawImage(tempCanvas, 0, 0);
     }
-    ctx.restore();
   }
 
-  // 2. Draw normal entries
+  // 3. Draw entries
   const images = await Promise.all(entries.map(t => loadImage(t.url)));
 
   for (let i = 0; i < entries.length; i++) {
@@ -184,21 +217,27 @@ export async function renderEntriesToCanvas(
       ctx.fillRect(0, 0, dw, dh);
     }
 
-    if (entry.hue !== 0 || entry.brightness !== 100) {
-      ctx.filter = `hue-rotate(${entry.hue}deg) brightness(${entry.brightness}%)`;
+    if (entry.hue !== 0 || entry.brightness !== 100 || entry.grayscale || entry.inverted) {
+      let filter = `hue-rotate(${entry.hue}deg) brightness(${entry.brightness}%)`;
+      if (entry.grayscale) filter += ' grayscale(100%)';
+      if (entry.inverted) filter += ' invert(100%)';
+      ctx.filter = filter;
     }
 
     const rotation = entry.rotation ?? 0;
-    const p = entry.internalPadding ?? 0;
+    const px = entry.paddingX ?? 0;
+    const py = entry.paddingY ?? 0;
+    const ox = entry.offsetX ?? 0;
+    const oy = entry.offsetY ?? 0;
 
     // Center of the cell
-    ctx.translate(dw / 2, dh / 2);
+    ctx.translate(dw / 2 + ox, dh / 2 + oy);
     if (rotation !== 0) {
       ctx.rotate((rotation * Math.PI) / 180);
     }
 
     // Draw centered with padding
-    ctx.drawImage(img, sx, sy, sw, sh, -dw / 2 + p, -dh / 2 + p, dw - 2 * p, dh - 2 * p);
+    ctx.drawImage(img, sx, sy, sw, sh, -dw / 2 + px, -dh / 2 + py, dw - 2 * px, dh - 2 * py);
     ctx.restore();
   }
 

@@ -409,8 +409,8 @@ export function AtlasCanvas({
       setInteractionState(prev => ({ ...prev, hoveredCell: null, hoveredPos: null }));
       if (onHoverChange) onHoverChange(null, null);
     }} onContextMenu={e => e.preventDefault()} onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
-      <div ref={containerRef} className="relative origin-top-left shadow-2xl transition-transform duration-75 ease-out" style={{ width: canvasWidth, height: canvasHeight, transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})` }}>
-        <div className="absolute inset-0 pointer-events-none z-0" style={{ backgroundColor: gridSettings.clearColor }} />
+      <div ref={containerRef} className="relative origin-top-left shadow-2xl transition-transform duration-75 ease-out border border-white/20" style={{ width: canvasWidth, height: canvasHeight, transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})` }}>
+        {/* Transparent base - no solid color fill */}
         
         {renderGrid()}
         {entries.map(entry => {
@@ -432,9 +432,16 @@ export function AtlasCanvas({
           }
           
           const rotation = entry.rotation ?? 0;
-          const p = entry.internalPadding ?? 0;
+          const px = entry.paddingX ?? 0;
+          const py = entry.paddingY ?? 0;
+          const ox = entry.offsetX ?? 0;
+          const oy = entry.offsetY ?? 0;
           const bg = (entry.backgroundColor && entry.backgroundColor !== 'transparent') ? entry.backgroundColor : undefined;
           
+          let filter = `hue-rotate(${entry.hue}deg) brightness(${entry.brightness}%)`;
+          if (entry.grayscale) filter += ' grayscale(100%)';
+          if (entry.inverted) filter += ' invert(100%)';
+
           return (
             <div 
               key={entry.id} 
@@ -445,7 +452,7 @@ export function AtlasCanvas({
                 width: entry.width * sX, 
                 height: entry.height * sY, 
                 backgroundColor: bg,
-                filter: `hue-rotate(${entry.hue}deg) brightness(${entry.brightness}%)`, 
+                filter: filter, 
                 zIndex: isDragging ? 50 : 5, 
                 opacity: isDragging ? 0.8 : 1 
               }}
@@ -454,13 +461,14 @@ export function AtlasCanvas({
               <img 
                 src={entry.url} 
                 alt={entry.name} 
-                className="absolute object-fill" 
+                className="absolute max-w-none max-h-none" 
                 style={{
-                  left: '50%',
-                  top: '50%',
-                  width: entry.width * sX - 2 * p,
-                  height: entry.height * sY - 2 * p,
+                  left: `calc(50% + ${ox}px)`,
+                  top: `calc(50% + ${oy}px)`,
+                  width: entry.width * sX - 2 * px,
+                  height: entry.height * sY - 2 * py,
                   transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+                  objectFit: 'fill'
                 }}
                 draggable={false} 
               />

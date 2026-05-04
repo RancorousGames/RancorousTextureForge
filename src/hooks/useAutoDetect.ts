@@ -60,7 +60,7 @@ export function useAutoDetect(
       const renderStart = performance.now();
       const canvas = await renderTilesToCanvas(
         state.atlasEntries, canvasWidth, canvasHeight,
-        state.gridSettings.clearColor, { willReadFrequently: true }
+        state.gridSettings, { willReadFrequently: true }
       );
       imageData = canvas.getContext('2d')!.getImageData(0, 0, canvasWidth, canvasHeight);
       console.log(`[AutoDetect] Main Grid: Entries rendered to canvas in ${(performance.now() - renderStart).toFixed(2)}ms`);
@@ -74,7 +74,7 @@ export function useAutoDetect(
 
     const newSettings: GridSettings = {
       ...state.gridSettings,
-      clearColor: detectedClearColor,
+      backgroundColor: detectedClearColor,
       cellSize, cellY: cellSize,
       padding, keepSquare: true,
     };
@@ -119,7 +119,7 @@ export function useAutoDetect(
 
     const newSettings: GridSettings = {
       ...state.sourceGridSettings,
-      clearColor: detectedClearColor,
+      backgroundColor: detectedClearColor,
       cellSize, cellY: cellSize,
       padding, keepSquare: true,
     };

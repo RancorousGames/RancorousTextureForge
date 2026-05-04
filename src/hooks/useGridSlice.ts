@@ -70,7 +70,7 @@ export function useGridSlice(
     const tolerance = gs.clearTolerance;
     const keyColor = detectBackgroundColor(fullImageData, tolerance);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const permClear = hexToRgb(gs.clearColor);
+    const permClear = hexToRgb(gs.backgroundColor);
 
     const isMatch = (r: number, g: number, b: number, a: number) => {
       if (a < 5) return true;
@@ -257,9 +257,9 @@ export function useGridSlice(
     const realH = img.naturalHeight || img.height;
 
     // Prepare background replacement if enabled
-    let keyColor = hexToRgb(state.sourceGridSettings.clearColor);
+    let keyColor = hexToRgb(state.sourceGridSettings.backgroundColor);
     let tolerance = state.sourceGridSettings.clearTolerance;
-    const targetBg = hexToRgb(state.gridSettings.clearColor);
+    const targetBg = hexToRgb(state.gridSettings.backgroundColor);
     
     // We no longer auto-detect if the user has sourceGridSettings available
     // but we still need the keyColor for isMatch.
@@ -477,9 +477,9 @@ export function useGridSlice(
     const realH = img.naturalHeight || img.height;
 
     // Prepare background replacement if enabled
-    let keyColor = hexToRgb(state.sourceGridSettings.clearColor);
+    let keyColor = hexToRgb(state.sourceGridSettings.backgroundColor);
     let tolerance = state.sourceGridSettings.clearTolerance;
-    const targetBg = hexToRgb(state.gridSettings.clearColor);
+    const targetBg = hexToRgb(state.gridSettings.backgroundColor);
 
     const isMatch = (r: number, g: number, b: number, a: number) => {
       if (a < 5) return true;

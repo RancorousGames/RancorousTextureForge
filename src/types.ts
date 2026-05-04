@@ -36,9 +36,14 @@ export interface TextureAsset {
   isKeyed?: boolean;
   originalId?: string;
   rotation?: number; // 0, 90, 180, 270
-  internalPadding?: number;
+  paddingX?: number;
+  paddingY?: number;
+  offsetX?: number;
+  offsetY?: number;
   backgroundColor?: string; // hex or 'transparent'
   backgroundMode?: 'contour' | 'all';
+  inverted?: boolean;
+  grayscale?: boolean;
   originalUrl?: string; // To keep track of the un-keyed version
 }
 
@@ -52,11 +57,12 @@ export interface GridSettings {
   mode: GridMode;
   keepSquare: boolean;
   cellSize: number;
-  cellY: number;
+  cellY?: number;
   padding: number;
-  clearColor: string;
+  backgroundColor: string; // was clearColor
   clearTolerance: number;
-  packingAlgo?: string;
+  packingAlgo?: 'potpack' | 'shelf';
+  backgroundFillMode?: 'transparent' | 'solid';
 }
 
 

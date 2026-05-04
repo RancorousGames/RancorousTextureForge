@@ -1,10 +1,9 @@
 import { useCallback } from 'react';
-import { AppState, TextureAsset, initialPackerMapping, initialPBRSet } from '../types';
+import { AppState, TextureAsset } from '../types';
+import { SetMainTilesCommand } from '../lib/Commands';
+import { renderTilesToCanvas, canvasToBlobURL, generateId, loadImage } from '../lib/canvas';
+import { hexToRgb, detectSettingsFromImage } from '../lib/utils';
 import { GridGeometry } from '../lib/GridGeometry';
-import { hexToRgb, findIslands } from '../lib/utils';
-import { renderTilesToCanvas, loadImage, generateId, canvasToBlobURL } from '../lib/canvas';
-import { Command, SetMainTilesCommand, PatchCommand } from '../lib/Commands';
-import potpack from 'potpack';
 
 export function useAtlasOps(
   state: AppState,
@@ -12,231 +11,170 @@ export function useAtlasOps(
   canvasHeight: number,
   mainAtlasGeo: GridGeometry,
   set: (v: AppState | ((p: AppState) => AppState)) => void,
-  executeCommand: (c: Command | Command[]) => void,
-  onAfterNewAtlas?: () => void
+  executeCommand: (cmd: any) => void,
+  onCommandExecuted?: () => void
 ) {
-  const packAtlas = useCallback(() => {
-    let currentX = 0, currentY = 0, rowHeight = 0;
-    const padding = 2;
-    const sorted = [...state.atlasEntries].sort((a, b) => (b.height * (b.scaleY ?? b.scale)) - (a.height * (a.scaleY ?? a.scale)));
-    
-    console.log(`[PackAtlas] Starting pack of ${sorted.length} entries. CanvasWidth: ${canvasWidth}`);
+  const packAtlas = useCallback(async () => {
+    if (state.atlasEntries.length === 0) return;
 
-    const packed = sorted.map((entry, i) => {
-      const sw = entry.width * (entry.scaleX ?? entry.scale);
-      const sh = entry.height * (entry.scaleY ?? entry.scale);
-      if (currentX + sw > canvasWidth) { 
-        console.log(`[PackAtlas] Row full. Moving from X:${currentX.toFixed(1)} to X:0, Y:${(currentY + rowHeight + padding).toFixed(1)}`);
-        currentX = 0; currentY += rowHeight + padding; rowHeight = 0; 
-      }
-      const result = { ...entry, x: currentX, y: currentY };
-      if (i < 5 || i === sorted.length - 1) {
-        console.log(`[PackAtlas] Entry #${i} ('${entry.name}'): size ${sw}x${sh} -> placed at ${currentX},${currentY}`);
-      }
-      rowHeight = Math.max(rowHeight, sh);
-      currentX += sw + padding;
-      return result;
-    });
-    console.log(`[PackAtlas] Complete.`);
-    executeCommand(new SetMainTilesCommand(state.atlasEntries, packed));
-  }, [state.atlasEntries, canvasWidth, executeCommand]);
-
-  const fixGrid = useCallback(async () => {
-    const sourceAssetObj = [...state.libraryAssets, ...state.modifiedAssets]
-      .find(t => t.id === state.lastSourceAssetId);
-    if (!sourceAssetObj) return;
-
-    if (state.atlasStatus === 'modified' || state.atlasStatus === 'baked') {
-      if (!confirm('Fix Grid will revert the atlas to the source image. Manual changes will be lost. Continue?')) return;
-    }
-
-    const img = await loadImage(sourceAssetObj.url);
-    const canvas = document.createElement('canvas');
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
-    ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, canvasWidth, canvasHeight);
-
-    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-    const tolerance = state.gridSettings.clearTolerance ?? 10;
-    const finalIslands = findIslands(
-      imageData,
-      state.gridSettings.clearColor,
-      tolerance,
-      true
-    );
-
-    const geo = mainAtlasGeo;
-
-    if (finalIslands.length <= 1) {
-      console.log(`[FixGrid] Aborting: Only ${finalIslands.length} island(s) detected. FixGrid requires multiple islands.`);
-      return;
-    }
-
-    if (geo.padding === 0) {
-      console.log(`[FixGrid] Aborting: Cell padding is 0. FixGrid requires non-zero padding to align islands.`);
-      return;
-    }
-
-    console.log(`[FixGrid] Found ${finalIslands.length} islands. Using Geometry: Cell=${geo.cellW}x${geo.cellH}, Pad=${geo.padding}, Step=${geo.stepX}x${geo.stepY}`);
-
-    const newEntries: TextureAsset[] = await Promise.all(finalIslands.map(async (isl, i) => {
-      const centerX = isl.x + isl.w / 2;
-      const centerY = isl.y + isl.h / 2;
-
-      const relX = centerX - geo.padding - geo.cellW / 2;
-      const relY = centerY - geo.padding - geo.cellH / 2;
-
-      const col = Math.round(relX / geo.stepX);
-      const row = Math.round(relY / geo.stepY);
-
-      const destX = geo.padding + col * geo.stepX;
-      const destY = geo.padding + row * geo.stepY;
-
-      let finalW = geo.cellW;
-      let finalH = geo.cellH;
-      let finalX = destX;
-      let finalY = destY;
-      let finalScale = 1;
-
-      if (state.resizeMode === 'fit') {
-        finalScale = Math.min(geo.cellW / isl.w, geo.cellH / isl.h);
-        finalW = isl.w;
-        finalH = isl.h;
-        finalX = destX + (geo.cellW - isl.w * finalScale) / 2;
-        finalY = destY + (geo.cellH - isl.h * finalScale) / 2;
-      } else if (state.resizeMode === 'crop') {
-        finalW = isl.w;
-        finalH = isl.h;
-        finalX = destX + (geo.cellW - isl.w) / 2;
-        finalY = destY + (geo.cellH - isl.h) / 2;
-        finalScale = 1;
-      }
-
-      const islCanvas = document.createElement('canvas');
-      islCanvas.width = finalW; 
-      islCanvas.height = finalH;
-      islCanvas.getContext('2d')?.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, finalW, finalH);
-
-      const url = await canvasToBlobURL(islCanvas);
-
-      return {
-        id: `fixed-${i}-${Date.now()}`,
-        name: `Island_${i}`,
-        url: url,
-        x: finalX,
-        y: finalY,
-        width: finalW, 
-        height: finalH,
-        scale: finalScale, 
-        hue: 0, 
-        brightness: 100,
-        isCrop: state.resizeMode === 'crop'
-      };
+    const items = state.atlasEntries.map((entry, idx) => ({
+      w: (entry.width * (entry.scaleX ?? entry.scale)) + (state.gridSettings.padding * 2),
+      h: (entry.height * (entry.scaleY ?? entry.scale)) + (state.gridSettings.padding * 2),
+      originalIdx: idx
     }));
 
-    console.log(`[FixGrid] Complete. Generated ${newEntries.length} fixed entries.`);
-    executeCommand([
-      new SetMainTilesCommand(state.atlasEntries, newEntries, state.atlasStatus, 'baked', state.lastMainAssetId, state.lastMainAssetId),
-      new PatchCommand(
-        { lastSourceAssetId: state.lastSourceAssetId, clearedCells: [] },
-        { lastSourceAssetId: state.lastSourceAssetId, clearedCells: state.clearedCells }
-      )
-    ]);
-  }, [state.libraryAssets, state.modifiedAssets, state.lastSourceAssetId, state.clearedCells, state.atlasStatus, state.resizeMode, state.gridSettings.clearColor, state.gridSettings.clearTolerance, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand]);
+    if (state.gridSettings.packingAlgo === 'shelf') {
+       const sorted = [...items].sort((a, b) => b.h - a.h);
+       let x = 0, y = 0, rowH = 0;
+       sorted.forEach(item => {
+         if (x + item.w > canvasWidth) {
+           x = 0;
+           y += rowH;
+           rowH = 0;
+         }
+         (item as any).x = x;
+         (item as any).y = y;
+         x += item.w;
+         rowH = Math.max(rowH, item.h);
+       });
+    } else {
+       const potpack = (await import('potpack')).default;
+       potpack(items as any);
+    }
+
+    const nextEntries = items.map((item: any) => {
+      const entry = state.atlasEntries[item.originalIdx];
+      return {
+        ...entry,
+        x: item.x + state.gridSettings.padding,
+        y: item.y + state.gridSettings.padding
+      };
+    });
+
+    executeCommand(new SetMainTilesCommand(state.atlasEntries, nextEntries, state.atlasStatus, 'baked', state.lastMainAssetId, state.lastMainAssetId));
+    onCommandExecuted?.();
+  }, [state.atlasEntries, state.gridSettings, state.atlasStatus, state.lastMainAssetId, canvasWidth, executeCommand, onCommandExecuted]);
+
+  const createNewAtlas = useCallback((size: number) => {
+    let finalSize = size;
+    if (finalSize === 0) {
+      const input = prompt("Enter resolution (e.g. 2048):", "2048");
+      if (!input) return;
+      finalSize = parseInt(input);
+      if (isNaN(finalSize)) return;
+    }
+    set(prev => ({
+      ...prev,
+      canvasWidth: finalSize,
+      canvasHeight: finalSize,
+      atlasEntries: [],
+      clearedCells: [],
+      atlasStatus: 'parametric',
+      lastMainAssetId: null
+    }));
+    onCommandExecuted?.();
+  }, [set, onCommandExecuted]);
 
   const packElements = useCallback(async () => {
     if (state.atlasEntries.length === 0) return;
 
     const canvas = await renderTilesToCanvas(
       state.atlasEntries, canvasWidth, canvasHeight,
-      state.gridSettings.clearColor, { willReadFrequently: true }
+      state.gridSettings, { willReadFrequently: true }
     );
     const { data } = canvas.getContext('2d')!.getImageData(0, 0, canvasWidth, canvasHeight);
     const visited = new Uint8Array(canvasWidth * canvasHeight);
-    const { r: bgR, g: bgG, b: bgB } = hexToRgb(state.gridSettings.clearColor);
+    const { r: bgR, g: bgG, b: bgB } = hexToRgb(state.gridSettings.backgroundColor);
     const tolerance = state.gridSettings.clearTolerance ?? 10;
     console.log(`[PackElements] Starting island detection. Background: rgb(${bgR},${bgG},${bgB}), Tolerance: ${tolerance}`);
 
     const isBg = (x: number, y: number) => {
-      const p = (y * canvasWidth + x) * 4;
-      if (data[p + 3] < 5) return true;
-      return Math.abs(data[p] - bgR) <= tolerance &&
-             Math.abs(data[p + 1] - bgG) <= tolerance &&
-             Math.abs(data[p + 2] - bgB) <= tolerance;
+      const idx = (y * canvasWidth + x) * 4;
+      if (data[idx + 3] < 5) return true;
+      return Math.abs(data[idx] - bgR) <= tolerance &&
+             Math.abs(data[idx + 1] - bgG) <= tolerance &&
+             Math.abs(data[idx + 2] - bgB) <= tolerance;
     };
 
-    const islands: { x: number; y: number; w: number; h: number }[] = [];
+    const islands: { x: number, y: number, w: number, h: number }[] = [];
+    for (let y = 0; y < canvasHeight; y++) {
+      for (let x = 0; x < canvasWidth; x++) {
+        if (!visited[y * canvasWidth + x] && !isBg(x, y)) {
+          let minX = x, maxX = x, minY = y, maxY = y;
+          const queue: [number, number][] = [[x, y]];
+          visited[y * canvasWidth + x] = 1;
 
-    for (let sy = 0; sy < canvasHeight; sy++) {
-      for (let sx = 0; sx < canvasWidth; sx++) {
-        const sidx = sy * canvasWidth + sx;
-        if (visited[sidx] || isBg(sx, sy)) continue;
+          let head = 0;
+          while (head < queue.length) {
+            const [cx, cy] = queue[head++];
+            if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
+            if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
 
-        let x1 = sx, y1 = sy, x2 = sx, y2 = sy;
-        const queue: [number, number][] = [[sx, sy]];
-        visited[sidx] = 1;
-        let head = 0;
-
-        while (head < queue.length) {
-          const [cx, cy] = queue[head++];
-          if (cx < x1) x1 = cx; if (cx > x2) x2 = cx;
-          if (cy < y1) y1 = cy; if (cy > y2) y2 = cy;
-          for (const [nx, ny] of [[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]] as [number,number][]) {
-            if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
-              const nidx = ny * canvasWidth + nx;
-              if (!visited[nidx] && !isBg(nx, ny)) { visited[nidx] = 1; queue.push([nx, ny]); }
+            const neighbors: [number, number][] = [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]];
+            for (const [nx, ny] of neighbors) {
+              if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight && !visited[ny * canvasWidth + nx] && !isBg(nx, ny)) {
+                visited[ny * canvasWidth + nx] = 1;
+                queue.push([nx, ny]);
+              }
             }
           }
+          islands.push({ x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 });
         }
-
-        if (x2 - x1 >= 2 && y2 - y1 >= 2) islands.push({ x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 });
       }
     }
 
-    console.log(`[PackElements] Found ${islands.length} islands.`);
+    console.log(`[PackElements] Detected ${islands.length} islands. Packing...`);
+    const items = islands.map((isl, idx) => ({ 
+      w: isl.w + (state.gridSettings.padding * 2), 
+      h: isl.h + (state.gridSettings.padding * 2), 
+      originalIdx: idx,
+      padX: state.gridSettings.padding,
+      padY: state.gridSettings.padding
+    }));
 
-    if (islands.length === 0) return;
+    let packedWidth = canvasWidth;
+    let packedHeight = canvasHeight;
 
-    const padding = state.gridSettings.padding || 2;
-    console.log(`[PackElements] Packing with algorithm: ${state.gridSettings.packingAlgo}, Padding: ${padding}`);
-
-    const packItems = islands.map((isl, i) => {
-      const padX = (isl.w + padding * 2 > canvasWidth) ? 0 : padding;
-      const padY = (isl.h + padding * 2 > canvasHeight) ? 0 : padding;
-      return {
-        w: isl.w + padX * 2, h: isl.h + padY * 2, i, x: 0, y: 0,
-        padX, padY
-      };
-    });
-
-    if (state.gridSettings.packingAlgo === 'potpack') {
-      potpack(packItems as any);
+    if (state.gridSettings.packingAlgo === 'shelf') {
+       const sorted = [...items].sort((a, b) => b.h - a.h);
+       let x = 0, y = 0, rowH = 0;
+       sorted.forEach(item => {
+         if (x + item.w > canvasWidth) {
+           x = 0;
+           y += rowH;
+           rowH = 0;
+         }
+         (item as any).x = x;
+         (item as any).y = y;
+         x += item.w;
+         rowH = Math.max(rowH, item.h);
+       });
+       packedHeight = y + rowH;
     } else {
-      let curX = 0, curY = 0, rowH = 0;
-      for (const item of packItems) {
-        if (curX + item.w > canvasWidth) { curX = 0; curY += rowH; rowH = 0; }
-        item.x = curX; item.y = curY;
-        curX += item.w;
-        if (item.h > rowH) rowH = item.h;
-      }
+       const potpack = (await import('potpack')).default;
+       const { w, h } = potpack(items as any);
+       packedWidth = w;
+       packedHeight = h;
     }
 
-    const nextEntries: TextureAsset[] = await Promise.all(packItems.map(async (item, idx) => {
-      const isl = islands[item.i];
-      const blobCanvas = document.createElement('canvas');
-      blobCanvas.width = isl.w; blobCanvas.height = isl.h;
-      blobCanvas.getContext('2d')?.drawImage(canvas, isl.x, isl.y, isl.w, isl.h, 0, 0, isl.w, isl.h);
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvasWidth;
+    tempCanvas.height = canvasHeight;
+    const tCtx = tempCanvas.getContext('2d')!;
+    tCtx.drawImage(canvas, 0, 0);
+
+    const nextEntries: TextureAsset[] = await Promise.all(items.map(async (item: any) => {
+      const isl = islands[item.originalIdx];
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = isl.w;
+      cropCanvas.height = isl.h;
+      const cCtx = cropCanvas.getContext('2d')!;
+      cCtx.drawImage(tempCanvas, isl.x, isl.y, isl.w, isl.h, 0, 0, isl.w, isl.h);
       
-      if (idx < 5 || idx === packItems.length - 1) {
-        console.log(`[PackElements] Island #${idx}: Original Rect(${isl.x},${isl.y},${isl.w},${isl.h}) -> Packed at ${item.x + item.padX},${item.y + item.padY}`);
-      }
-
-      const url = await canvasToBlobURL(blobCanvas);
-
       return {
-        id: generateId(), url: url, name: `Packed_${item.i}`,
+        id: generateId(),
+        url: await canvasToBlobURL(cropCanvas),
+        name: `Packed_${item.originalIdx}`,
         width: isl.w, height: isl.h,
         x: item.x + item.padX, y: item.y + item.padY,
         hue: 0, brightness: 100, scale: 1, isCrop: true,
@@ -245,94 +183,33 @@ export function useAtlasOps(
 
     console.log(`[PackElements] Complete.`);
     executeCommand(new SetMainTilesCommand(state.atlasEntries, nextEntries, state.atlasStatus, 'baked', state.lastMainAssetId, state.lastMainAssetId));
-  }, [state.atlasEntries, state.gridSettings, state.atlasStatus, state.lastMainAssetId, canvasWidth, canvasHeight, executeCommand]);
+    onCommandExecuted?.();
+  }, [state.atlasEntries, state.gridSettings, state.atlasStatus, state.lastMainAssetId, canvasWidth, canvasHeight, executeCommand, onCommandExecuted]);
 
   const addToLibrary = useCallback(async () => {
     const canvas = await renderTilesToCanvas(
-      state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings.clearColor
+      state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings
     );
     const url = await canvasToBlobURL(canvas);
     const name = `${state.textureName || 'T_Texture_BC'}.png`;
 
-    // Add to library
     const img = new Image();
     img.onload = () => {
       const id = generateId();
       const newAsset: TextureAsset = {
-        id,
-        url: url,
-        name: name,
-        width: img.naturalWidth,
-        height: img.naturalHeight,
-        x: 0, y: 0,
-        hue: 0, brightness: 100, scale: 1,
+        id, url, name,
+        width: canvas.width, height: canvas.height,
+        x: 0, y: 0, hue: 0, brightness: 100, scale: 1,
+        file: new File([], name),
       };
-      set(prev => {
-        const existingIdx = prev.libraryAssets.findIndex(a => a.name === name);
-        let libraryAssets = [...prev.libraryAssets];
-        let finalId = id;
-        let isReplacement = false;
-        if (existingIdx !== -1) {
-          finalId = libraryAssets[existingIdx].id;
-          isReplacement = true;
-          if (libraryAssets[existingIdx].url.startsWith('blob:')) {
-            URL.revokeObjectURL(libraryAssets[existingIdx].url);
-          }
-          libraryAssets[existingIdx] = { ...newAsset, id: finalId };
-        } else {
-          libraryAssets = [newAsset, ...libraryAssets];
-        }
-
-        if (!isReplacement) {
-          return {
-            ...prev,
-            libraryAssets,
-            lastMainAssetId: finalId
-          };
-        }
-
-        // Update other references if it was a replacement
-        const updateRef = (a: TextureAsset) => {
-          if (a.id === finalId) {
-            return {
-              ...a,
-              url: newAsset.url,
-              file: newAsset.file,
-              sourceUrl: newAsset.sourceUrl,
-              width: newAsset.width,
-              height: newAsset.height,
-            };
-          }
-          return a;
-        };
-
-        return {
-          ...prev,
-          libraryAssets,
-          lastMainAssetId: finalId,
-          atlasEntries: prev.atlasEntries.map(updateRef),
-          layeringLayers: prev.layeringLayers.map(l => ({ ...l, asset: updateRef(l.asset) })),
-          packerMapping: {
-            r: { ...prev.packerMapping.r, asset: prev.packerMapping.r.asset ? updateRef(prev.packerMapping.r.asset) : null },
-            g: { ...prev.packerMapping.g, asset: prev.packerMapping.g.asset ? updateRef(prev.packerMapping.g.asset) : null },
-            b: { ...prev.packerMapping.b, asset: prev.packerMapping.b.asset ? updateRef(prev.packerMapping.b.asset) : null },
-            a: { ...prev.packerMapping.a, asset: prev.packerMapping.a.asset ? updateRef(prev.packerMapping.a.asset) : null },
-          },
-          pbrSet: {
-            baseColor: { ...prev.pbrSet.baseColor, asset: prev.pbrSet.baseColor.asset ? updateRef(prev.pbrSet.baseColor.asset) : null },
-            normal: { ...prev.pbrSet.normal, asset: prev.pbrSet.normal.asset ? updateRef(prev.pbrSet.normal.asset) : null },
-            orm: { ...prev.pbrSet.orm, asset: prev.pbrSet.orm.asset ? updateRef(prev.pbrSet.orm.asset) : null },
-          },
-          currentSourceAsset: prev.currentSourceAsset ? updateRef(prev.currentSourceAsset) : null
-        };
-      });
+      set(prev => ({ ...prev, libraryAssets: [...prev.libraryAssets, newAsset] }));
     };
     img.src = url;
-  }, [state.atlasEntries, state.gridSettings.clearColor, state.textureName, canvasWidth, canvasHeight, set]);
+  }, [state.atlasEntries, state.gridSettings, state.textureName, canvasWidth, canvasHeight, set]);
 
   const exportAtlas = useCallback(async () => {
     const canvas = await renderTilesToCanvas(
-      state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings.clearColor
+      state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings
     );
     const url = await canvasToBlobURL(canvas);
     const name = `${state.textureName || 'T_Texture_BC'}.png`;
@@ -341,93 +218,19 @@ export function useAtlasOps(
     link.href = url;
     link.download = name;
     link.click();
-
-    // Add to library
-    const img = new Image();
-    img.onload = () => {
-      const id = generateId();
-      const newAsset: TextureAsset = {
-        id,
-        url: url,
-        name: name,
-        width: img.naturalWidth,
-        height: img.naturalHeight,
-        x: 0, y: 0,
-        hue: 0, brightness: 100, scale: 1,
-      };
-      set(prev => {
-        const existingIdx = prev.libraryAssets.findIndex(a => a.name === name);
-        let libraryAssets = [...prev.libraryAssets];
-        let finalId = id;
-        let isReplacement = false;
-        if (existingIdx !== -1) {
-          finalId = libraryAssets[existingIdx].id;
-          isReplacement = true;
-          if (libraryAssets[existingIdx].url.startsWith('blob:')) {
-            URL.revokeObjectURL(libraryAssets[existingIdx].url);
-          }
-          libraryAssets[existingIdx] = { ...newAsset, id: finalId };
-        } else {
-          libraryAssets = [newAsset, ...libraryAssets];
-        }
-
-        if (!isReplacement) {
-          return {
-            ...prev,
-            libraryAssets,
-            lastMainAssetId: finalId
-          };
-        }
-
-        const updateRef = (a: TextureAsset) => {
-          if (a.id === finalId) {
-            return {
-              ...a,
-              url: newAsset.url,
-              file: newAsset.file,
-              sourceUrl: newAsset.sourceUrl,
-              width: newAsset.width,
-              height: newAsset.height,
-            };
-          }
-          return a;
-        };
-
-        return {
-          ...prev,
-          libraryAssets,
-          lastMainAssetId: finalId,
-          atlasEntries: prev.atlasEntries.map(updateRef),
-          layeringLayers: prev.layeringLayers.map(l => ({ ...l, asset: updateRef(l.asset) })),
-          packerMapping: {
-            r: { ...prev.packerMapping.r, asset: prev.packerMapping.r.asset ? updateRef(prev.packerMapping.r.asset) : null },
-            g: { ...prev.packerMapping.g, asset: prev.packerMapping.g.asset ? updateRef(prev.packerMapping.g.asset) : null },
-            b: { ...prev.packerMapping.b, asset: prev.packerMapping.b.asset ? updateRef(prev.packerMapping.b.asset) : null },
-            a: { ...prev.packerMapping.a, asset: prev.packerMapping.a.asset ? updateRef(prev.packerMapping.a.asset) : null },
-          },
-          pbrSet: {
-            baseColor: { ...prev.pbrSet.baseColor, asset: prev.pbrSet.baseColor.asset ? updateRef(prev.pbrSet.baseColor.asset) : null },
-            normal: { ...prev.pbrSet.normal, asset: prev.pbrSet.normal.asset ? updateRef(prev.pbrSet.normal.asset) : null },
-            orm: { ...prev.pbrSet.orm, asset: prev.pbrSet.orm.asset ? updateRef(prev.pbrSet.orm.asset) : null },
-          },
-          currentSourceAsset: prev.currentSourceAsset ? updateRef(prev.currentSourceAsset) : null
-        };
-      });
-    };
-    img.src = url;
-  }, [state.atlasEntries, state.gridSettings.clearColor, state.textureName, canvasWidth, canvasHeight, set]);
+  }, [state.atlasEntries, state.gridSettings, state.textureName, canvasWidth, canvasHeight]);
 
   const exportGridZip = useCallback(async () => {
     if (state.gridSettings.mode !== 'fixed') return;
 
     const JSZip = (await import('jszip')).default;
     const zip = new JSZip();
-    
+
     const geo = mainAtlasGeo;
     const sourceAsset = [...state.libraryAssets, ...state.modifiedAssets].find(t => t.id === state.lastSourceAssetId);
 
     const canvas = await renderTilesToCanvas(
-      state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings.clearColor,
+      state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings,
       {
         sourceAsset,
         clearedCells: state.clearedCells,
@@ -437,72 +240,105 @@ export function useAtlasOps(
         stepY: geo.stepY
       }
     );
-    
+
     const cellW = geo.cellW;
     const cellH = geo.cellH;
-    
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = cellW;
-    tempCanvas.height = cellH;
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    if (!tempCtx) return;
+    const stepX = geo.stepX;
+    const stepY = geo.stepY;
 
-    for (let row = 0; row < geo.rows; row++) {
-      for (let col = 0; col < geo.cols; col++) {
-        const pos = geo.getPosFromCell(col, row);
+    for (let cy = 0; cy < geo.rows; cy++) {
+      for (let cx = 0; cx < geo.cols; cx++) {
+        const cellCanvas = document.createElement('canvas');
+        cellCanvas.width = cellW;
+        cellCanvas.height = cellH;
+        const ctx = cellCanvas.getContext('2d')!;
+        const paddingX = (stepX - cellW) / 2;
+        const paddingY = (stepY - cellH) / 2;
+        ctx.drawImage(canvas, cx * stepX + paddingX, cy * stepY + paddingY, cellW, cellH, 0, 0, cellW, cellH);
         
-        tempCtx.clearRect(0, 0, cellW, cellH);
-        tempCtx.drawImage(
-          canvas,
-          pos.x, pos.y, cellW, cellH,
-          0, 0, cellW, cellH
-        );
-        
-        const blobUrl = await canvasToBlobURL(tempCanvas);
-        const response = await fetch(blobUrl);
-        const blob = await response.blob();
-        zip.file(`${state.textureName || 'cell'}_${row}_${col}.png`, blob);
-        URL.revokeObjectURL(blobUrl);
+        const blob = await new Promise<Blob | null>(resolve => cellCanvas.toBlob(resolve, 'image/png'));
+        if (blob) {
+          zip.file(`cell_${cx}_${cy}.png`, blob);
+        }
       }
     }
-    
-    const content = await zip.generateAsync({type: 'blob'});
+
+    const content = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(content);
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(content);
-    link.download = `${state.textureName || 'T_Texture'}_cells.zip`;
+    link.href = url;
+    link.download = `${state.textureName || 'T_Texture_Grid'}.zip`;
     link.click();
-  }, [state.gridSettings, state.atlasEntries, state.textureName, canvasWidth, canvasHeight, mainAtlasGeo, state.clearedCells, state.libraryAssets, state.modifiedAssets, state.lastSourceAssetId]);
+  }, [state.atlasEntries, state.gridSettings, state.textureName, canvasWidth, canvasHeight, state.clearedCells, state.libraryAssets, state.modifiedAssets, state.lastSourceAssetId, mainAtlasGeo]);
 
-  const createNewAtlas = useCallback((width: number, height?: number) => {
-    let finalW = width, finalH = height ?? width;
+  const fixGrid = useCallback(async () => {
+    if (state.atlasEntries.length === 0) return;
 
-    if (width === 0) {
-      const inputW = prompt('Enter atlas width (e.g. 1024, 2048):', '2048');
-      if (!inputW) return;
-      finalW = parseInt(inputW);
-      if (isNaN(finalW) || finalW <= 0) return;
-      const inputH = prompt('Enter atlas height (leave blank for square):', inputW);
-      finalH = inputH ? parseInt(inputH) : finalW;
-      if (isNaN(finalH) || finalH <= 0) finalH = finalW;
+    const canvas = await renderTilesToCanvas(
+      state.atlasEntries, canvasWidth, canvasHeight, state.gridSettings, { willReadFrequently: true }
+    );
+    const { data } = canvas.getContext('2d')!.getImageData(0, 0, canvasWidth, canvasHeight);
+    const visited = new Uint8Array(canvasWidth * canvasHeight);
+    const { r: bgR, g: bgG, b: bgB } = hexToRgb(state.gridSettings.backgroundColor);
+    const tolerance = state.gridSettings.clearTolerance ?? 10;
+
+    const isBg = (x: number, y: number) => {
+      const idx = (y * canvasWidth + x) * 4;
+      if (data[idx + 3] < 5) return true;
+      return Math.abs(data[idx] - bgR) <= tolerance &&
+             Math.abs(data[idx + 1] - bgG) <= tolerance &&
+             Math.abs(data[idx + 2] - bgB) <= tolerance;
+    };
+
+    const islands: { x: number, y: number, w: number, h: number }[] = [];
+    for (let y = 0; y < canvasHeight; y++) {
+      for (let x = 0; x < canvasWidth; x++) {
+        if (!visited[y * canvasWidth + x] && !isBg(x, y)) {
+          let minX = x, maxX = x, minY = y, maxY = y;
+          const queue: [number, number][] = [[x, y]];
+          visited[y * canvasWidth + x] = 1;
+          let head = 0;
+          while (head < queue.length) {
+            const [cx, cy] = queue[head++];
+            if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
+            if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
+            const neighbors: [number, number][] = [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]];
+            for (const [nx, ny] of neighbors) {
+              if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight && !visited[ny * canvasWidth + nx] && !isBg(nx, ny)) {
+                visited[ny * canvasWidth + nx] = 1;
+                queue.push([nx, ny]);
+              }
+            }
+          }
+          islands.push({ x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 });
+        }
+      }
     }
 
-    set(prev => ({
-      ...prev,
-      canvasWidth: finalW, canvasHeight: finalH,
-      atlasEntries: [], dragMode: 'replace',
-      atlasStatus: 'parametric',
-      clearedCells: [],
-      lastSourceAssetId: null,
-      lastMainAssetId: null,
-      debugIslands: [],
-      modifiedAssets: [],
-      packerMapping: initialPackerMapping,
-      pbrSet: initialPBRSet,
-      layeringLayers: [],
-    }));
-    onAfterNewAtlas?.();
-  }, [set, onAfterNewAtlas]);
+    const nextEntries = state.atlasEntries.map(entry => {
+      const centerX = entry.x + (entry.width * (entry.scaleX ?? entry.scale)) / 2;
+      const centerY = entry.y + (entry.height * (entry.scaleY ?? entry.scale)) / 2;
+      const island = islands.find(isl => 
+        centerX >= isl.x && centerX <= isl.x + isl.w &&
+        centerY >= isl.y && centerY <= isl.y + isl.h
+      );
 
-  return { packAtlas, fixGrid, packElements, exportAtlas, exportGridZip, createNewAtlas, addToLibrary };
+      if (island) {
+        const { cx, cy } = mainAtlasGeo.getCellAtPos(island.x + island.w / 2, island.y + island.h / 2);
+        const cellPos = mainAtlasGeo.getPosFromCell(cx, cy);
+        return { ...entry, x: cellPos.x, y: cellPos.y };
+      }
+      return entry;
+    });
+
+    executeCommand(new SetMainTilesCommand(state.atlasEntries, nextEntries, state.atlasStatus, state.atlasStatus, state.lastMainAssetId, state.lastMainAssetId));
+    onCommandExecuted?.();
+  }, [state.atlasEntries, state.gridSettings, state.atlasStatus, state.lastMainAssetId, canvasWidth, canvasHeight, mainAtlasGeo, executeCommand, onCommandExecuted]);
+
+  const clearAll = useCallback(() => {
+    executeCommand(new SetMainTilesCommand(state.atlasEntries, [], state.atlasStatus, 'parametric', state.lastMainAssetId, null));
+    onCommandExecuted?.();
+  }, [state.atlasEntries, state.atlasStatus, state.lastMainAssetId, executeCommand, onCommandExecuted]);
+
+  return { packAtlas, packElements, addToLibrary, exportAtlas, exportGridZip, fixGrid, createNewAtlas, clearAll };
 }

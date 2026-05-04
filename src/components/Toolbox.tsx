@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DeferredNumberInput } from './DeferredNumberInput';
 import { TextureAsset, GridSettings, GridMode, ResizeMode, AddMode, DragMode } from '../types';
 import { cn } from '../lib/utils';
-import { Settings2, Download, Package, RefreshCw, LayoutGrid, Palette, Layers, Wand2, Grid3X3, Plus, Box, Maximize2, MousePointer2, Library } from 'lucide-react';
+import { Download, Package, RefreshCw, Palette, Wand2, Grid3X3, Plus, Box, Library } from 'lucide-react';
 
 interface ToolboxProps {
   selectedAsset: TextureAsset | null;
@@ -31,12 +31,10 @@ interface ToolboxProps {
   onAddTextEnabledChange: (enabled: boolean) => void;
   textColor: string;
   onTextColorChange: (color: string) => void;
-  }
+}
 
-  export function Toolbox({
-  selectedAsset,
-  updateAsset,
-  onPack,
+export function Toolbox({
+  updateAsset: _updateAsset, // Unused in this scope but part of props
   onPackElements,
   onNewAtlas,
   onFixGrid,
@@ -54,26 +52,24 @@ interface ToolboxProps {
   onAddModeChange,
   autoDetectEnabled,
   onAutoDetectEnabledChange,
-  debugIslandDetection,
-  onDebugIslandDetectionChange,
   addTextEnabled,
   onAddTextEnabledChange,
   textColor,
   onTextColorChange
-  }: ToolboxProps) {
+}: ToolboxProps) {
 
-  const [localClearColor, setLocalClearColor] = useState(gridSettings.clearColor);
+  const [localBgColor, setLocalBgColor] = useState(gridSettings.backgroundColor);
   const [localTextColor, setLocalTextColor] = useState(textColor);
 
   useEffect(() => {
-    setLocalClearColor(gridSettings.clearColor);
-  }, [gridSettings.clearColor]);
+    setLocalBgColor(gridSettings.backgroundColor);
+  }, [gridSettings.backgroundColor]);
 
   useEffect(() => {
     setLocalTextColor(textColor);
   }, [textColor]);
 
-  const [showNewAtlas, setShowNewAtlas] = React.useState(false);
+  const [showNewAtlas, setShowNewAtlas] = useState(false);
 
   // Determine if a hex color is light or dark
   const isColorLight = (hex: string) => {
@@ -88,11 +84,13 @@ interface ToolboxProps {
     const nextEnabled = !addTextEnabled;
     if (nextEnabled) {
       // Auto-set contrast color
-      const autoColor = isColorLight(gridSettings.clearColor) ? '#000000' : '#ffffff';
+      const autoColor = isColorLight(gridSettings.backgroundColor) ? '#000000' : '#ffffff';
       onTextColorChange(autoColor);
     }
     onAddTextEnabledChange(nextEnabled);
-  };  return (
+  };
+
+  return (
     <div className="w-64 h-full bg-zinc-900 border-r border-zinc-800 flex flex-col">
       {/* Grid Settings */}
       <div className="p-3 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between">
@@ -122,14 +120,13 @@ interface ToolboxProps {
           </button>
         </div>
       </div>
-      <div className="p-3 space-y-2.5 border-b border-zinc-800 overflow-y-auto flex-1">
+      <div className="p-3 space-y-2.5 border-b border-zinc-800 overflow-y-auto flex-1 text-zinc-200">
         <div className="space-y-1">
-          <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="Choose the layout logic for the atlas">Mode</label>
+          <label className="text-[10px] font-semibold text-zinc-500 uppercase">Mode</label>
           <select
             value={gridSettings.mode}
             onChange={(e) => onGridSettingsChange({ ...gridSettings, mode: e.target.value as GridMode })}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200"
-            title="Switch between grid slicing and free-form atlas packing"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 outline-none focus:border-blue-500 transition-colors"
           >
             <option value="fixed">Grid</option>
             <option value="packing">Atlas Packing</option>
@@ -137,12 +134,11 @@ interface ToolboxProps {
         </div>
 
         <div className="space-y-1">
-          <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="Choose how tiles are added to the main atlas">Add Mode</label>
+          <label className="text-[10px] font-semibold text-zinc-500 uppercase">Add Mode</label>
           <select
             value={addMode}
             onChange={(e) => onAddModeChange(e.target.value as AddMode)}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200"
-            title="Choose how tiles are added to the main atlas"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 outline-none focus:border-blue-500 transition-colors"
           >
             <option value="as-is">As is</option>
             <option value="replace-bg">Replace Background</option>
@@ -150,12 +146,11 @@ interface ToolboxProps {
         </div>
 
         <div className="space-y-1">
-          <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="Choose how tiles are resized when added to the main atlas">Resize Mode</label>
+          <label className="text-[10px] font-semibold text-zinc-500 uppercase">Resize Mode</label>
           <select
             value={resizeMode}
             onChange={(e) => onResizeModeChange(e.target.value as ResizeMode)}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200"
-            title="Choose how tiles are resized when added to the main atlas"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 outline-none focus:border-blue-500 transition-colors"
           >
             <option value="fill">Fill (Stretch)</option>
             <option value="fit">Fit (Proportional)</option>
@@ -166,25 +161,23 @@ interface ToolboxProps {
         {gridSettings.mode === 'packing' && (
           <div className="space-y-2.5 pt-2 border-t border-zinc-800">
             <div className="space-y-1">
-              <label className="text-[10px] text-zinc-500 flex justify-between" title="Space between elements in pixels">
+              <label className="text-[10px] text-zinc-500 flex justify-between uppercase">
                 <span>Padding</span>
-                <span className="font-mono">{gridSettings.padding}</span>
+                <span className="font-mono text-zinc-400">{gridSettings.padding}</span>
               </label>
               <DeferredNumberInput
                 value={gridSettings.padding}
                 min={0}
                 onCommit={(val) => onGridSettingsChange({ ...gridSettings, padding: val })}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 font-mono"
-                title="Internal padding between packed sprites"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="The mathematical logic used to arrange sprites">Algorithm</label>
+              <label className="text-[10px] font-semibold text-zinc-500 uppercase">Algorithm</label>
               <select
                 value={gridSettings.packingAlgo}
-                onChange={(e) => onGridSettingsChange({ ...gridSettings, packingAlgo: e.target.value })}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200"
-                title="Select the packing algorithm"
+                onChange={(e) => onGridSettingsChange({ ...gridSettings, packingAlgo: e.target.value as any })}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 outline-none focus:border-blue-500 transition-colors"
               >
                 <option value="potpack">Potpack (Fast)</option>
                 <option value="shelf">Shelf (Simple)</option>
@@ -193,7 +186,6 @@ interface ToolboxProps {
             <button
               onClick={onPackElements}
               className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-1 px-4 rounded text-xs font-medium transition-colors"
-              title="Run the packing algorithm to arrange all sprites efficiently"
             >
               <Box className="w-3.5 h-3.5" />
               Pack Elements
@@ -220,7 +212,7 @@ interface ToolboxProps {
 
           {addTextEnabled && (
             <div className="space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
-              <label className="text-[10px] text-zinc-500">Text Color</label>
+              <label className="text-[10px] text-zinc-500 uppercase">Text Color</label>
               <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded px-1.5 py-1">
                 <input
                   type="color"
@@ -236,23 +228,23 @@ interface ToolboxProps {
         </div>
 
         <div className="space-y-1 pt-2 border-t border-zinc-800">
-          <label className="text-[10px] font-semibold text-zinc-500 uppercase" title="Choose what happens when dragging an entry onto another">Drag Mode</label>
+          <label className="text-[10px] font-semibold text-zinc-500 uppercase">Drag Mode</label>
           <select
             value={dragMode}
             onChange={(e) => setDragMode(e.target.value as DragMode)}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200"
-            title="Choose behavior when dragging an entry onto an occupied cell"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 outline-none focus:border-blue-500 transition-colors"
           >
             <option value="replace">Replace</option>
             <option value="swap">Swap</option>
             <option value="overlay">Overlay</option>
           </select>
         </div>
+
         {gridSettings.mode === 'fixed' && (
           <div className="space-y-2.5">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500 whitespace-nowrap" title="Width of each grid cell in pixels">Cell Width</label>
+                <label className="text-[10px] text-zinc-500 whitespace-nowrap uppercase">Cell Width</label>
                 <DeferredNumberInput
                   value={gridSettings.cellSize}
                   min={16}
@@ -262,18 +254,16 @@ interface ToolboxProps {
                     cellY: gridSettings.keepSquare ? val : (gridSettings.cellY || val)
                   })}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 font-mono"
-                  title="Width of each grid cell. Used for defining the grid and snap points."
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500 whitespace-nowrap" title="Padding around each sprite inside its cell">Cell Padding</label>
+                <label className="text-[10px] text-zinc-500 whitespace-nowrap uppercase">Cell Padding</label>
                 <DeferredNumberInput
                   value={gridSettings.padding}
                   min={0}
                   onCommit={(val) => onGridSettingsChange({ ...gridSettings, padding: val })}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 font-mono"
-                  title="Padding around each sprite inside its cell. Used for defining the grid spacing."
                 />
               </div>
             </div>
@@ -291,58 +281,73 @@ interface ToolboxProps {
                     cellY: keep ? gridSettings.cellSize : (gridSettings.cellY || gridSettings.cellSize)
                   });
                 }}
-                className="rounded border-zinc-700 bg-zinc-950 text-blue-500"
-                title="Lock aspect ratio to 1:1"
+                className="rounded border-zinc-700 bg-zinc-950 text-blue-500 focus:ring-0"
               />
-              <label htmlFor="keepSquareFixed" className="text-xs text-zinc-400" title="Force height to match width">Keep Square</label>
+              <label htmlFor="keepSquareFixed" className="text-xs text-zinc-400 uppercase font-semibold">Keep Square</label>
             </div>
 
             {!gridSettings.keepSquare && (
               <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500" title="Height of each grid cell in pixels">Cell Height (Pixels)</label>
+                <label className="text-[10px] text-zinc-500 uppercase">Cell Height</label>
                 <DeferredNumberInput
                   value={gridSettings.cellY || gridSettings.cellSize}
                   min={16}
                   onCommit={(val) => onGridSettingsChange({ ...gridSettings, cellY: val })}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 font-mono"
-                  title="Vertical size for defining the grid"
                 />
               </div>
             )}
           </div>
         )}
 
-        <div className="pt-2 border-t border-zinc-800 space-y-2.5">
+        <div className="pt-2 border-t border-zinc-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+              <Palette className="w-3 h-3" />
+              <span>Background</span>
+            </div>
+            <select
+              value={gridSettings.backgroundFillMode || 'transparent'}
+              onChange={(e) => onGridSettingsChange({ ...gridSettings, backgroundFillMode: e.target.value as any })}
+              className="bg-zinc-800 border-none text-[9px] font-bold text-zinc-300 rounded px-1.5 py-0.5 outline-none cursor-pointer hover:bg-zinc-700 transition-colors uppercase tracking-tight"
+            >
+              <option value="transparent">Transparent</option>
+              <option value="solid">Solid</option>
+            </select>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-[10px] text-zinc-500" title="Atlas background color">Background</label>
-              <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5">
+              <div className="relative group">
+                <div 
+                  className="w-full h-7 rounded border border-zinc-800 bg-zinc-950 flex items-center px-2 gap-2 cursor-pointer hover:border-zinc-700 transition-colors"
+                >
+                  <div className="w-3.5 h-3.5 rounded-sm border border-white/10 shrink-0" style={{ backgroundColor: localBgColor }} />
+                  <span className="text-[10px] font-mono text-zinc-400 uppercase truncate">{localBgColor}</span>
+                </div>
                 <input
                   type="color"
-                  value={localClearColor}
-                  onChange={(e) => setLocalClearColor(e.target.value)}
-                  onBlur={() => onGridSettingsChange({ ...gridSettings, clearColor: localClearColor })}
-                  className="w-4 h-4 rounded cursor-pointer bg-transparent border-0 p-0"
-                  title="Select the background and transparency key color"
+                  value={localBgColor}
+                  onChange={(e) => setLocalBgColor(e.target.value)}
+                  onBlur={() => onGridSettingsChange({ ...gridSettings, backgroundColor: localBgColor })}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                 />
-                <span className="text-[10px] font-mono text-zinc-400 uppercase truncate" title="Hex code of the current background color">{localClearColor}</span>
               </div>
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] text-zinc-500 flex justify-between" title="Sensitivity for color matching during island detection">
+              <div className="flex items-center justify-between text-[10px] text-zinc-500 uppercase">
                 <span>Tol.</span>
-                <span className="font-mono">{gridSettings.clearTolerance}</span>
-              </label>
-              <div className="flex items-center h-5">
+                <span className="font-mono text-zinc-400">{gridSettings.clearTolerance}</span>
+              </div>
+              <div className="flex items-center h-4">
                 <input
                   type="range"
                   min="0"
                   max="100"
                   value={gridSettings.clearTolerance ?? 10}
                   onChange={(e) => onGridSettingsChange({ ...gridSettings, clearTolerance: Number(e.target.value) })}
-                  className="w-full accent-blue-500 h-1.5"
-                  title="Adjust how closely colors must match the background color to be considered transparent"
+                  className="w-full accent-blue-500 h-1"
                 />
               </div>
             </div>
@@ -355,7 +360,6 @@ interface ToolboxProps {
           <button
             onClick={() => setShowNewAtlas(!showNewAtlas)}
             className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-1.5 px-4 rounded text-xs font-medium transition-colors border border-zinc-700"
-            title="Create a new empty atlas or reset current session"
           >
             <Plus className="w-3.5 h-3.5" />
             New Atlas
@@ -369,8 +373,7 @@ interface ToolboxProps {
                     onNewAtlas(size);
                     setShowNewAtlas(false);
                   }}
-                  className="bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono py-1 rounded border border-zinc-700"
-                  title={size === 0 ? "Specify a custom resolution" : `Create a ${size}x${size} atlas`}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono py-1 rounded border border-zinc-700 text-zinc-300"
                 >
                   {size === 0 ? 'Custom...' : `${size}x${size}`}
                 </button>
@@ -382,8 +385,7 @@ interface ToolboxProps {
           {gridSettings.mode === 'fixed' && (
             <button
               onClick={onFixGrid}
-              className="w-full flex items-center justify-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-1.5 px-2 rounded text-[10px] font-medium transition-colors border border-zinc-700"
-              title="Detect islands and center them in the nearest grid cells"
+              className="w-full flex items-center justify-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-1.5 px-2 rounded text-[10px] font-medium transition-colors border border-zinc-700 uppercase tracking-wider"
             >
               <Grid3X3 className="w-3 h-3" />
               Fix Grid
@@ -392,18 +394,16 @@ interface ToolboxProps {
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={onAddToLibrary}
-              className="flex items-center justify-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-1.5 px-2 rounded text-[10px] font-medium transition-colors border border-zinc-700"
-              title="Rasterize current atlas and add to asset library without downloading"
+              className="flex items-center justify-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-1.5 px-2 rounded text-[10px] font-medium transition-colors border border-zinc-700 uppercase tracking-tight"
             >
-              <Library className="w-3 h-3" />
-              Add to Library
+              <Library className="w-3 h-3 shrink-0" />
+              Add to Lib
             </button>
             <button
               onClick={onExport}
-              className="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white py-1.5 px-2 rounded text-[10px] font-medium transition-colors"
-              title="Export the final atlas as a PNG image"
+              className="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white py-1.5 px-2 rounded text-[10px] font-medium transition-colors uppercase tracking-tight"
             >
-              <Download className="w-3 h-3" />
+              <Download className="w-3 h-3 shrink-0" />
               Export PNG
             </button>
           </div>
@@ -411,8 +411,7 @@ interface ToolboxProps {
         {gridSettings.mode === 'fixed' && onExportZip && (
           <button
             onClick={onExportZip}
-            className="w-full flex items-center justify-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-1.5 px-4 rounded text-[10px] font-medium transition-colors border border-zinc-700"
-            title="Export each grid cell as a separate image in a ZIP file"
+            className="w-full flex items-center justify-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-1.5 px-4 rounded text-[10px] font-medium transition-colors border border-zinc-700 uppercase tracking-wider"
           >
             <Package className="w-3 h-3" />
             Export Grid ZIP

@@ -91,7 +91,7 @@ export function SourceAtlas({
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const islands = findIslands(
       imageData,
-      gridSettings.clearColor,
+      gridSettings.backgroundColor,
       gridSettings.clearTolerance,
       true
     );
@@ -193,7 +193,7 @@ export function SourceAtlas({
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const islands = findIslands(
         imageData,
-        gridSettings.clearColor,
+        gridSettings.backgroundColor,
         gridSettings.clearTolerance,
         false, // No median filter for targeted click
         { x, y }
@@ -211,11 +211,11 @@ export function SourceAtlas({
           if (addMode === 'replace-bg') {
             const imageData = cropCtx.getImageData(0, 0, isl.w, isl.h);
             const data = imageData.data;
-            const targetBg = hexToRgb(mainGridSettings.clearColor);
+            const targetBg = hexToRgb(mainGridSettings.backgroundColor);
             
             // Re-detect background for this specific island or use provided gridSettings?
             // For packing click, we use the sample logic
-            const clearColor = hexToRgb(gridSettings.clearColor);
+            const clearColor = hexToRgb(gridSettings.backgroundColor);
             const isLocalMatch = (r: number, g: number, b: number, a: number) => {
               if (a < 5) return true;
               return Math.abs(r - clearColor.r) <= gridSettings.clearTolerance &&
@@ -275,7 +275,7 @@ export function SourceAtlas({
 
     let sx = customSelection.x, sy = customSelection.y, sw = customSelection.w, sh = customSelection.h;
     
-    const permClearRGB = hexToRgb(mainGridSettings.clearColor);
+    const permClearRGB = hexToRgb(mainGridSettings.backgroundColor);
 
     // Temp canvas to sample the original selection
     const analyzeCanvas = document.createElement('canvas');
@@ -505,10 +505,11 @@ export function SourceAtlas({
             onHoverChange={onHoverChange}
             uniqueId="source"
             disableHover={mainGridSettings.mode === 'packing'}
-            tooltip={mainGridSettings.mode === 'packing' 
-              ? "L-Click: Auto-Extract Island | Drag: Free Crop" 
-              : "L-Click: Transfer | R-Click: Fill | Drag: Free Crop"
+            tooltip={mainGridSettings.mode === 'packing'
+              ? "L-Click: Auto-Extract | Drag: Crop | Double R-Click: Clear Cell"
+              : "L-Click: Transfer | R-Click: Fill | Double R-Click: Clear Cell | Drag: Crop"
             }
+
           />
         ) : (
           <div 
